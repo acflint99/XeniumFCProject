@@ -58,7 +58,7 @@ packages <- c(
   "ggplot2",
   
   # Spatial / geometry (skip s2 to avoid HPC build issues)
-  "sf",   # note: sf will still work without s2 for most Xenium analyses
+#  "sf",   # note: sf will still work without s2 for most Xenium analyses
   
   # File formats
   "arrow",
@@ -84,12 +84,11 @@ for (pkg in packages) {
 # 5. Load all libraries
 # -------------------------------
 library(Seurat)
-library(SeuratDisk)
 library(dplyr)
 library(patchwork)
 library(ggplot2)
 library(here)
-library(sf)  # note: works without s2 for typical Xenium workflows
+#library(sf)  # note: works without s2 for typical Xenium workflows
 
 # -------------------------------
 # 6. Snapshot the environment
