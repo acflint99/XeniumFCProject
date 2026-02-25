@@ -20,3 +20,10 @@ outputs/*
 # OS / editor files
 .DS_Store
 *.swp
+
+# Other
+data/
+*.log
+mkdir
+10
+30
