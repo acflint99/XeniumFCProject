@@ -1,5 +1,6 @@
 library(here)
 library(Seurat)
+library(ggplot2)
 
 XeniumCropCerebellum <- function(sample_name,
                                  fov = "fov",
@@ -69,7 +70,7 @@ XeniumCropCerebellum <- function(sample_name,
   
   # Save as PNG
   ggsave(
-    filename = paste0(sample_name, "_crbllm_nCount_FeatPlot.png"),
+    filename = paste0(sample_name, "_CB_nCount_FeatPlot.png"),
     plot = p,
     path = out_dir,
     width = 8,
@@ -78,8 +79,15 @@ XeniumCropCerebellum <- function(sample_name,
     dpi = 300
   )
   
-  message("Cerebellum plot saved to: ", file.path(out_dir, paste0(sample_name, "_cerebellum_plot.png")))
+  message("Cerebellum plot saved to: ", file.path(out_dir, paste0(sample_name, "_CB_nCount_FeatPlot.png")))
   
+  # -------------------------------
+  # 11. Save cerebellum (CB) cropped object
+  # -------------------------------
+  output_file <- here("outputs", paste0(sample_name, "_CB.rds"))
+  saveRDS(xenium_obj, file = output_file, compress = FALSE)
+  
+  message("Saved RDS file to:", output_file)
   
   return(xenium_cereb)
 }
