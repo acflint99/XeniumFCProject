@@ -17,7 +17,7 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   
   DefaultAssay(xenium_obj) <- "Xenium"
   assay_name <- DefaultAssay(xenium_obj)
-  message("Using assay: ", assay_name)
+  cat("Using assay: ", assay_name)
   
   ## =========================================================
   ## 1. Normalization & Preprocessing
@@ -44,7 +44,7 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   if (!graph_name %in% names(xenium_obj@graphs)) {
     stop("SNN graph not found. Available graphs: ", paste(names(xenium_obj@graphs), collapse = ", "))
   }
-  message("Using graph: ", graph_name)
+  cat("Using graph: ", graph_name)
   
   umap_plot <- DimPlot(xenium_obj, reduction = "umap") +
     ggtitle(paste0(sample_name, " - UMAP Projection (dims = 1:50)"))
@@ -78,7 +78,7 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   }
   
   best_res <- resolutions[which.max(mod_scores)]
-  message("Optimal clustering resolution (highest modularity): ", best_res)
+  cat("Optimal clustering resolution (highest modularity): ", best_res)
   
   mod_plot <- ggplot(data.frame(resolution = resolutions, modularity = mod_scores),
                      aes(x = resolution, y = modularity)) +
@@ -124,7 +124,15 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   n_clusters <- length(clusters)
   
   # Report number of clusters
-  message("Number of clusters generated: ", n_clusters)
+  cat("Number of clusters generated: ", n_clusters)
+  
+  xenium_obj <- readRDS(here("outputs", "GZFB5_X_G_CB_QC_cluster.rds"))
+  sample_name = "GZFB5_X_G"
+  
+  xenium_obj$seurat_clusters <- factor(Idents(xenium_obj))
+  clusters <- levels(xenium_obj$seurat_clusters)
+  n_clusters <- length(clusters)
+  
   
   cluster_colors <- distinctColorPalette(n_clusters)
   names(cluster_colors) <- clusters
@@ -134,9 +142,19 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
     fov = "fov",
     group.by = "seurat_clusters",
     cols = cluster_colors,
-    size = 0.75
+    size = 0.75,
   ) + scale_y_reverse() +
     ggtitle(paste(sample_name, "- Raw Clusters"))
+  
+  # This line removes the stroke from the actual points in the plot
+  global_cluster_plot$layers[[1]]$aes_params$stroke <- 0
+  
+  # Export Global Plot
+  png_file_global <- file.path(here("outputs"), paste0(sample_name, "_GlobalRawClustersSpatialPlot.png"))
+  # We use a high res (300-600 DPI) for Xenium to keep the dots sharp
+  png(png_file_global, width = 10, height = 10, units = "in", res = 300)
+  print(global_cluster_plot)
+  dev.off()
   
   coords <- GetTissueCoordinates(xenium_obj)
   metadata <- xenium_obj@meta.data
@@ -156,17 +174,19 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
           plot.title = element_text(color = "white", hjust = 0.5, size = 14)) +
     ggtitle(paste(sample_name, "- Raw Clusters"))
   
-  pdf_file_spatial <- file.path(here("outputs"), paste0(sample_name, "_RawClustersSpatialPlots.pdf"))
-  pdf(pdf_file_spatial, width = 12, height = 8)
-  print(global_cluster_plot)
+  
+  # Export Facet Plot
+  png_file_facet <- file.path(here("outputs"), paste0(sample_name, "_FacetRawClustersSpatialPlot.png"))
+  png(png_file_facet, width = 12, height = 10, units = "in", res = 300)
   print(facet_cluster_plot)
   dev.off()
-  message("Saved spatial plots PDF: ", pdf_file_spatial)
+  
+  message("Saved spatial plots PNGs")
   
   ## =========================================================
   ## 7. Save Final Object
   ## =========================================================
-  rds_file <- paste0(sample_name, "_CB_QC_cluster.rds")
+  rds_file <- file.path(here("outputs"), paste0(sample_name, "_CB_QC_cluster.rds"))
   saveRDS(xenium_obj, rds_file)
   message("Saved processed Seurat object: ", rds_file)
   
