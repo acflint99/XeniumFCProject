@@ -17,7 +17,7 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   
   DefaultAssay(xenium_obj) <- "Xenium"
   assay_name <- DefaultAssay(xenium_obj)
-  cat("Using assay: ", assay_name)
+  cat(paste0("Using assay: ", assay_name, ":\n"))
   
   ## =========================================================
   ## 1. Normalization & Preprocessing
@@ -44,7 +44,7 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   if (!graph_name %in% names(xenium_obj@graphs)) {
     stop("SNN graph not found. Available graphs: ", paste(names(xenium_obj@graphs), collapse = ", "))
   }
-  cat("Using graph: ", graph_name)
+  cat(paste0("Using graph: ", graph_name, ":\n"))
   
   umap_plot <- DimPlot(xenium_obj, reduction = "umap") +
     ggtitle(paste0(sample_name, " - UMAP Projection (dims = 1:50)"))
@@ -78,7 +78,7 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   }
   
   best_res <- resolutions[which.max(mod_scores)]
-  cat("Optimal clustering resolution (highest modularity): ", best_res)
+  cat(paste0("Optimal clustering resolution (highest modularity): ", best_res, ":\n"))
   
   mod_plot <- ggplot(data.frame(resolution = resolutions, modularity = mod_scores),
                      aes(x = resolution, y = modularity)) +
@@ -124,15 +124,7 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   n_clusters <- length(clusters)
   
   # Report number of clusters
-  cat("Number of clusters generated: ", n_clusters)
-  
-  xenium_obj <- readRDS(here("outputs", "GZFB5_X_G_CB_QC_cluster.rds"))
-  sample_name = "GZFB5_X_G"
-  
-  xenium_obj$seurat_clusters <- factor(Idents(xenium_obj))
-  clusters <- levels(xenium_obj$seurat_clusters)
-  n_clusters <- length(clusters)
-  
+  cat(paste0("Number of clusters generated: ", n_clusters, ":\n"))
   
   cluster_colors <- distinctColorPalette(n_clusters)
   names(cluster_colors) <- clusters

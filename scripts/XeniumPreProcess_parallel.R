@@ -1,5 +1,5 @@
 Sys.setenv(
-  OMP_NUM_THREADS = 8, #1 for workers >1 for parallelism
+  OMP_NUM_THREADS = 1, #1 for workers >1 for parallelism
   MKL_NUM_THREADS = 1,
   OPENBLAS_NUM_THREADS = 1
 )
@@ -23,15 +23,17 @@ source(here("scripts", "XeniumNormCluster.R"))
 # 2. Sample names
 # ----------------------------
 sample_names <- c(
-  "GZFB4_X_G"
+  "FB78_X_G",
+  "FB198_X_G",
+  "FB330_1_X_G"
+  
 )
 
 # ----------------------------
 # 3. Parallel setup
 # ----------------------------
-plan(sequential)
-# workers <- 3  # Safe for 754GB node
-# plan(multisession, workers = workers) #use for parallelism
+workers <- 3  # Safe for 754GB node
+plan(multisession, workers = workers) #use for parallelism
 options(future.globals.maxSize = 200 * 1024^3)  # 200GB cap
 options(future.fork.enable = FALSE)
 
