@@ -1,5 +1,5 @@
 Sys.setenv(
-  OMP_NUM_THREADS = 16,  # match SBATCH cpus-per-task
+  OMP_NUM_THREADS = 1,  
   MKL_NUM_THREADS = 1,
   OPENBLAS_NUM_THREADS = 1
 )
@@ -10,12 +10,12 @@ library(future)
 library(future.apply)
 
 # source your functions
-source(here("scripts", "XeniumCropCerebellum.R"))
+source(here("scripts", "XeniumCropCerebellum_duo.R")) #changed for duo
 source(here("scripts", "XeniumQC.R"))
 source(here("scripts", "XeniumNormCluster.R"))
 
 # single sample
-sample_names <- c("GZFB_12_X_G_3")
+sample_names <- c("GZFB_9_X_G_1")
 
 # sequential for single node run
 plan(sequential)
