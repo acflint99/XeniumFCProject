@@ -32,7 +32,7 @@ Science@meta.data$clusters_refined <- dplyr::recode(
   "GCP1" = "Granule",
   "SPON1_NSC" = "Glia",
   "GABA.inter" = "GABA",
-  "TCP?" = "RL",
+  "TCP?" = "VZ",
   "Glut.DN" = "Granule",
   "UBC" = "UBC",
   "TNC_NSC" = "Glia",
