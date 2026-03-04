@@ -23,7 +23,18 @@ outputs/*
 
 # Other
 data/
-*.log
 mkdir
 10
 30
+
+#Logs
+logs/
+*.out
+*.err
+
+#HPC job artifacts
+*_R_job_*.out
+*_R_job_*.err
+
+#Temporary Files
+*.tmp

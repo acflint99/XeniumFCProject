@@ -9,7 +9,7 @@ library(patchwork)
 library(ggplot2)
 library(AnnotationDbi)
 library(org.Hs.eg.db)
-
+library(SingleCellExperiment)
 
 
 #Load the FC dataset----
@@ -62,7 +62,7 @@ p1 <- DimPlot(SeuratObj, reduction = "umap2d", group.by = "cell_type")+
   guides(color = guide_legend(ncol = 1, override.aes = list(size = 3))) +
   theme(legend.text = element_text(size = 10))
 p1
-ggsave("/data/user/acflint/FC_published/SeppFC/SeppUMAP_origclusters.pdf", plot = p1, width = 7, height = 6)
+ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/SeppUMAP_origClusters.pdf", plot = p1, width = 7, height = 6)
 
 
 #subset fetal cerebellum cells----
@@ -73,24 +73,24 @@ p2 <- DimPlot(SeuratObj_FC, reduction = "umap2d", group.by = "cell_type")+
   guides(color = guide_legend(ncol = 1, override.aes = list(size = 3))) +
   theme(legend.text = element_text(size = 10))
 p2
-ggsave("/data/user/acflint/FC_published/SeppFC/SeppUMAP_FC_origclusters.pdf", plot = p2, width = 7, height = 6)
+ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/SeppUMAP_FC_origClusters.pdf", plot = p2, width = 7, height = 6)
 
-#check proportions of clusters----
-cluster_counts <- table(Idents(SeuratObj_FC))
-
-cluster_props <- prop.table(cluster_counts)
-
-df <- as.data.frame(cluster_counts)
-colnames(df) <- c("Cluster", "Count")
-df$Proportion <- df$Count / sum(df$Count)
-
-ggplot(df, aes(x = Cluster, y = Proportion)) +
-  geom_bar(stat = "identity") +
-  ylab("Proportion of cells") +
-  theme_classic() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  )
+# #check proportions of clusters----
+# cluster_counts <- table(Idents(SeuratObj_FC))
+# 
+# cluster_props <- prop.table(cluster_counts)
+# 
+# df <- as.data.frame(cluster_counts)
+# colnames(df) <- c("Cluster", "Count")
+# df$Proportion <- df$Count / sum(df$Count)
+# 
+# ggplot(df, aes(x = Cluster, y = Proportion)) +
+#   geom_bar(stat = "identity") +
+#   ylab("Proportion of cells") +
+#   theme_classic() +
+#   theme(
+#     axis.text.x = element_text(angle = 45, hjust = 1)
+#   )
 
 
 
@@ -98,41 +98,37 @@ ggplot(df, aes(x = Cluster, y = Proportion)) +
 #markers_GC_UBC <- FindMarkers(SeuratObj, ident.1 = "GC/UBC", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 
 #remove clusters----
-SeuratObj_FC_filtered <- subset(SeuratObj_FC, idents = c("GABA_MB", "GC/UBC", "isthmic_neuroblast", "glut_DN", "isth_N", "erythroid", "NTZ_mixed"), invert = TRUE)
+SeuratObj_FC_filtered <- subset(SeuratObj_FC, idents = c("GABA_MB", "isth_N", "isthmic_neuroblast", "glut_DN", "erythroid", "NTZ_mixed", "noradrenergic"), invert = TRUE)
 
-# plot UMAP again
-p3 <- DimPlot(SeuratObj_FC_filtered, reduction = "umap2d", group.by = "cell_type")
-p3
-ggsave("/data/user/acflint/FC_published/SeppFC/SeppUMAP_FC_origclusters_filt.pdf", plot = p3, width = 7, height = 6)
 
 #rename clusters with simple/harmonized names----
-SeuratObj_FC_filtered$cell_type_refined <- SeuratObj_FC_filtered$cell_type
+SeuratObj_FC_filtered$clusters_refined <- SeuratObj_FC_filtered$cell_type
 
-SeuratObj_FC_filtered$cell_type_refined <- dplyr::recode(
-  SeuratObj_FC_filtered$cell_type_refined,
+SeuratObj_FC_filtered$clusters_refined <- dplyr::recode(
+  SeuratObj_FC_filtered$clusters_refined,
   "astroglia" = "Glia",
   "GABA_DN" = "GABA",
-  "GC" = "GN",
+  "GC" = "Granule",
   "immune" = "Immune",
   "interneuron" = "GABA",
   "meningeal" = "Meninges",
   "mural/endoth" = "Endothelial",
-  "noradrenergic" = "Brainstem",
-  "NTZ_neuroblast" = "GCP",
+  "NTZ_neuroblast" = "RL",
   "oligo" = "OPC",
   "parabrachial" = "VZ",
   "Purkinje" = "Purkinje",
   "UBC" = "UBC",
-  "VZ_neuroblast" = "VZ"
+  "VZ_neuroblast" = "VZ",
+  "GC/UBC" = "RL"
   )
 
 # remove cells in "NA" cluster
-SeuratObj_FC_filtered_noNA <- subset(SeuratObj_FC_filtered, subset = !is.na(cell_type_refined))
+SeuratObj_FC_filtered_noNA <- subset(SeuratObj_FC_filtered, subset = !is.na(clusters_refined))
 
 # plot UMAP again with new cluster labels----
-p4 <- DimPlot(SeuratObj_FC_filtered_noNA, reduction = "umap2d", group.by = "cell_type_refined")
+p4 <- DimPlot(SeuratObj_FC_filtered_noNA, reduction = "umap2d", group.by = "clusters_refined")
 p4
-ggsave("/data/user/acflint/FC_published/SeppFC/SeppUMAP_FC_newclusters_noNA.pdf", plot = p4, width = 7, height = 6)
+ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/SeppUMAP_FC_newClusters.pdf", plot = p4, width = 7, height = 6)
 
 #redo PCA & UMAP----
 # 1️⃣ Normalize data
@@ -151,15 +147,15 @@ SeuratObj_FC_filtered_noNA_newUMAP <- RunPCA(SeuratObj_FC_filtered_noNA_newUMAP,
 SeuratObj_FC_filtered_noNA_newUMAP <- FindNeighbors(SeuratObj_FC_filtered_noNA_newUMAP, dims = 1:50)
 
 # retain previous cluster identities
-Idents(SeuratObj_FC_filtered_noNA_newUMAP) <- "cell_type_refined"
+Idents(SeuratObj_FC_filtered_noNA_newUMAP) <- "clusters_refined"
 
 # 7️⃣ Run UMAP
 SeuratObj_FC_filtered_noNA_newUMAP <- RunUMAP(SeuratObj_FC_filtered_noNA_newUMAP, dims = 1:50)
 
 # 8️⃣ Plot UMAP
-p5 <- DimPlot(SeuratObj_FC_filtered_noNA_newUMAP, reduction = "umap", group.by = "cell_type_refined")
+p5 <- DimPlot(SeuratObj_FC_filtered_noNA_newUMAP, reduction = "umap", group.by = "clusters_refined")
 p5
-ggsave("/data/user/acflint/FC_published/SeppFC/SeppUMAP_FC_newclusters_newUMAP50_noNA.pdf", plot = p5, width = 7, height = 6)
+ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/SeppUMAP_FC_newClusters_newUMAP50v1.pdf", plot = p5, width = 7, height = 6)
 
 #remove scale.data for all assays to reduce file size----
 # Get assay names
@@ -171,27 +167,24 @@ for (assay in assay_names) {
 }
 
 
-#check proportions of clusters----
-cluster_counts2 <- table(Idents(SeuratObj_FC_filtered_noNA_newUMAP))
-
-cluster_props2 <- prop.table(cluster_counts2)
-
-df2 <- as.data.frame(cluster_counts2)
-colnames(df2) <- c("Cluster", "Count")
-df2$Proportion <- df2$Count / sum(df2$Count)
-
-ggplot(df2, aes(x = Cluster, y = Proportion)) +
-  geom_bar(stat = "identity") +
-  ylab("Proportion of cells") +
-  theme_classic() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  )
-
-
-
+# #check proportions of clusters----
+# cluster_counts2 <- table(Idents(SeuratObj_FC_filtered_noNA_newUMAP))
+# 
+# cluster_props2 <- prop.table(cluster_counts2)
+# 
+# df2 <- as.data.frame(cluster_counts2)
+# colnames(df2) <- c("Cluster", "Count")
+# df2$Proportion <- df2$Count / sum(df2$Count)
+# 
+# ggplot(df2, aes(x = Cluster, y = Proportion)) +
+#   geom_bar(stat = "identity") +
+#   ylab("Proportion of cells") +
+#   theme_classic() +
+#   theme(
+#     axis.text.x = element_text(angle = 45, hjust = 1)
+#   )
 
 #export new Seurat object as .rds----
-saveRDS(SeuratObj_FC_filtered_noNA, file = "/data/user/acflint/FC_published/SeppFC/Sepp_FC_filtered_noNA.rds")
-saveRDS(SeuratObj_FC_filtered_noNA_newUMAP, file = "/data/user/acflint/FC_published/SeppFC/Sepp_FC_filtered_newUMAP.rds")
+saveRDS(SeuratObj_FC_filtered_noNA, file = "/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Sepp_FC_newClusters.rds")
+saveRDS(SeuratObj_FC_filtered_noNA_newUMAP, file = "/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Sepp_FC_newClusters_newUMAPv1.rds")
 
