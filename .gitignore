@@ -26,11 +26,13 @@ data/
 mkdir
 10
 30
+Rplots.pdf
 
 #Logs
 logs/
 *.out
 *.err
+*.log
 
 #HPC job artifacts
 *_R_job_*.out
