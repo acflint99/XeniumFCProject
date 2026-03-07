@@ -8,10 +8,13 @@ library(dplyr)
 library(patchwork)
 library(ggplot2)
 library(pheatmap)
+library(ComplexHeatmap)
+library(circlize)
+library(grid)
 
-Aldinger <- readRDS("/data/user/acflint/FC_published/AldingerFC/Aldinger_filtered_5kgenes_newUMAP.rds")
-Sepp <- readRDS("/data/user/acflint/FC_published/SeppFC/Sepp_FC_filtered_noNA_5kgenes_newUMAP.rds")
-Science <- readRDS("/data/user/acflint/FC_published/ScienceBraunFC/Science_filtered_5kgenes_newUMAP.rds")
+Aldinger <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Aldinger_newClusters_newUMAPv2_5k.rds")
+Sepp <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Sepp_FC_newClusters_newUMAPv2_5k.rds")
+Science <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Science_newClusters_5k_UMAPv2.rds")
 
 
 ############################################################
@@ -27,7 +30,7 @@ avg1 <- AverageExpression(
 
 avg2 <- AverageExpression(
   Sepp,
-  group.by = "cell_type_refined",
+  group.by = "clusters_refined",
   assays = "RNA",
   slot = "data"
 )$RNA
@@ -116,97 +119,104 @@ print(similarity_table_23)
 #   cluster_cols=TRUE
 # )
 
+
 ############################################################
-# 6️⃣ Optional: pairwise heatmaps with axes labeled
+# 1️⃣ Aldinger vs Science
 ############################################################
-# Extract only relevant clusters
+
 cols_13 <- colnames(avg3_z)
 rows_13 <- colnames(avg1_z)
 
-cor_13 <- cor(avg1_z[, intersect(rows_13, rows_13)], avg3_z[, intersect(cols_13, cols_13)])
+cor_13 <- cor(avg1_z[, intersect(rows_13, rows_13)],
+              avg3_z[, intersect(cols_13, cols_13)])
 
-# Alphabetical order of rows
-sorted_rows <- sort(rownames(cor_13))
+cor_13_sorted <- cor_13[sort(rownames(cor_13)),
+                        sort(colnames(cor_13))]
 
-# Alphabetical order of columns
-sorted_cols <- sort(colnames(cor_13))
-
-# Reorder matrix
-cor_13_sorted <- cor_13[sorted_rows, sorted_cols]
-
-
-p13 <- pheatmap(
+ht13 <- Heatmap(
   cor_13_sorted,
-  main="Aldinger vs Science Cluster Correlation",
-  fontsize_row=8,
-  fontsize_col=8,
-  angle_col=45,
-  cluster_rows=FALSE,
-  cluster_cols=FALSE
+  name = "Pearson\nCorrelation",
+  column_title = "Science Clusters",
+  column_title_side = "bottom",
+  row_title = "Aldinger Clusters",
+  row_title_side = "right",
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  row_names_gp = gpar(fontsize = 8),
+  column_names_gp = gpar(fontsize = 8),
+  column_names_rot = 45
 )
-p13
-ggsave("/data/user/acflint/FC_published/AldingervScienceClusterHeatmap.pdf", plot = p13, width = 7, height = 6)
-
 
 ############################################################
-# 6️⃣ Optional: pairwise heatmaps with axes labeled
+# 2️⃣ Sepp vs Science
 ############################################################
-# Extract only relevant clusters
+
 cols_23 <- colnames(avg3_z)
 rows_23 <- colnames(avg2_z)
 
-cor_23 <- cor(avg2_z[, intersect(rows_23, rows_23)], avg3_z[, intersect(cols_23, cols_23)])
+cor_23 <- cor(avg2_z[, intersect(rows_23, rows_23)],
+              avg3_z[, intersect(cols_23, cols_23)])
 
-# Alphabetical order of rows
-sorted_rows <- sort(rownames(cor_23))
+cor_23_sorted <- cor_23[sort(rownames(cor_23)),
+                        sort(colnames(cor_23))]
 
-# Alphabetical order of columns
-sorted_cols <- sort(colnames(cor_23))
-
-# Reorder matrix
-cor_23_sorted <- cor_23[sorted_rows, sorted_cols]
-
-
-p23 <- pheatmap(
+ht23 <- Heatmap(
   cor_23_sorted,
-  main="Sepp vs Science Cluster Correlation",
-  fontsize_row=8,
-  fontsize_col=8,
-  angle_col=45,
-  cluster_rows=FALSE,
-  cluster_cols=FALSE
+  name = "Pearson\nCorrelation",
+  column_title = "Science Clusters",
+  column_title_side = "bottom",
+  row_title = "Sepp Clusters",
+  row_title_side = "right",
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  row_names_gp = gpar(fontsize = 8),
+  column_names_gp = gpar(fontsize = 8),
+  column_names_rot = 45
 )
-p23
-ggsave("/data/user/acflint/FC_published/SeppvScienceClusterHeatmap.pdf", plot = p23, width = 7, height = 6)
-
 
 ############################################################
-# 6️⃣ Optional: pairwise heatmaps with axes labeled
+# 3️⃣ Sepp vs Aldinger
 ############################################################
-# Extract only relevant clusters
+
 cols_21 <- colnames(avg1_z)
 rows_21 <- colnames(avg2_z)
 
-cor_21 <- cor(avg2_z[, intersect(rows_21, rows_21)], avg1_z[, intersect(cols_21, cols_21)])
+cor_21 <- cor(avg2_z[, intersect(rows_21, rows_21)],
+              avg1_z[, intersect(cols_21, cols_21)])
 
-# Alphabetical order of rows
-sorted_rows <- sort(rownames(cor_21))
+cor_21_sorted <- cor_21[sort(rownames(cor_21)),
+                        sort(colnames(cor_21))]
 
-# Alphabetical order of columns
-sorted_cols <- sort(colnames(cor_21))
-
-# Reorder matrix
-cor_21_sorted <- cor_21[sorted_rows, sorted_cols]
-
-
-p21 <- pheatmap(
+ht21 <- Heatmap(
   cor_21_sorted,
-  main="Sepp vs Aldinger Cluster Correlation",
-  fontsize_row=8,
-  fontsize_col=8,
-  angle_col=45,
-  cluster_rows=FALSE,
-  cluster_cols=FALSE
+  name = "Pearson\nCorrelation",
+  column_title = "Aldinger Clusters",
+  column_title_side = "bottom",
+  row_title = "Sepp Clusters",
+  row_title_side = "right",
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  row_names_gp = gpar(fontsize = 8),
+  column_names_gp = gpar(fontsize = 8),
+  column_names_rot = 45
 )
-p21
-ggsave("/data/user/acflint/FC_published/SeppvAldingerClusterHeatmap.pdf", plot = p21, width = 7, height = 6)
+
+# -----------------------------
+# Export all three heatmaps to a multi-page PDF
+# -----------------------------
+pdf("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/PairwiseClusterCorrelationHeatmaps.pdf",
+    width = 7, height = 6)
+
+draw(ht13,
+     column_title = "Aldinger vs Science Cluster Correlation",
+     column_title_gp = gpar(fontsize = 14, fontface = "bold"))
+
+draw(ht23,
+     column_title = "Sepp vs Science Cluster Correlation",
+     column_title_gp = gpar(fontsize = 14, fontface = "bold"))
+
+draw(ht21,
+     column_title = "Sepp vs Aldinger Cluster Correlation",
+     column_title_gp = gpar(fontsize = 14, fontface = "bold"))
+
+dev.off()

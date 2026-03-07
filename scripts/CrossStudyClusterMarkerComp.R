@@ -7,21 +7,34 @@ library(tidyverse)
 library(dplyr)
 library(patchwork)
 library(ggplot2)
-library(pheatmap)
+library(ComplexHeatmap)
+library(grid)
+library(circlize)
+library(viridis)
+col_fun <- colorRamp2(c(0, 0.6), viridis(2))
 
-Aldinger <- readRDS("/data/user/acflint/FC_published/AldingerFC/Aldinger_filtered_5kgenes_newUMAP.rds")
-Sepp <- readRDS("/data/user/acflint/FC_published/SeppFC/Sepp_FC_filtered_noNA_5kgenes_newUMAP.rds")
-Science <- readRDS("/data/user/acflint/FC_published/ScienceBraunFC/Science_filtered_5kgenes_newUMAP.rds")
+library(future)
+install.packages('devtools')
+devtools::install_github('immunogenomics/presto')
+
+Aldinger <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Aldinger_newClusters_newUMAPv2_5k.rds")
+Sepp <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Sepp_FC_newClusters_newUMAPv2_5k.rds")
+Science <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Science_newClusters_5k_UMAPv2.rds")
 
 # set active identities----
 Idents(Aldinger) <- "clusters_refined"
-Idents(Sepp) <- "cell_type_refined"
+Idents(Sepp) <- "clusters_refined"
 Idents(Science) <- "clusters_refined"
+
+# Use all available CPUs (or limit via SLURM)
+plan("multisession", workers = 8)  # change 8 to number of cores allocated
 
 # compute markers ----
 markers_Aldinger <- FindAllMarkers(Aldinger, only.pos = TRUE)
 markers_Sepp     <- FindAllMarkers(Sepp, only.pos = TRUE)
 markers_Science  <- FindAllMarkers(Science, only.pos = TRUE)
+
+plan("sequential")  # reset to default
 
 # filter significant markers ----
 filter_markers <- function(markers) {
@@ -164,7 +177,9 @@ overlap_table_3way %>%
   arrange(desc(jaccard)) %>%
   head(10)
 
-#heatmap Ald vs Sepp ----
+# -----------------------------
+# 1️⃣ Aldinger vs Sepp
+# -----------------------------
 heatmap_mat_ASe <- overlap_table_ASe %>%
   select(Aldinger_cluster, Sepp_cluster, jaccard) %>%
   pivot_wider(
@@ -172,36 +187,34 @@ heatmap_mat_ASe <- overlap_table_ASe %>%
     values_from = jaccard,
     values_fill = 0
   ) %>%
-  as.data.frame()   # ← convert tibble → data.frame
+  as.data.frame()
 
-# Set rownames BEFORE removing first column
 rownames(heatmap_mat_ASe) <- heatmap_mat_ASe$Aldinger_cluster
-
-# Remove cluster column
 heatmap_mat_ASe$Aldinger_cluster <- NULL
-
-# Convert to numeric matrix
 heatmap_mat_ASe <- as.matrix(heatmap_mat_ASe)
-
-# Sort row names alphabetically
 heatmap_mat_ASe <- heatmap_mat_ASe[
   sort(rownames(heatmap_mat_ASe)),
   sort(colnames(heatmap_mat_ASe))
 ]
 
-# Plot
-pASe <- pheatmap(heatmap_mat_ASe,
-         main = "Jaccard Index: Aldinger vs Sepp Cluster Marker Overlap",
-         cluster_rows = FALSE,
-         cluster_cols = FALSE,
-         fontsize_row = 10,
-         fontsize_col = 10,
-         angle_col = 45
+htASe <- Heatmap(
+  heatmap_mat_ASe,
+  name = "Jaccard Index",
+  row_title = "Aldinger Clusters",
+  row_title_side = "right",
+  column_title = "Sepp Clusters",
+  column_title_side = "bottom",
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  column_names_rot = 45,
+  column_names_gp = gpar(fontsize = 10),
+  row_names_gp = gpar(fontsize = 10),
+  col = col_fun
 )
-pASe
-ggsave("/data/user/acflint/FC_published/AldingervSeppJaccardHeatmap.pdf", plot = pASe, width = 7, height = 6)
 
-#heatmap Ald vs Science ----
+# -----------------------------
+# 2️⃣ Aldinger vs Science
+# -----------------------------
 heatmap_mat_ASc <- overlap_table_ASc %>%
   select(Aldinger_cluster, Science_cluster, jaccard) %>%
   pivot_wider(
@@ -209,36 +222,34 @@ heatmap_mat_ASc <- overlap_table_ASc %>%
     values_from = jaccard,
     values_fill = 0
   ) %>%
-  as.data.frame()   # ← convert tibble → data.frame
+  as.data.frame()
 
-# Set rownames BEFORE removing first column
 rownames(heatmap_mat_ASc) <- heatmap_mat_ASc$Aldinger_cluster
-
-# Remove cluster column
 heatmap_mat_ASc$Aldinger_cluster <- NULL
-
-# Convert to numeric matrix
 heatmap_mat_ASc <- as.matrix(heatmap_mat_ASc)
-
-# Sort row names alphabetically
 heatmap_mat_ASc <- heatmap_mat_ASc[
   sort(rownames(heatmap_mat_ASc)),
   sort(colnames(heatmap_mat_ASc))
 ]
 
-# Plot
-pASc <- pheatmap(heatmap_mat_ASc,
-         main = "Jaccard Index: Aldinger vs Science Cluster Marker Overlap",
-         cluster_rows = FALSE,
-         cluster_cols = FALSE,
-         fontsize_row = 10,
-         fontsize_col = 10,
-         angle_col = 45
+htASc <- Heatmap(
+  heatmap_mat_ASc,
+  name = "Jaccard Index",
+  row_title = "Aldinger Clusters",
+  row_title_side = "right",
+  column_title = "Science Clusters",
+  column_title_side = "bottom",
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  column_names_rot = 45,
+  column_names_gp = gpar(fontsize = 10),
+  row_names_gp = gpar(fontsize = 10),
+  col = col_fun
 )
-pASc
-ggsave("/data/user/acflint/FC_published/AldingervScienceJaccardHeatmap.pdf", plot = pASc, width = 7, height = 6)
 
-#heatmap Sepp vs Science ----
+# -----------------------------
+# 3️⃣ Sepp vs Science
+# -----------------------------
 heatmap_mat_SS <- overlap_table_SS %>%
   select(Sepp_cluster, Science_cluster, jaccard) %>%
   pivot_wider(
@@ -246,34 +257,41 @@ heatmap_mat_SS <- overlap_table_SS %>%
     values_from = jaccard,
     values_fill = 0
   ) %>%
-  as.data.frame()   # ← convert tibble → data.frame
+  as.data.frame()
 
-# Set rownames BEFORE removing first column
 rownames(heatmap_mat_SS) <- heatmap_mat_SS$Sepp_cluster
-
-# Remove cluster column
 heatmap_mat_SS$Sepp_cluster <- NULL
-
-# Convert to numeric matrix
 heatmap_mat_SS <- as.matrix(heatmap_mat_SS)
-
-# Sort row names alphabetically
 heatmap_mat_SS <- heatmap_mat_SS[
   sort(rownames(heatmap_mat_SS)),
   sort(colnames(heatmap_mat_SS))
 ]
 
-
-# Plot
-pSS <- pheatmap(heatmap_mat_SS,
-                 main = "Jaccard Index: Sepp vs Science Cluster Marker Overlap",
-                cluster_rows = FALSE,
-                cluster_cols = FALSE,
-                 fontsize_row = 10,
-                 fontsize_col = 10,
-                 angle_col = 45
+htSS <- Heatmap(
+  heatmap_mat_SS,
+  name = "Jaccard Index",
+  row_title = "Sepp Clusters",
+  row_title_side = "right",
+  column_title = "Science Clusters",
+  column_title_side = "bottom",
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  column_names_rot = 45,
+  column_names_gp = gpar(fontsize = 10),
+  row_names_gp = gpar(fontsize = 10),
+  col = col_fun
 )
-pSS
-ggsave("/data/user/acflint/FC_published/SeppvScienceJaccardHeatmap.pdf", plot = pSS, width = 7, height = 6)
 
+# -----------------------------
+# Export all three heatmaps to multi-page PDF
+# -----------------------------
+pdf("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/PairwiseClusterJaccardHeatmaps.pdf",
+    width = 7, height = 6)
 
+draw(htASe, newpage = TRUE)
+
+draw(htASc, newpage = TRUE)
+
+draw(htSS, newpage = TRUE)
+
+dev.off()

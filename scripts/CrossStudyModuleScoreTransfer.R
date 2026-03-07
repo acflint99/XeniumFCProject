@@ -9,14 +9,14 @@ library(patchwork)
 library(ggplot2)
 library(pheatmap)
 
-Aldinger <- readRDS("/data/user/acflint/FC_published/AldingerFC/Aldinger_filtered_5kgenes_newUMAP.rds")
-Sepp <- readRDS("/data/user/acflint/FC_published/SeppFC/Sepp_FC_filtered_noNA_5kgenes_newUMAP.rds")
-Science <- readRDS("/data/user/acflint/FC_published/ScienceBraunFC/Science_filtered_5kgenes_newUMAP.rds")
+Aldinger <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Aldinger_newClusters_newUMAPv2_5k.rds")
+Sepp <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Sepp_FC_newClusters_newUMAPv2_5k.rds")
+Science <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Science_newClusters_5k_UMAPv2.rds")
 
 
 # set active identities----
 Idents(Aldinger) <- "clusters_refined"
-Idents(Sepp) <- "cell_type_refined"
+Idents(Sepp) <- "clusters_refined"
 Idents(Science) <- "clusters_refined"
 
 # setup----
