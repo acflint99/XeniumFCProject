@@ -11,13 +11,12 @@ source(here("scripts", "color_palette.R"))
 # Main function
 # ----------------------------
 run_label_transfer <- function(sample_name,
-                               reference_name,
-                               n_pcs = 50,
+                               reference_name,  # Keep the name for file paths
                                pred_score_thresh = 0.6,
                                output_root = "outputs") {
   
   # ----------------------------
-  # 1. Load datasets
+  # 1. Load Xenium datasets
   # ----------------------------
   reference_file <- here(output_root, "SingleCellRDS", paste0(reference_name, "_newClusters_newUMAPv2_5k.rds"))
   xenium_file <- here(output_root, "XeniumRDS", paste0(sample_name, "_CB_QC_cluster.rds"))
@@ -33,14 +32,34 @@ run_label_transfer <- function(sample_name,
   xenium <- subset(xenium, features = shared_genes)
   cat("Number of shared genes:", length(shared_genes), "\n")
   
+  # 1. Downsample the dominant reference to balance the clusters
+  reference_balanced <- subset(reference, downsample = 1000)
+  
+  # 2. Re-calculate Variable Features on the balanced reference
+  reference_balanced <- FindVariableFeatures(reference_balanced, nfeatures = 2000)
+  transfer_features <- intersect(VariableFeatures(reference_balanced), rownames(xenium))
+  
+  # 3. Scale the data (Crucial for PCA/RPCA)
+  # Only scale the features we are using for the transfer to save time
+  reference_balanced <- ScaleData(reference_balanced, features = transfer_features, verbose = FALSE)
+  xenium <- ScaleData(xenium, features = transfer_features, verbose = FALSE)
+  
+  # 4. Run PCA on both
+  reference_balanced <- RunPCA(reference_balanced, features = transfer_features, verbose = FALSE)
+  xenium <- RunPCA(xenium, features = transfer_features, verbose = FALSE)
+  
   # ----------------------------
   # 3. Find transfer anchors
   # ----------------------------
   anchors <- FindTransferAnchors(
-    reference = reference,
+    reference = reference_balanced,
     query = xenium,
-    normalization.method = "LogNormalize",
-    dims = 1:n_pcs
+    normalization.method = "LogNormalize", 
+    reference.reduction = "pca",
+    reduction = "rpca",         # Switching to RPCA to prevent dominance
+    features = transfer_features,
+    dims = 1:30,                # Drop to 30 to reduce noise
+    k.anchor = 5                # Default is 5, keep it local
   )
   
   # ----------------------------
@@ -48,8 +67,8 @@ run_label_transfer <- function(sample_name,
   # ----------------------------
   predictions <- TransferData(
     anchorset = anchors,
-    refdata = reference$clusters_refined,
-    dims = 1:n_pcs
+    refdata = reference_balanced$clusters_refined,
+    dims = 1:30
   )
   xenium <- AddMetaData(xenium, predictions)
   cat("Finished anchor transfer", "\n")
@@ -57,12 +76,6 @@ run_label_transfer <- function(sample_name,
   # 5. Filter low-confidence calls
   # ----------------------------
   xenium$high_conf <- xenium$prediction.score.max > pred_score_thresh
-  
-  # Histogram of max prediction scores
-  png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_prediction_score_dist.png")))
-  hist(xenium$prediction.score.max, breaks = 100, main = "Confidence Distribution")
-  abline(v = pred_score_thresh, col = "red")
-  dev.off()
   
   # ----------------------------
   # 6. Cluster-level majority voting
@@ -97,7 +110,9 @@ run_label_transfer <- function(sample_name,
   
   comparison <- xenium@meta.data %>%
     select(seurat_clusters, cluster_majority, cluster_weighted) %>%
-    distinct()
+    distinct() %>%
+    # Convert to numeric if it's a factor, then sort
+    arrange(as.numeric(as.character(seurat_clusters)))
   
   write.csv(
     comparison,
@@ -220,7 +235,9 @@ run_label_transfer <- function(sample_name,
     dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
     saveRDS(xenium, output_file)
     cat("Annotated Xenium object saved to", output_file, "\n")
+    rm(xenium, reference, anchors) # Explicitly clear large objects
+    gc() # Force garbage collection
   
-  # Return annotated Seurat object
-  return(xenium)
+  # Return True
+  return(TRUE)
 }

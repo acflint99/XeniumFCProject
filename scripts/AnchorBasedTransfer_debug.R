@@ -7,14 +7,16 @@ library(future)
 source(here("scripts", "color_palette.R"))
 
 
-# ----------------------------
-# Main function
-# ----------------------------
-run_label_transfer <- function(sample_name,
-                               reference_name,
-                               n_pcs = 50,
-                               pred_score_thresh = 0.6,
-                               output_root = "outputs") {
+# Manually define the arguments you would usually pass to the function
+sample_name <- "GZFB5_X_G"      # Replace with your actual sample ID
+reference_name <- "Sepp_FC"    # Replace with your actual reference ID
+n_pcs <- 50
+pred_score_thresh <- 0.6
+output_root <- "outputs"
+
+# Create/Define the plots_dir early (since it was used in your hist() call)
+plots_dir <- here(output_root, paste0("Xenium", reference_name, "ABT_Plots"))
+dir.create(plots_dir, recursive = TRUE, showWarnings = FALSE)
   
   # ----------------------------
   # 1. Load datasets
@@ -33,14 +35,35 @@ run_label_transfer <- function(sample_name,
   xenium <- subset(xenium, features = shared_genes)
   cat("Number of shared genes:", length(shared_genes), "\n")
   
+  # 1. Downsample the dominant reference to balance the clusters
+  reference_balanced <- subset(reference, downsample = 1000)
+  
+  # 2. Re-calculate Variable Features on the balanced reference
+  reference_balanced <- FindVariableFeatures(reference_balanced, nfeatures = 2000)
+  transfer_features <- intersect(VariableFeatures(reference_balanced), rownames(xenium))
+  
+  # 3. Scale the data (Crucial for PCA/RPCA)
+  # Only scale the features we are using for the transfer to save time
+  reference_balanced <- ScaleData(reference_balanced, features = transfer_features, verbose = FALSE)
+  xenium <- ScaleData(xenium, features = transfer_features, verbose = FALSE)
+  
+  # 4. Run PCA on both
+  reference_balanced <- RunPCA(reference_balanced, features = transfer_features, verbose = FALSE)
+  xenium <- RunPCA(xenium, features = transfer_features, verbose = FALSE)
+  
   # ----------------------------
   # 3. Find transfer anchors
   # ----------------------------
+  options(future.globals.maxSize = 50 * 1024^2 * 1024)
   anchors <- FindTransferAnchors(
-    reference = reference,
+    reference = reference_balanced,
     query = xenium,
-    normalization.method = "LogNormalize",
-    dims = 1:n_pcs
+    normalization.method = "LogNormalize", 
+    reference.reduction = "pca",
+    reduction = "rpca",         # Switching to RPCA to prevent dominance
+    features = transfer_features,
+    dims = 1:30,                # Drop to 30 to reduce noise
+    k.anchor = 5                # Default is 5, keep it local
   )
   
   # ----------------------------
@@ -48,8 +71,8 @@ run_label_transfer <- function(sample_name,
   # ----------------------------
   predictions <- TransferData(
     anchorset = anchors,
-    refdata = reference$clusters_refined,
-    dims = 1:n_pcs
+    refdata = reference_balanced$clusters_refined,
+    dims = 1:30
   )
   xenium <- AddMetaData(xenium, predictions)
   cat("Finished anchor transfer", "\n")
@@ -59,10 +82,10 @@ run_label_transfer <- function(sample_name,
   xenium$high_conf <- xenium$prediction.score.max > pred_score_thresh
   
   # Histogram of max prediction scores
-  png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_prediction_score_dist.png")))
+  # png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_prediction_score_dist.png")))
   hist(xenium$prediction.score.max, breaks = 100, main = "Confidence Distribution")
   abline(v = pred_score_thresh, col = "red")
-  dev.off()
+  # dev.off()
   
   # ----------------------------
   # 6. Cluster-level majority voting
@@ -89,29 +112,29 @@ run_label_transfer <- function(sample_name,
     match(xenium$seurat_clusters, weighted_labels$seurat_clusters)
   ]
   
-  # ----------------------------
-  # 8. Save comparison tables
-  # ----------------------------
-  tables_dir <- here(output_root, paste0("Xenium", reference_name, "ABT_Tables"))
-  dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  comparison <- xenium@meta.data %>%
-    select(seurat_clusters, cluster_majority, cluster_weighted) %>%
-    distinct()
-  
-  write.csv(
-    comparison,
-    file = here(tables_dir, paste0(sample_name, "_", reference_name, "_majority_vs_weighted_comparison.csv")),
-    row.names = FALSE
-  )
-  
-  comparison_table <- table(xenium$seurat_clusters, xenium$predicted.id)
-  write.csv(
-    comparison_table,
-    file = here(tables_dir, paste0(sample_name, "_", reference_name, "_prediction_cellcounts.csv")),
-    row.names = FALSE
-  )
-  cat("Saved cluster comparison tables to", tables_dir, "\n")
+  # # ----------------------------
+  # # 8. Save comparison tables
+  # # ----------------------------
+  # tables_dir <- here(output_root, paste0("Xenium", reference_name, "ABT_Tables"))
+  # dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
+  # 
+  # comparison <- xenium@meta.data %>%
+  #   select(seurat_clusters, cluster_majority, cluster_weighted) %>%
+  #   distinct()
+  # 
+  # write.csv(
+  #   comparison,
+  #   file = here(tables_dir, paste0(sample_name, "_", reference_name, "_majority_vs_weighted_comparison.csv")),
+  #   row.names = FALSE
+  # )
+  # 
+  # comparison_table <- table(xenium$seurat_clusters, xenium$predicted.id)
+  # write.csv(
+  #   comparison_table,
+  #   file = here(tables_dir, paste0(sample_name, "_", reference_name, "_prediction_cellcounts.csv")),
+  #   row.names = FALSE
+  # )
+  # cat("Saved cluster comparison tables to", tables_dir, "\n")
   
   # ----------------------------
   # . Lock factor order
@@ -126,26 +149,26 @@ run_label_transfer <- function(sample_name,
   # ----------------------------
   # 9. Spatial visualization
   # ----------------------------
-  plots_dir <- here(output_root, paste0("Xenium", reference_name, "ABT_Plots"))
-  dir.create(plots_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # ImageDimPlot majority
-  png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_majority_GlobalSpatialPlot.png")),
-      width = 6*300, height = 6*300, res = 300)
-  print(
+  # plots_dir <- here(output_root, paste0("Xenium", reference_name, "ABT_Plots"))
+  # dir.create(plots_dir, recursive = TRUE, showWarnings = FALSE)
+  # 
+  # # ImageDimPlot majority
+  # png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_majority_GlobalSpatialPlot.png")),
+  #     width = 6*300, height = 6*300, res = 300)
+  # print(
     ImageDimPlot(xenium, group.by = "cluster_majority", size = 0.75, cols = cluster_colors) +
     ggtitle(paste(sample_name, "-", reference_name, "- Clusters (Majority)"))
-  )
-  dev.off()
-  
-  # ImageDimPlot weighted
-  png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_weighted_GlobalSpatialPlot.png")),
-      width = 6*300, height = 6*300, res = 300)
-  print(
+  # )
+  # dev.off()
+  # 
+  # # ImageDimPlot weighted
+  # png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_weighted_GlobalSpatialPlot.png")),
+  #     width = 6*300, height = 6*300, res = 300)
+  # print(
   ImageDimPlot(xenium, group.by = "cluster_weighted", size = 0.75, cols = cluster_colors) +
     ggtitle(paste(sample_name, "-", reference_name, "- Clusters (Weighted)"))
-  )
-  dev.off()
+  # )
+  # dev.off()
   
   # ----------------------------
   # Spatial ggplot
@@ -157,9 +180,9 @@ run_label_transfer <- function(sample_name,
   # Make cluster a factor with your desired order
   plot_data$cluster <- factor(plot_data$cluster, levels = celltype_order)
   
-  png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_weighted_FacetSpatialPlot.png")),
-      width = 12*300, height = 8*300, res = 300)
-  print(
+  # png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_weighted_FacetSpatialPlot.png")),
+  #     width = 12*300, height = 8*300, res = 300)
+  # print(
   ggplot(plot_data, aes(x = y, y = x, color = cluster)) +
     geom_point(size = 0.2) +
     facet_wrap(~cluster) +
@@ -175,16 +198,16 @@ run_label_transfer <- function(sample_name,
       plot.title = element_text(color = "white", hjust = 0.5, size = 14)
     ) +
     ggtitle(paste(sample_name, "-", reference_name, "- Clusters (Weighted)"))
-  )
-  dev.off()
+  # )
+  # dev.off()
   
   # ----------------------------
   # UMAP with majority labels
   # ----------------------------
-  png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_weighted_UMAP.png")),
-      width = 8*300, height = 6*300, res = 300)
+  # png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_weighted_UMAP.png")),
+  #     width = 8*300, height = 6*300, res = 300)
   print(DimPlot(xenium, reduction = "umap", label = TRUE, group.by = "cluster_weighted", cols = cluster_colors))
-  dev.off()
+  # dev.off()
   
   # ----------------------------
   # DotPlot for marker expression
@@ -198,9 +221,9 @@ run_label_transfer <- function(sample_name,
   
   Idents(xenium) <- factor(xenium$cluster_weighted, levels = rev(celltype_order))
   
-  png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_weighted_DotPlot_markers.png")),
-      width = 10*300, height = 6*300, res = 300)
-  print(
+  # png(filename = here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_weighted_DotPlot_markers.png")),
+  #     width = 10*300, height = 6*300, res = 300)
+  # print(
   DotPlot(xenium, features = markers) +
     RotatedAxis() +
     scale_color_gradient(low = "lightgrey", high = "red") +
@@ -209,18 +232,15 @@ run_label_transfer <- function(sample_name,
       plot.title = element_text(hjust = 0.5)
     ) +
     ggtitle(paste(sample_name, "-", reference_name, "- Marker Expression by Cluster (Weighted)"))
-  )
-  dev.off()
-  cat("Saved plots to", plots_dir, "\n")
+  # )
+  # dev.off()
+  # cat("Saved plots to", plots_dir, "\n")
   
-  # ----------------------------
-  # Save annotated object
-  # ----------------------------
-    output_file <- here(output_root, paste0("Xenium", reference_name, "ABT_RDS"), paste0(sample_name, "_", reference_name, "_annotated.rds"))
-    dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
-    saveRDS(xenium, output_file)
-    cat("Annotated Xenium object saved to", output_file, "\n")
+  # # ----------------------------
+  # # Save annotated object
+  # # ----------------------------
+  #   output_file <- here(output_root, paste0("Xenium", reference_name, "ABT_RDS"), paste0(sample_name, "_", reference_name, "_annotated.rds"))
+  #   dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
+  #   saveRDS(xenium, output_file)
+  #   cat("Annotated Xenium object saved to", output_file, "\n")
   
-  # Return annotated Seurat object
-  return(xenium)
-}

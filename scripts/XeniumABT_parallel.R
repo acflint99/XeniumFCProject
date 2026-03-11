@@ -15,19 +15,23 @@ library(future.apply)
 # ----------------------------
 # 1. Source functions once
 # ----------------------------
-source(here("scripts", "AnchorBasedTransfer.R"))
+source(here("scripts", "AnchorBasedTransfer_RPCA.R"))
 
 # ----------------------------
 # 2. Sample names
 # ----------------------------
-sample_names <- c(
-  "GZFB_12_X_G_2",
-  "GZFB_12_X_G_3",
-  "GZFB_12_X_G_4"
-  
-)
+# Replace your hard-coded sample_names block with this:
+args <- commandArgs(trailingOnly = TRUE)
 
-reference <- "Aldinger"
+if (length(args) == 0) {
+  stop("No samples provided to the script!")
+}
+
+# args will be a vector of sample names passed from sbatch
+sample_names <- args 
+message("Processing samples: ", paste(sample_names, collapse = ", "))
+
+reference <- "Sepp_FC"  #Aldinger, Science, or Sepp_FC
 
 # ----------------------------
 # 3. Parallel setup
@@ -93,7 +97,7 @@ run_xenium_pipeline <- function(sample) {
 # ----------------------------
 results <- future_lapply(
   sample_names,
-  run_xenium_pipeline,
+  run_xenium_pipeline,  
   future.seed = TRUE,
   future.packages = c("Seurat", "ggplot2", "dplyr", "here")
 )

@@ -2,7 +2,7 @@
 #SBATCH --job-name=ABT_R_job
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/ABT_R_job_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/ABT_R_job_%j.err
-#SBATCH --time=02:00:00
+#SBATCH --time=04:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --partition=short
@@ -38,4 +38,4 @@ renv::restore(prompt = FALSE)
 # --------------------------
 # Run your R script using the project library
 # --------------------------
-Rscript scripts/XeniumABT_parallel.R
+Rscript scripts/XeniumABT_parallel.R $@
