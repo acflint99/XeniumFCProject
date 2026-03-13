@@ -3,8 +3,11 @@
 .RData
 .Rproj.user/
 
-# renv libraries
+# renv libraries, .Renviron, backup files, packages
 renv/library/
+.Renviron
+*.Rprofile_bak
+*.tar.gz
 
 # Outputs
 outputs/*
