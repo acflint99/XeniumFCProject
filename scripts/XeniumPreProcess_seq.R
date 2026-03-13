@@ -15,7 +15,7 @@ source(here("scripts", "XeniumQC.R"))
 source(here("scripts", "XeniumNormCluster.R"))
 
 # single sample
-sample_names <- c("GZFB_12_X_G_3")
+sample_names <- c("GZFB_9_X_G_3")
 
 # sequential for single node run
 plan(sequential)
@@ -28,7 +28,7 @@ if (!dir.exists(log_dir)) dir.create(log_dir)
 
 # run pipeline
 run_xenium_pipeline <- function(sample) {
-  log_file <- file.path(log_dir, paste0(sample, ".log"))
+  log_file <- file.path(log_dir, paste0(sample, "_preprocess.log"))
   sink(log_file, type = "output", split = FALSE)
   on.exit(sink(type="output"), add = TRUE)
   
