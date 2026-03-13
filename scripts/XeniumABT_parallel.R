@@ -31,7 +31,7 @@ if (length(args) == 0) {
 sample_names <- args 
 message("Processing samples: ", paste(sample_names, collapse = ", "))
 
-reference <- "Sepp_FC"  #Aldinger, Science, or Sepp_FC
+reference <- "Aldinger"  #Aldinger, Science, or Sepp_FC
 
 # ----------------------------
 # 3. Parallel setup
