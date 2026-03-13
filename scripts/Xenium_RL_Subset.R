@@ -31,12 +31,19 @@ if (!file.exists(input_path)) stop("File not found: ", input_path)
 
 obj <- readRDS(input_path)
 
-# Identify the clusters you want to pull out for re-analysis
-# (Update these strings to match your exact 'annotated' cluster names)
-target_clusters <- c("RL", "Granule", "UBC") 
+# 1. Identify your "wishlist"
+target_clusters <- c("RL", "Granule", "UBC")
 
-# Subset the object
-obj_subset <- subset(obj, idents = target_clusters)
+# 2. Find which of those actually exist in the object's active identities
+existing_clusters <- intersect(target_clusters, levels(Idents(obj)))
+
+# 3. Subset using only the clusters that were found
+if (length(existing_clusters) > 0) {
+  obj_subset <- subset(obj, idents = existing_clusters)
+  message("Subset successful using: ", paste(existing_clusters, collapse = ", "))
+} else {
+  stop("None of the target clusters were found in the object.")
+}
 
 # Define and create output directory using here()
 output_dir <- here("outputs", "Xenium_RL_Subsets")
