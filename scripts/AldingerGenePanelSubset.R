@@ -112,4 +112,3 @@ p3 <- DotPlot(
   ggtitle("High-Specificity Marker Expression by Cluster")
 p3
 ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.pdf", plot = p3, width = 10, height = 6)
-
