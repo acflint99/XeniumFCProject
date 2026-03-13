@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=Xenium_VZSubsets
-#SBATCH --array=1-3
+#SBATCH --array=1 #1-15 for nearly all samples
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/VZsubset_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/VZsubset_%a.err
 #SBATCH --time=04:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=64G             # Increased to 80G based on typical Xenium requirements
+#SBATCH --mem=64G             
 #SBATCH --partition=short
 
 # 1. Load Modules

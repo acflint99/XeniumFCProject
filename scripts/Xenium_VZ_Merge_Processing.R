@@ -1,3 +1,6 @@
+# Clear the environment
+rm(list = ls())
+
 # 1. INITIALIZATION & ENVIRONMENT
 source("renv/activate.R")
 library(here)
@@ -26,7 +29,7 @@ options(future.globals.maxSize = 150 * 1024^3) # 150GB limit for globals
 check_mem("PIPELINE START")
 
 # 3. LOAD DATA
-merged_path <- here("outputs", "Xenium_VZ_Subsets", "Xenium_Merged_VZSubsets.rds")
+merged_path <- here("outputs", "Xenium_VZ_Subsets", "Merged", "Xenium_Merged_VZSubsets_31226.rds") #modify with correct object
 obj <- readRDS(merged_path)
 check_mem("DATA LOADED")
 
@@ -64,53 +67,45 @@ obj <- FindNeighbors(obj, reduction = "harmony", dims = 1:30, verbose = TRUE)
 # Define resolutions for the loop
 res_list <- c(0.3, 0.5, 0.8)
 
-# Fix the order for all your resolution columns
-for(res in res_list) {
-  col_name <- paste0("Xenium_snn_res.", res)
-  
-  # 1. Get the unique cluster names
-  clusters <- unique(obj@meta.data[[col_name]])
-  
-  # 2. Sort them numerically (converts "10" to 10 so it knows where it goes)
-  numeric_order <- clusters[order(as.numeric(as.character(clusters)))]
-  
-  # 3. Re-assign the column as a factor with this specific order
-  obj@meta.data[[col_name]] <- factor(obj@meta.data[[col_name]], 
-                                      levels = numeric_order)
-}
+# 8. GENERATE CLUSTERS (RUN IN BULK FOR SPEED)
+assay_prefix <- DefaultAssay(obj)
+message(Sys.time(), ": Calculating all clusters in parallel...")
 
-# 8. GENERATE CLUSTERS AND EXPORT PLOTS
+# Running all resolutions at once is faster with future/parallelization
+obj <- FindClusters(obj, resolution = res_list, verbose = FALSE)
+check_mem("POST-BATCH-CLUSTERING")
+
+# Now loop only for sorting and plotting
 for(res in res_list) {
-  assay_prefix <- DefaultAssay(obj)
+  # Dynamically build the column name so it ALWAYS matches
   res_col <- paste0(assay_prefix, "_snn_res.", res)
   
-  # message(Sys.time(), ": Calculating clusters for Resolution: ", res)
-  # obj <- FindClusters(obj, resolution = res, verbose = FALSE)
-  # check_mem(paste0("POST-RES-", res))
+  # 1 & 2. Sort numerically
+  clusters <- unique(na.omit(obj@meta.data[[res_col]]))
+  numeric_order <- sort(as.numeric(as.character(clusters)))
   
-  # Generate Plot with Rastering for performance
-  message(Sys.time(), ": Generating UMAP plot for Resolution: ", res)
+  # 3. Re-assign (using res_col, not the hardcoded Xenium string)
+  obj@meta.data[[res_col]] <- factor(as.character(obj@meta.data[[res_col]]), 
+                                     levels = as.character(numeric_order))
+  
+  message(Sys.time(), ": Generating & Saving UMAP for Resolution: ", res)
+  
   p <- DimPlot(obj, 
                reduction = "umap_harmony", 
                group.by = res_col, 
                label = TRUE, 
                label.size = 5,
-               label.box = TRUE,   # Adds a small box behind labels for readability
+               label.box = TRUE,
                raster = TRUE, 
-               pt.size = 0.6,      # Increased for visibility
-               alpha = 0.8) +      # Makes dots more solid
+               pt.size = 0.6,
+               alpha = 0.8) + 
     ggtitle(paste0("Refined VZ UMAP - Resolution ", res)) +
-    theme_classic() +            # Standard axes, no grid lines
+    theme_classic() +
     theme(plot.title = element_text(hjust = 0.5, face = "bold"))
   
-  # 3. Save the plot
-  plot_name <- paste0("XenAld_VZ_UMAP_Res_", res, "_Refined.png")
-  plot_path <- here("outputs", "XenAld_VZ_Plots", plot_name)
+  ggsave(here("outputs", "XenAld_VZ_Plots", paste0("XenAld_VZ_UMAP_Res_", res, ".png")), 
+         p, width = 10, height = 8, dpi = 300)
   
-  message(Sys.time(), ": Saving plot to ", plot_path)
-  ggsave(plot_path, p, width = 10, height = 8, dpi = 300)
-  
-  # Remove plot object and trigger garbage collection to keep RStudio snappy
   rm(p)
   gc()
 }
@@ -150,6 +145,6 @@ ggsave(here("outputs", "XenAld_VZ_Plots", "XenAld_VZ_OrigClusterWeighted_UMAP.pn
        p_orig, width = 12, height = 9, dpi = 300)
 
 # 9. SAVE FINAL RESULT
-output_path <- here("outputs", "XenAld_VZ_RDS", "Xenium_VZ_Integrated.rds")
+output_path <- here("outputs", "XenAld_VZ_RDS", "Xenium_VZ_Integrated_31226.rds") #modify with date
 saveRDS(obj, output_path, compress = FALSE)
 check_mem("PIPELINE COMPLETE - FILE SAVED")
