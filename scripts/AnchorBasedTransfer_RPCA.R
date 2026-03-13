@@ -15,6 +15,9 @@ run_label_transfer <- function(sample_name,
                                pred_score_thresh = 0.6,
                                output_root = "outputs") {
   
+  # Add this to the very top of your function
+  on.exit(while (!is.null(dev.list())) dev.off(), add = TRUE)
+  
   # ----------------------------
   # 1. Load Xenium datasets
   # ----------------------------
