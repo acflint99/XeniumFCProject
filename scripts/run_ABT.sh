@@ -38,4 +38,4 @@ renv::restore(prompt = FALSE)
 # --------------------------
 # Run your R script using the project library
 # --------------------------
-Rscript scripts/XeniumABT_seq.R $@
+Rscript scripts/XeniumABT_parallel_SCT.R $@

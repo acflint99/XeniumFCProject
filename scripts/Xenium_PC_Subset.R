@@ -13,12 +13,14 @@ if (length(args) == 0) {
 }
 task_id <- as.numeric(args[1])
 
-# Define your 15 samples explicitly to match the array index
+# Define your x# of samples explicitly to match the array index
 samples <- c(
-  "GZFB_9_X_G_3"
-  #"GZFB4_X_G", "FB124_X_G", "FB198_X_G", "FB328_1_X_G", "FB330_1_X_G",
-  #"FB78_X_G", "GZFB5_X_G", "GZFB_12_X_G_1", "GZFB_12_X_G_2", "GZFB_12_X_G_3",
-  #"GZFB_12_X_G_4", "GZFB_12_X_G_5", "GZFB_1_X_G"#, "GZFB_9_X_G_1", "GZFB_9_X_G_2"
+  "GZFB4_X_G", "FB124_X_G", "FB198_X_G", "FB328_1_X_G", "FB330_1_X_G",
+  "FB78_X_G", "GZFB5_X_G", 
+  "GZFB_12_X_G_1", "GZFB_12_X_G_2", "GZFB_12_X_G_3",
+  "GZFB_12_X_G_4", 
+  "GZFB_12_X_G_5", "GZFB_1_X_G", 
+  "GZFB_9_X_G_1", "GZFB_9_X_G_2", "GZFB_9_X_G_3"
 )
 
 current_sample <- samples[task_id]
@@ -32,18 +34,25 @@ if (!file.exists(input_path)) stop("File not found: ", input_path)
 
 obj <- readRDS(input_path)
 
-# Identify the clusters you want to pull out for re-analysis
-# (Update these strings to match your exact 'annotated' cluster names)
-target_clusters <- c("Glia", "GABA", "Purkinje", "OPC") 
+# 1. Identify your "wishlist"
+target_clusters <- c("Purkinje")
 
-# Subset the object
-obj_subset <- subset(obj, idents = target_clusters)
+# 2. Find which of those actually exist in the object's active identities
+existing_clusters <- intersect(target_clusters, levels(Idents(obj)))
+
+# 3. Subset using only the clusters that were found
+if (length(existing_clusters) > 0) {
+  obj_subset <- subset(obj, idents = existing_clusters)
+  message("Subset successful using: ", paste(existing_clusters, collapse = ", "))
+} else {
+  stop("None of the target clusters were found in the object.")
+}
 
 # Define and create output directory using here()
-output_dir <- here("outputs", "XenAld_VZ_Subsets_RDS")
+output_dir <- here("outputs", "XenAld_PC_Subsets_RDS")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-output_path <- file.path(output_dir, paste0(current_sample, "_VZsubset.rds"))
+output_path <- file.path(output_dir, paste0(current_sample, "_PCsubset.rds"))
 saveRDS(obj_subset, file = output_path)
 
 message("Successfully saved subset for ", current_sample, " to ", output_path)

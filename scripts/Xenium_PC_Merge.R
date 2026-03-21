@@ -12,7 +12,7 @@ plan("sequential") # This disables parallel workers for the current session
 options(future.globals.maxSize = 400 * 1024^3)
 
 # 1. List all the subset files you just created
-subset_path <- here("outputs", "XenAld_VZ_Subsets_RDS")
+subset_path <- here("outputs", "XenAld_PC_Subsets_RDS")
 subset_files <- list.files(subset_path, pattern = "\\.rds$", full.names = TRUE)
 
 # 2. Read them into a list and strip spatial overhead
@@ -27,7 +27,7 @@ subsets <- lapply(subset_files, function(f) {
   
   return(obj)
 })
-names(subsets) <- gsub("_VZsubset.rds", "", basename(subset_files))
+names(subsets) <- gsub("_PCsubset.rds", "", basename(subset_files))
 
 # 3. Merge into one object
 # add.cell.ids prepends the sample name to the barcodes to prevent duplicates
@@ -35,7 +35,7 @@ names(subsets) <- gsub("_VZsubset.rds", "", basename(subset_files))
     x = subsets[[1]],
     y = subsets[-1],
     add.cell.ids = names(subsets),
-    project = "Xenium_VZ_Refinement"
+    project = "Xenium_PC_Refinement"
   )
 
 # Use the 'Remove everything after the LAST underscore' logic
@@ -48,5 +48,5 @@ gc()
 # 5. Save the merged object
 # Adding compress = FALSE makes this take 5 mins instead of 50 mins
 saveRDS(merged_obj, 
-        here("outputs", "XenAld_VZ_Subsets_RDS", "Merged", "Xenium_Merged_VZSubsets_31226.rds"), #edit date if redo
+        here("outputs", "XenAld_PC_Subsets_RDS", "Merged", "Xenium_Merged_PCSubsets_31626.rds"), #edit date if redo
         compress = FALSE)

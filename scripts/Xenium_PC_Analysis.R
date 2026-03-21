@@ -27,7 +27,7 @@ check_mem <- function(step_label) {
 plan("multisession", workers = 20) 
 options(future.globals.maxSize = 100 * 1024^3) # 100GB limit
 
-merged_path <- here("outputs", "XenAld_VZ_Integrated_RDS", "Xenium_VZ_Integrated_31226.rds")
+merged_path <- here("outputs", "XenAld_PC_Integrated_RDS", "Xenium_PC_Integrated_31626.rds")
 obj <- readRDS(merged_path)
 
 # This merges the 15 separate sample layers into one unified matrix
@@ -35,7 +35,7 @@ obj <- JoinLayers(obj)
 
 # 2. SET THE IDENTITY
 # Ensure we are looking at the resolution you liked best (e.g., 0.3)
-Idents(obj) <- "Xenium_snn_res.0.8"
+Idents(obj) <- "Xenium_snn_res.0.3"
 
 check_mem("STARTING FINDALLMARKERS")
 
@@ -63,11 +63,11 @@ top10_markers <- all_markers %>%
   slice_max(n = 10, order_by = avg_log2FC)
 
 write.csv(top10_markers,
-          here("outputs", "XenAld_VZ_Integrated_Tables", "VZ_Integrated_top10_Markers_Res0.8.csv"),
+          here("outputs", "XenAld_PC_Integrated_Tables", "PC_Integrated_top10_Markers_Res0.3.csv"),
           row.names = FALSE)
 
 message("Marker analysis complete! Results saved to CSV.")
-
+# 
 # markers <- c("SLC17A7", "SLC17A6", "PVALB", "GAD1", "SST")
 # 
 # DotPlot(obj, 
@@ -80,77 +80,51 @@ message("Marker analysis complete! Results saved to CSV.")
 #     axis.text.x = element_text(size = 8, face = "italic"),
 #     axis.text.y = element_text(size = 10, face = "bold")
 #   ) +
-#   ggtitle("Top Markers Across VZ Subpopulations")
+#   ggtitle("Top Markers Across PC Subpopulations")
 
 
 # 1. Create a named vector for the mapping
 # The names (0, 1, 2...) must match your current cluster IDs exactly
 new_labels <- c(
-  "0" = "Immature PCs",
-  "1" = "Migrating PCs",
-  "2" = "BG",
-  "3" = "GABA Progenitors",
-  "4" = "Differentiated PCs",
-  "5" = "RG Progenitors",
-  "6" = "Astrocytes",
-  "7" = "eCN",
-  "8" = "Immature PCs",
-  "9" = "GABA Progenitors",
-  "10" = "Prolif RG",
-  "11" = "Prolif RG",
-  "12" = "MLI",
-  "13" = "VZP",
-  "14" = "OPCs",
-  "15" = "Golgi Cells",
-  "16" = "Mature PCs",
-  "17" = "GABA Interneurons",
-  "18" = "Ependymal Cells",
-  "19" = "Immature PCs",
-  "20" = "UBC Progenitors"
+  "0" = "0 - Early PCs",
+  "1" = "1 - Progenitor PCs",
+  "2" = "2 - Mature PCs",
+  "3" = "3 - Early PCs",
+  "4" = "4 - Mature PCs",
+  "5" = "5 - Progenitor PCs",
+  "6" = "6 - Transition PCs",
+  "7" = "7 - GCPs",
+  "8" = "8 - Transition PCs"
+
 )
 
 obj <- RenameIdents(obj, new_labels)
 
 # 3. APPLY STANDARDIZED ORDERING
 # We use 'subcluster_order' from your color_palette.R script
-obj$VZ_subcluster <- factor(Idents(obj), levels = vz_subcluster_order)
-Idents(obj) <- "VZ_subcluster"
-
-DefaultAssay(obj) <- "Xenium"
+obj$PC_subcluster <- factor(Idents(obj), levels = PC_subcluster_order)
+Idents(obj) <- "PC_subcluster"
 
 # 4. UMAP WITH CONSISTENT COLORS
 p <- DimPlot(obj, 
              reduction = "umap_harmony", 
-             label = TRUE, 
-             label.size = 4, 
+             label = TRUE,
+             label.size = 4,
              repel = TRUE,
-             cols = vz_palette) + # Uses your defined palette
-  ggtitle("Xenium Merged VZ Subclusters") +
+             cols = PC_palette) + # Uses your defined palette
+  ggtitle("Xenium Merged PC Subclusters") +
   theme(legend.text = element_text(size = 8))
 
-ggsave(here("outputs", "XenAld_VZ_Integrated_Plots", "XenAld_VZ_Subcluster_UMAP.png"), 
+ggsave(here("outputs", "XenAld_PC_Integrated_Plots", "XenAld_PC_Subcluster_UMAP.png"), 
        p, width = 12, height = 9, dpi = 300)
 
 # 5. DOTPLOT WITH REVERSED ORDER
 # Create a temporary reversed factor for the Y-axis
-# (Reverse the levels of the factor to get VZP at the top)
-obj$VZ_subcluster_rev <- factor(as.character(Idents(obj)), levels = rev(vz_subcluster_order)) 
-Idents(obj) <- "VZ_subcluster_rev"
+obj$PC_subcluster_rev <- factor(obj$PC_subcluster, levels = rev(PC_subcluster_order))
+Idents(obj) <- "PC_subcluster_rev"
 
-# 1. Clean the feature list
-# Use as.vector to strip names/attributes that might confuse Seurat
-plot_features <- unique(as.vector(unlist(vz_markers)))
-
-# 2. Strict Assay Check (The Xenium Assay)
-# This ensures we don't try to plot genes that aren't in the matrix
-available_genes <- rownames(obj[["Xenium"]])
-plot_features <- plot_features[plot_features %in% available_genes]
-
-# 3. Create the Plot
-# Adding 'assay = "Xenium"' is the safest way to avoid multi-assay conflicts
 p1 <- DotPlot(obj,
-              features = plot_features, 
-              assay = "Xenium",
+              features = PC_markers,
               cols = c("lightgrey", "red"),
               dot.scale = 6,
               cluster.idents = FALSE) + 
@@ -159,16 +133,16 @@ p1 <- DotPlot(obj,
     axis.text.x = element_text(size = 8, face = "italic"),
     axis.text.y = element_text(size = 10, face = "bold")
   ) +
-  ggtitle("Xenium Merged VZ Subcluster Markers")
+  ggtitle("Xenium Merged PC Subcluster Markers")
 
-ggsave(here("outputs", "XenAld_VZ_Integrated_Plots", "XenAld_VZ_SubclusterMarker_DotPlot.png"), 
+ggsave(here("outputs", "XenAld_PC_Integrated_Plots", "XenAld_PC_SubclusterMarker_DotPlot.png"), 
        p1, width = 12, height = 8, dpi = 300)
 
 # 6. SAVE FINAL RESULT
 # Revert Idents to the standard order before saving
-Idents(obj) <- "VZ_subcluster"
+Idents(obj) <- "PC_subcluster"
 
-output_path <- here("outputs", "XenAld_VZ_Integrated_RDS", "Xenium_VZ_Integrated_newSubclusters.rds")
+output_path <- here("outputs", "XenAld_PC_Integrated_RDS", "Xenium_PC_Integrated_newSubclusters.rds")
 saveRDS(obj, output_path, compress = FALSE)
 
 plan("sequential") # Shuts down the 20 background workers

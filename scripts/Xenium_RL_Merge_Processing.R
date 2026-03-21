@@ -23,20 +23,20 @@ check_mem <- function(step_label) {
 
 # 2. PARALLELIZATION SETUP (Optimized for 44 Cores / 440GB RAM)
 # Using 'multicore' is essential for 50GB+ objects on Linux to share memory
-plan("multisession", workers = 40) 
+plan("multicore", workers = 40) 
 options(future.globals.maxSize = 150 * 1024^3) # 150GB limit for globals
 
 check_mem("PIPELINE START")
 
 # Ensure both directories exist
-plot_dir <- here("outputs", "XenAld_VZ_Integrated_Plots")
-rds_dir  <- here("outputs", "XenAld_VZ_Integrated_RDS")
+plot_dir <- here("outputs", "XenAld_RL_Integrated_Plots")
+rds_dir  <- here("outputs", "XenAld_RL_Integrated_RDS")
 
 if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = TRUE)
 if (!dir.exists(rds_dir))  dir.create(rds_dir, recursive = TRUE)
 
 # 3. LOAD DATA
-merged_path <- here("outputs", "XenAld_VZ_Subsets_RDS", "Merged", "Xenium_Merged_VZSubsets_31226.rds") #modify with correct object
+merged_path <- here("outputs", "XenAld_RL_Subsets_RDS", "Merged", "Xenium_Merged_RLSubsets_31326.rds") #modify with correct object
 obj <- readRDS(merged_path)
 check_mem("DATA LOADED")
 
@@ -49,12 +49,12 @@ message("Scaling data...")
 obj <- ScaleData(obj, features = VariableFeatures(obj), verbose = TRUE)
 check_mem("POST-SCALE")
 
-message("Running PCA...")
-obj <- RunPCA(obj, npcs = 30, verbose = FALSE)
+message("Running RLA...")
+obj <- RunRLA(obj, nRLs = 30, verbose = FALSE)
 
 # 5. BATCH CHECK (UNCORRECTED UMAP)
 message("Generating uncorrected UMAP...")
-obj <- RunUMAP(obj, reduction = "pca", dims = 1:30, 
+obj <- RunUMAP(obj, reduction = "RLa", dims = 1:30, 
                reduction.name = "umap_uncorrected", verbose = TRUE)
 check_mem("POST-UNCORRECTED UMAP")
 
@@ -106,11 +106,11 @@ for(res in res_list) {
                raster = TRUE, 
                pt.size = 0.6,
                alpha = 0.8) + 
-    ggtitle(paste0("Refined VZ UMAP - Resolution ", res)) +
+    ggtitle(paste0("Refined RL UMAP - Resolution ", res)) +
     theme_classic() +
     theme(plot.title = element_text(hjust = 0.5, face = "bold"))
   
-  ggsave(filename = file.path(plot_dir, paste0("XenAld_VZ_UMAP_Res_", res, ".png")), 
+  ggsave(filename = file.path(plot_dir, paste0("XenAld_RL_UMAP_Res_", res, ".png")), 
          p, width = 10, height = 8, dpi = 300)
   
   rm(p)
@@ -126,7 +126,7 @@ p1 <- DimPlot(obj, reduction = "umap_uncorrected", group.by = "orig.ident", rast
 p2 <- DimPlot(obj, reduction = "umap_harmony", group.by = "orig.ident", raster = TRUE) + 
   ggtitle("Post-Harmony")
 
-ggsave(filename = file.path(plot_dir, "XenAld_VZ_Batch_Comp_UMAP.png"), 
+ggsave(filename = file.path(plot_dir, "XenAld_RL_Batch_Comp_UMAP.png"), 
        p1 + p2, width = 16, height = 7, dpi = 300)
 
 # 2. Generate the Plot
@@ -139,7 +139,7 @@ p_orig <- DimPlot(obj,
                   raster = TRUE, 
                   pt.size = 0.5, 
                   alpha = 0.8) +
-  ggtitle("Xenium Aldinger VZ Integrated UMAP: Original Cluster Weighted Labels") +
+  ggtitle("Xenium Aldinger RL Integrated UMAP: Original Cluster Weighted Labels") +
   theme_classic() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
@@ -148,12 +148,12 @@ p_orig <- DimPlot(obj,
   )
 
 # 3. Save the Plot
-ggsave(filename = file.path(plot_dir, "XenAld_VZ_OrigClusterWeighted_UMAP.png"), 
+ggsave(filename = file.path(plot_dir, "XenAld_RL_OrigClusterWeighted_UMAP.png"), 
        p_orig, width = 12, height = 9, dpi = 300)
 
 # 9. SAVE FINAL RESULT
 # Final RDS Save
-output_path <- file.path(rds_dir, "Xenium_VZ_Integrated_31226.rds")
+output_path <- file.path(rds_dir, "Xenium_RL_Integrated_31326.rds")
 saveRDS(obj, output_path, compress = FALSE)
 
 plan("sequential")

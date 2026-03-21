@@ -15,12 +15,12 @@ plan(multicore, workers = 15)
 
 # 2. Define Paths and "Master Key"
 input_dir  <- here("outputs", "XeniumAldingerABT_RDS")
-output_dir <- here("outputs", "XeniumAldingerABT_VZsubcluster_RDS")
+output_dir <- here("outputs", "XeniumAldingerABT_PCsubcluster_RDS")
 if(!dir.exists(output_dir)) dir.create(output_dir)
 
 # FIX: Load the object from the path provided
 message("Loading master subclustered object...")
-master_obj <- readRDS(here("outputs", "XenAld_VZ_Integrated_RDS", "Xenium_VZ_Integrated_newSubclusters.rds"))
+master_obj <- readRDS(here("outputs", "XenAld_PC_Integrated_RDS", "Xenium_PC_Integrated_newSubclusters.rds"))
 
 # PRE-EXTRACT LABELS
 all_new_labels <- as.character(Idents(master_obj))
@@ -56,21 +56,21 @@ updated_status <- future_lapply(sample_files, function(f) {
   names(relevant_labels) <- colnames(temp_obj) # Rename back to original style
   
   # 3. Safe Injection
-  temp_obj <- AddMetaData(temp_obj, metadata = relevant_labels, col.name = "VZ_subcluster")
+  temp_obj <- AddMetaData(temp_obj, metadata = relevant_labels, col.name = "PC_subcluster")
   
   # 4. Success Check
-  match_count <- sum(!is.na(temp_obj$VZ_subcluster))
+  match_count <- sum(!is.na(temp_obj$PC_subcluster))
   
   # Save the updated whole object
-  out_path <- file.path(output_dir, paste0(s_name, "_Ald_VZ.rds"))
+  out_path <- file.path(output_dir, paste0(s_name, "_Ald_PC.rds"))
   saveRDS(temp_obj, file = out_path, compress = FALSE)
   
   # Clean up memory for the next loop
   rm(temp_obj, relevant_labels, match_idx)
   gc()
   
-  return(paste0(s_name, ": Mapped ", match_count, " VZ cells."))
+  return(paste0(s_name, ": Mapped ", match_count, " PC cells."))
 }, future.seed = TRUE)
 
 plan(sequential)
-message("Done! Refined VZ labels mapped back to whole tissue objects.")
+message("Done! Refined PC labels mapped back to whole tissue objects.")

@@ -15,9 +15,12 @@ task_id <- as.numeric(args[1])
 
 # Define your x# of samples explicitly to match the array index
 samples <- c(
-  "GZFB4_X_G", "FB124_X_G", "FB198_X_G", "FB328_1_X_G", "FB330_1_X_G",
-  "FB78_X_G", "GZFB5_X_G", "GZFB_12_X_G_1", "GZFB_12_X_G_2", "GZFB_12_X_G_3",
-  "GZFB_12_X_G_4", "GZFB_12_X_G_5", "GZFB_1_X_G", "GZFB_9_X_G_1", "GZFB_9_X_G_2", "GZFB_9_X_G_3"
+  #"GZFB4_X_G", "FB124_X_G", "FB198_X_G", "FB328_1_X_G", "FB330_1_X_G",
+  #"FB78_X_G", "GZFB5_X_G", 
+  "GZFB_12_X_G_1", "GZFB_12_X_G_2", "GZFB_12_X_G_3",
+  "GZFB_12_X_G_4", 
+  #"GZFB_12_X_G_5", "GZFB_1_X_G", 
+  "GZFB_9_X_G_1", "GZFB_9_X_G_2", "GZFB_9_X_G_3"
 )
 
 current_sample <- samples[task_id]
@@ -46,7 +49,7 @@ if (length(existing_clusters) > 0) {
 }
 
 # Define and create output directory using here()
-output_dir <- here("outputs", "Xenium_RL_Subsets")
+output_dir <- here("outputs", "XenAld_RL_Subsets_RDS")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 output_path <- file.path(output_dir, paste0(current_sample, "_RLsubset.rds"))
