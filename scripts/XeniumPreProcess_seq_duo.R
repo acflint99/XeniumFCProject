@@ -12,7 +12,7 @@ library(future.apply)
 # source your functions
 source(here("scripts", "XeniumCropCerebellum_duo.R")) #changed for duo
 source(here("scripts", "XeniumQC.R"))
-source(here("scripts", "XeniumNormCluster.R"))
+source(here("scripts", "XeniumNormCluster_res1.5.R")) #CHANGED 7-30-26
 
 # single sample
 sample_names <- c("GZFB_9_X_G_1")

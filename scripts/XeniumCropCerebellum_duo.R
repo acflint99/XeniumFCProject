@@ -49,7 +49,8 @@ XeniumCropCerebellum <- function(sample_name,
     segmentations = segmentations,
     flip.xy = flip_xy
   )
-#subset to cerebellum cells  
+  
+  #subset to cerebellum cells  
   cells_present <- intersect(cells_to_keep, colnames(xenium_obj))
   
   if (length(cells_present) == 0) {
@@ -68,24 +69,26 @@ XeniumCropCerebellum <- function(sample_name,
   
   p <- ImageFeaturePlot(xenium_cereb, fov = "fov", features = c("nCount_Xenium"), cols = c("black", "white"), max.cutoff = "q95") + scale_y_reverse()
   
-  # Save as PNG
+  # Save as TIFF
   ggsave(
-    filename = paste0(sample_name, "_CB_nCount_FeatPlot.png"),
+    filename = paste0(sample_name, "_CB_nCount_FeatPlot.tif"),
     plot = p,
     path = out_dir,
+    device = "tiff",
     width = 8,
     height = 8,
     units = "in",
-    dpi = 300
+    dpi = 600, #CHANGED from 300 to 600 7-30-26
+    compression = "lzw"
   )
   
-  message("Cerebellum plot saved to: ", file.path(out_dir, paste0(sample_name, "_CB_nCount_FeatPlot.png")))
+  message("Cerebellum plot saved to: ", file.path(out_dir, paste0(sample_name, "_CB_nCount_FeatPlot.tif")))
   
   # -------------------------------
   # 11. Save cerebellum (CB) cropped object
   # -------------------------------
   output_file <- here("outputs", paste0(sample_name, "_CB.rds"))
-  saveRDS(xenium_obj, file = output_file, compress = FALSE)
+  saveRDS(xenium_cereb, file = output_file, compress = FALSE) #CHANGED xenium_obj to xenium_cereb 7-30-26
   
   message("Saved RDS file to:", output_file)
   

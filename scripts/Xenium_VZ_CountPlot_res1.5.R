@@ -1,0 +1,77 @@
+# Clear the environment
+rm(list = ls())
+
+options(bitmapType = "cairo")
+
+# 1. INITIALIZATION & ENVIRONMENT
+library(here)
+library(Seurat)
+library(dplyr)
+library(future)
+library(ggplot2)
+library(patchwork)
+
+# Load your new palette and order
+source(here("scripts", "color_palette.R"))
+
+input_path <- here("outputs", "XenAld_VZ_Subclusters_Res1.5_RDS", "Xenium_VZ_Res1.5_newSubclusters_4-3-26.rds")
+
+obj <- readRDS(input_path)
+
+# 1. Define a named list of your cluster sets
+cluster_sets <- list(
+  "GABA_Lineage" = c("VZPs", "GABA Progenitors", "Golgi Cells", "MLIs", "iCN"),
+  "Purkinje_Lineage" = c("VZPs", "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs"),
+  "Glial_Lineage"  = c("VZPs", "RG Progenitors", "BG", "Astrocytes/Ependyma")     
+)
+
+target_samples <- c("FB328_1_X_G", "GZFB_12_X_G_3", "GZFB5_X_G",
+                    "GZFB_1_X_G", "FB330_1_X_G", "FB78_X_G",
+                    "GZFB4_X_G", "FB124_X_G") 
+
+# 2. Iterate through the sets
+for (set_name in names(cluster_sets)) {
+  
+  # Get the specific clusters for this iteration
+  current_clusters <- cluster_sets[[set_name]]
+  
+  # Filter and Aggregate
+  plot_df <- obj@meta.data %>%
+    select(PCW, VZ_subcluster, orig.ident) %>%
+    filter(orig.ident %in% target_samples) %>%
+    filter(VZ_subcluster %in% current_clusters) %>%
+    mutate(PCW_num = as.numeric(gsub("PCW", "", PCW))) %>%
+    group_by(PCW_num, orig.ident, VZ_subcluster) %>%
+    summarise(cell_count = n(), .groups = "drop") 
+  
+  # Skip if the dataframe is empty (e.g., clusters not found in target samples)
+  if (nrow(plot_df) == 0) next
+  
+  # Set Factor Levels
+  plot_df$PCW_num <- factor(plot_df$PCW_num, levels = sort(unique(plot_df$PCW_num)))
+  plot_df$VZ_subcluster <- factor(plot_df$VZ_subcluster, 
+                                  levels = intersect(vz_subcluster_order, current_clusters))
+  
+  # Plot
+  p <- ggplot(plot_df, aes(x = PCW_num, y = cell_count, fill = VZ_subcluster)) +
+    geom_bar(stat = "identity", color = "black", width = 0.8, linewidth = 0.2) +
+    scale_fill_manual(values = vz_palette) + 
+    scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+    labs(
+      title = paste("Cluster Set:", set_name),
+      x = "Age (PCW)", 
+      y = "Number of Cells", 
+      fill = "Cell Type",
+      subtitle = paste("Included samples:", length(target_samples), "samples selected")
+    ) +
+    theme_bw() +
+    theme(panel.grid = element_blank(), axis.text = element_text(color = "black"))
+  
+  # Save with a dynamic filename based on the set_name
+  file_name <- paste0("XenAld_VZ_", set_name, "_ClusterCountPlot.png")
+  
+  ggsave(here("outputs", "XenAld_VZ_Subclusters_Res1.5_Plots", file_name), 
+         p, width = 10, height = 6, dpi = 300)
+  
+  message(paste("Successfully saved plot for:", set_name))
+}

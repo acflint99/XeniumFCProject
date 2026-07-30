@@ -30,9 +30,9 @@ qc_xenium <- function(xenium_obj, sample_name) {
   # -------------------------------
   # 4. Determine thresholds
   # -------------------------------
-  nCount_lower <- 50
+  nCount_lower <- 100 #CHANGED 7-30-26
   nCount_upper <- quantile(xenium_obj$nCount_Xenium, 0.99)
-  nFeature_lower <- 50
+  nFeature_lower <- 150 #CHANGED 7-30-26
   nFeature_upper <- quantile(xenium_obj$nFeature_Xenium, 0.99)
   
   # -------------------------------

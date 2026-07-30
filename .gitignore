@@ -43,3 +43,7 @@ logs/
 
 #Temporary Files
 *.tmp
+.Rproj.user_backup/
+.Rproj.user_backup/
+outputs_OLD/
+scripts/OLD/

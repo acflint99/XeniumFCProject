@@ -17,7 +17,7 @@ library(future.apply)
 # ----------------------------
 source(here("scripts", "XeniumCropCerebellum.R"))
 source(here("scripts", "XeniumQC.R"))
-source(here("scripts", "XeniumNormCluster.R"))
+source(here("scripts", "XeniumNormCluster_res1.5.R"))
 
 # ----------------------------
 # 2. Sample names
