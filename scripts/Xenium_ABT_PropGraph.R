@@ -105,7 +105,7 @@ p <- ggplot(plot_df, aes(x = PCW_num, y = relative_percent, fill = cluster_weigh
     axis.text = element_text(color = "black")
   )
 
-png(filename = here(plot_dir, paste0("XenAldingerABT_res1.5_ClusterPropPlot.png")), 
-    width = 10, height = 6, units = "in", res = 300)
+tiff(filename = here(plot_dir, paste0("XenAldingerABT_res1.5_ClusterPropPlot.tif")), 
+     width = 10, height = 6, units = "in", res = 600, compression = "lzw")
 print(p)
 dev.off()

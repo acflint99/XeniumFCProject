@@ -109,8 +109,8 @@ for(res in res_list) {
     theme_classic() +
     theme(plot.title = element_text(hjust = 0.5, face = "bold"))
   
-  ggsave(filename = file.path(plot_dir, paste0("XenAld_VZ_UMAP_Res_", res, ".png")), 
-         p, width = 10, height = 8, dpi = 300)
+  ggsave(filename = file.path(plot_dir, paste0("XenAld_VZ_UMAP_Res_", res, ".tif")), 
+         plot = p, device = "tiff", width = 10, height = 8, dpi = 600, compression = "lzw")
   
   rm(p)
   gc()
@@ -125,8 +125,8 @@ p1 <- DimPlot(obj, reduction = "umap_uncorrected", group.by = "orig.ident", rast
 p2 <- DimPlot(obj, reduction = "umap_harmony", group.by = "orig.ident", raster = TRUE) + 
   ggtitle("Post-Harmony")
 
-ggsave(filename = file.path(plot_dir, "XenAld_VZ_Batch_Comp_UMAP.png"), 
-       p1 + p2, width = 16, height = 7, dpi = 300)
+ggsave(filename = file.path(plot_dir, "XenAld_VZ_Batch_Comp_UMAP.tif"), 
+       plot = p1 + p2, device = "tiff", width = 16, height = 7, dpi = 600, compression = "lzw")
 
 # 2. Generate the Plot
 p_orig <- DimPlot(obj, 
@@ -147,8 +147,8 @@ p_orig <- DimPlot(obj,
   )
 
 # 3. Save the Plot
-ggsave(filename = file.path(plot_dir, "XenAld_VZ_OrigClusterWeighted_UMAP.png"), 
-       p_orig, width = 12, height = 9, dpi = 300)
+ggsave(filename = file.path(plot_dir, "XenAld_VZ_OrigClusterWeighted_UMAP.tif"), 
+       plot = p_orig, device = "tiff", width = 12, height = 9, dpi = 600, compression = "lzw")
 
 # 9. SAVE FINAL RESULT
 # Final RDS Save

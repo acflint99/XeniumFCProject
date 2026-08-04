@@ -1,8 +1,15 @@
+# Define how many CPU cores you requested for this cluster job
+WORKER_CORES <- 8 
+
+# 1. Enable multithreading for underlying matrix math
 Sys.setenv(
-  OMP_NUM_THREADS = 1,  
-  MKL_NUM_THREADS = 1,
-  OPENBLAS_NUM_THREADS = 1
+  OMP_NUM_THREADS = WORKER_CORES,  
+  MKL_NUM_THREADS = WORKER_CORES,
+  OPENBLAS_NUM_THREADS = WORKER_CORES
 )
+
+# Clear the environment
+rm(list = ls())
 
 library(here)
 library(Seurat)
@@ -15,7 +22,7 @@ source(here("scripts", "XeniumQC.R"))
 source(here("scripts", "XeniumNormCluster_res1.5.R")) #CHANGED 7-30-26
 
 # single sample
-sample_names <- c("GZFB_9_X_G_1")
+sample_names <- c("GZFB_20_X_G_5")
 
 # sequential for single node run
 plan(sequential)

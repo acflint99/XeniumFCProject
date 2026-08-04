@@ -9,6 +9,7 @@ options(bitmapType = "cairo")
 library(dplyr)
 library(ggplot2)
 library(stringr)
+library(here)
 
 output_dir <- "~/R/Projects/XeniumFCProject/outputs/Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Giotto_RDS/"
 plot_dir <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_GiottoBroad_Plots") 
@@ -97,6 +98,6 @@ p_svg <- ggplot(plot_svg_data, aes(x = Axis_Pos, y = log10_pval, color = feats))
   theme_minimal() +
   theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
 
-# 5. Save the plot
-ggsave(file.path(plot_dir, "Global_LinearSVG_LinePlot.png"), 
-       plot = p_svg, width = 12, height = 12, dpi = 300)
+# 5. Save the plot as TIFF
+ggsave(file.path(plot_dir, "Global_LinearSVG_LinePlot.tif"), 
+       plot = p_svg, device = "tiff", width = 12, height = 12, dpi = 600, compression = "lzw")

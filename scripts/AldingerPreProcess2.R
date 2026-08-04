@@ -1,13 +1,24 @@
 # Clear the environment
 rm(list = ls())
 
+options(bitmapType = "cairo")
+
 # load libraries
 library(Seurat)
-library(tidyverse)
+#library(tidyverse)
 library(dplyr)
 library(patchwork)
 library(data.table)
 library(ggplot2)
+library(here)
+
+# Define output directories
+plot_dir <- here("outputs", "SingleCellPlots")
+rds_dir <- here("outputs", "SingleCellRDS")
+
+# Ensure directories exist before saving any files
+if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = TRUE)
+if (!dir.exists(rds_dir)) dir.create(rds_dir, recursive = TRUE)
 
 Aldinger <- readRDS("/data/user/acflint/FC_published/AldingerFC/Aldinger_seurat_updated.rds")
 
@@ -17,7 +28,7 @@ p3 <- DimPlot(Aldinger, reduction = "umap", group.by = "figure_clusters")+
   guides(color = guide_legend(ncol = 1, override.aes = list(size = 3))) +
   theme(legend.text = element_text(size = 10))
 p3
-ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/AldingerUMAP_origclusters.pdf", plot = p3, width = 7, height = 6)
+ggsave(file.path(plot_dir, "AldingerUMAP_origclusters.tif"), plot = p3, device = "tiff", width = 8, height = 6, dpi = 600, compression = "lzw")
 
 #check proportions of clusters----
 cluster_counts <- table(Idents(Aldinger))
@@ -67,9 +78,9 @@ Aldinger_filtered@meta.data$clusters_refined <- dplyr::recode(
 # plot UMAP again with new cluster labels----
 p <- DimPlot(Aldinger_filtered, reduction = "umap", group.by = "clusters_refined")
 p
-ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots//AldingerUMAP_newClusters.pdf", plot = p, width = 7, height = 6)
+ggsave(file.path(plot_dir, "AldingerUMAP_newClusters.tif"), plot = p, device = "tiff", width = 7, height = 6, dpi = 600, compression = "lzw")
 
-saveRDS(Aldinger_filtered, "/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Aldinger_newClusters.rds")
+saveRDS(Aldinger_filtered, file.path(rds_dir, "Aldinger_newClusters.rds"))
 
 #redo PCA & UMAP----
 # Switch to raw RNA assay
@@ -99,7 +110,7 @@ Aldinger_filtered[["RNA"]]@scale.data <- matrix()
 
 # 8️⃣ Plot UMAP
 p2 <- DimPlot(Aldinger_filtered, reduction = "umap", group.by = "clusters_refined")
-ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/AldingerUMAP_newClusters_newUMAPv1.pdf", plot = p2, width = 7, height = 6)
+ggsave(file.path(plot_dir, "AldingerUMAP_newClusters_newUMAPv1.tif"), plot = p2, device = "tiff", width = 7, height = 6, dpi = 600, compression = "lzw")
 
 #remove scale.data for all assays to reduce file size----
 # Get assay names
@@ -110,6 +121,21 @@ for (assay in assay_names) {
   Aldinger_filtered[[assay]]@scale.data <- matrix()
 }
 
+saveRDS(Aldinger_filtered, file.path(rds_dir, "Aldinger_newClusters_newUMAPv1.rds"))
 
-saveRDS(Aldinger_filtered, "/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Aldinger_newClusters_newUMAPv1.rds")
+# Verify all expected outputs exist
+expected_files <- c(
+  file.path(plot_dir, "AldingerUMAP_origclusters.tif"),
+  file.path(plot_dir, "AldingerUMAP_newClusters.tif"),
+  file.path(rds_dir, "Aldinger_newClusters.rds"),
+  file.path(plot_dir, "AldingerUMAP_newClusters_newUMAPv1.tif"),
+  file.path(rds_dir, "Aldinger_newClusters_newUMAPv1.rds")
+)
 
+missing_files <- expected_files[!file.exists(expected_files)]
+
+if (length(missing_files) > 0) {
+  stop("The following expected files were not created:\n", paste(missing_files, collapse = "\n"))
+} else {
+  message("All output files were successfully created and verified!")
+}

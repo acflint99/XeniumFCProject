@@ -178,7 +178,7 @@ annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "
   xenium_obj$cluster_weighted <- factor(xenium_obj$cluster_weighted, levels = celltype_order)
   
   p_umap<- DimPlot(xenium_obj, reduction = "umap", label = TRUE, group.by = "cluster_weighted", cols = cluster_colors)
-  ggsave(here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_weighted_UMAP.png")), p_umap, width = 8, height = 6)
+  ggsave(here(plots_dir, paste0(sample_name, "_", reference_name, "_cluster_weighted_UMAP.tif")), p_umap, device = "tiff", width = 8, height = 6, dpi = 600, compression = "lzw")
   
   # Histogram of scores
   p_hist <- ggplot(xenium_obj@meta.data, aes(x = prediction.score.max)) +
@@ -186,7 +186,7 @@ annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "
     geom_vline(xintercept = pred_score_thresh, linetype = "dashed", color = "red") +
     theme_minimal() + labs(title = paste(sample_name, "Scores"), x = "Max Prediction Score")
   
-  ggsave(here(plots_dir, paste0(sample_name, "_prediction_scores_hist.png")), p_hist, width = 6, height = 4)
+  ggsave(here(plots_dir, paste0(sample_name, "_prediction_scores_hist.tif")), p_hist, device = "tiff", width = 6, height = 4, dpi = 600, compression = "lzw")
   
   # Spatial Plots (Majority and Weighted)
   p_maj <- ImageDimPlot(xenium_obj, group.by = "cluster_majority", size = 0.75, cols = cluster_colors) + 
@@ -195,8 +195,8 @@ annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "
   p_wei <- ImageDimPlot(xenium_obj, group.by = "cluster_weighted", size = 0.75, cols = cluster_colors) + 
     ggtitle(paste(sample_name, "Weighted"))
   
-  ggsave(here(plots_dir, paste0(sample_name, "_Spatial_Majority.png")), p_maj, width = 8, height = 8)
-  ggsave(here(plots_dir, paste0(sample_name, "_Spatial_Weighted.png")), p_wei, width = 8, height = 8)
+  ggsave(here(plots_dir, paste0(sample_name, "_Spatial_Majority.tif")), p_maj, device = "tiff", width = 8, height = 8, dpi = 600, compression = "lzw")
+  ggsave(here(plots_dir, paste0(sample_name, "_Spatial_Weighted.tif")), p_wei, device = "tiff", width = 8, height = 8, dpi = 600, compression = "lzw")
   
   # Spatial Facet Plot
   coords <- GetTissueCoordinates(xenium_obj) 
@@ -208,7 +208,7 @@ annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "
     theme(panel.background = element_rect(fill = "black"), plot.background = element_rect(fill = "black"),
           legend.position = "none", strip.text = element_text(color = "white"))
   
-  ggsave(here(plots_dir, paste0(sample_name, "_FacetSpatial.png")), p_facet, width = 12, height = 8)
+  ggsave(here(plots_dir, paste0(sample_name, "_FacetSpatial.tif")), p_facet, device = "tiff", width = 12, height = 8, dpi = 600, compression = "lzw")
   
   # DotPlot
   existing_markers <- lapply(markers, function(x) intersect(x, rownames(xenium_obj)))
@@ -218,7 +218,7 @@ annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "
     RotatedAxis() + scale_color_gradient(low = "lightgrey", high = "red") +
     ggtitle(paste(sample_name, "Markers"))
   
-  ggsave(here(plots_dir, paste0(sample_name, "_DotPlot.png")), p_dot, width = 10, height = 6)
+  ggsave(here(plots_dir, paste0(sample_name, "_DotPlot.tif")), p_dot, device = "tiff", width = 10, height = 6, dpi = 600, compression = "lzw")
   
   ## ----------------------------
   ## 6. Save & Return

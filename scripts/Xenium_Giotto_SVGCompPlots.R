@@ -8,6 +8,7 @@ options(bitmapType = "cairo")
 library(dplyr)
 library(ggplot2)
 library(stringr)
+library(here)
 
 output_dir <- "~/R/Projects/XeniumFCProject/outputs/Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Giotto_RDS/"
 plot_dir <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_GiottoBroad_Plots") 
@@ -118,6 +119,6 @@ p_spatial_decay <- ggplot(plot_svg_data, aes(x = Axis_Pos, y = log10_pval, color
   ) +
   scale_color_manual(values = c("Sample A (5-Slide)" = "steelblue", "Sample B (3-Slide)" = "darkorange"))
 
-# 5. Save the plot
-ggsave(file.path(plot_dir, "GlobalComp_SVG_LinePlot.png"), 
-       plot = p_spatial_decay, width = 16, height = 12, dpi = 300)
+# 5. Save the plot as TIFF
+ggsave(file.path(plot_dir, "GlobalComp_SVG_LinePlot.tif"), 
+       plot = p_spatial_decay, device = "tiff", width = 16, height = 12, dpi = 600, compression = "lzw")

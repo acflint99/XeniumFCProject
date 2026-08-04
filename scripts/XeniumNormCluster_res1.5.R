@@ -9,9 +9,7 @@ library(future)
 library(igraph)
 library(dplyr)
 library(here)
-
-# Set global options for future
-options(future.globals.maxSize = 200 * 1024^3)
+library(Cairo) # Required for reliable headless cluster TIFF writing
 
 # =========================================================
 # Xenium Clustering Function
@@ -22,18 +20,7 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   ## 0. Setup
   ## =========================================================
   set.seed(42)
-  plan("sequential")  # avoid future export issues
-  
-  DefaultAssay(xenium_obj) <- "Xenium"
-  assay_name <- DefaultAssay(xenium_obj)
-  cat(paste0("Using assay: ", assay_name, ":\n"))
-  
-  ## =========================================================
-  ## 0. Setup
-  ## =========================================================
-  set.seed(42)
-  #plan("multisession", workers = 8)
-  plan("sequential")
+  plan("sequential")  # avoid future export issues within the parallel workers
   
   plot_output <- here("outputs", "Xenium_Res1.5_Plots")
   if (!dir.exists(plot_output)) dir.create(plot_output)
@@ -91,13 +78,13 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
     ggtitle(paste(sample_name, "- UMAP Clusters (Res = 1.5)"))
   
   ## =========================================================
-  ## 5. Export UMAP + Modularity TIFF
+  ## 5. Export UMAP + Modularity TIFF (Using CairoTIFF)
   ## =========================================================
-  tiff(file.path(plot_output, paste0(sample_name, "_UMAP.tif")), width = 10, height = 10, units = "in", res = 600, compression = "lzw") #CHANGED res from 300 to 600 7-30-26
+  CairoTIFF(file.path(plot_output, paste0(sample_name, "_UMAP.tif")), width = 10, height = 10, units = "in", res = 600)
   print(umap_plot)
   dev.off()
   
-  tiff(file.path(plot_output, paste0(sample_name, "_RawCluster_UMAP.tif")), width = 10, height = 10, units = "in", res = 600, compression = "lzw") #CHANGED res from 300 to 600 7-30-26
+  CairoTIFF(file.path(plot_output, paste0(sample_name, "_RawCluster_UMAP.tif")), width = 10, height = 10, units = "in", res = 600)
   print(umap_cluster_plot)
   dev.off()
   
@@ -128,8 +115,7 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   
   # Export Global Plot
   tif_file_global <- file.path(plot_output, paste0(sample_name, "_GlobalRawClustersSpatialPlot.tif"))
-  # We use a high res (300-600 DPI) for Xenium to keep the dots sharp
-  tiff(tif_file_global, width = 10, height = 10, units = "in", res = 600, compression = "lzw") #CHANGED res from 300 to 600 7-30-26
+  CairoTIFF(tif_file_global, width = 10, height = 10, units = "in", res = 600)
   print(global_cluster_plot)
   dev.off()
   
@@ -153,7 +139,7 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   
   # Export Facet Plot
   tif_file_facet <- file.path(plot_output, paste0(sample_name, "_FacetRawClustersSpatialPlot.tif"))
-  tiff(tif_file_facet, width = 12, height = 10, units = "in", res = 600, compression = "lzw") #CHANGED res from 300 to 600 7-30-26
+  CairoTIFF(tif_file_facet, width = 12, height = 10, units = "in", res = 600)
   print(facet_cluster_plot)
   dev.off()
   
@@ -167,17 +153,4 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   message("Saved processed Seurat object: ", rds_file)
   
   return(xenium_obj)
-}
-
-# =========================================================
-# Execution
-# =========================================================
-# Adjust this path to where your input files are stored
-input_file <- here("outputs", "XeniumRDS", paste0(current_sample, "_CB_QC.rds"))
-
-if (file.exists(input_file)) {
-  seu <- readRDS(input_file)
-  process_xenium_clusters(seu, current_sample)
-} else {
-  stop("Input file not found: ", input_file)
 }

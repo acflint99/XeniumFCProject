@@ -80,8 +80,8 @@ p1 <- DimPlot(obj,
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
 
-ggsave(filename = file.path(plot_path, paste0("XenAld_RL_PostQC_OrigCluster_UMAP.png")), 
-       p1, width = 10, height = 8, dpi = 300)
+ggsave(filename = file.path(plot_path, paste0("XenAld_RL_PostQC_OrigCluster_UMAP.tif")), 
+       plot = p1, device = "tiff", width = 10, height = 8, dpi = 600, compression = "lzw")
 
 # Now loop only for sorting and plotting
 for(res in res_list) {
@@ -111,8 +111,8 @@ for(res in res_list) {
     theme_classic() +
     theme(plot.title = element_text(hjust = 0.5, face = "bold"))
   
-  ggsave(filename = file.path(plot_path, paste0("XenAld_RL_PostQC_UMAP_Res_", res, ".png")), 
-         p, width = 10, height = 8, dpi = 300)
+  ggsave(filename = file.path(plot_path, paste0("XenAld_RL_PostQC_UMAP_Res_", res, ".tif")), 
+         plot = p, device = "tiff", width = 10, height = 8, dpi = 600, compression = "lzw")
   
   rm(p)
   gc()

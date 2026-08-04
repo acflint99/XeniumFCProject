@@ -79,14 +79,14 @@ process_xenium_sample <- function(sample_id) {
   p <- ImageDimPlot(obj, group.by = "comb_subcluster", cols = subcluster_palette, size = 0.6) + 
     ggtitle(paste(sample_id, "Combined Subclusters"))
   
-  ggsave(file.path(plot_dir, paste0(sample_id, "_combSubcluster_GlobalSpatial0.6.png")), 
-         plot = p, width = 14, height = 10, dpi = 300, bg = "black")
+  ggsave(file.path(plot_dir, paste0(sample_id, "_combSubcluster_GlobalSpatial0.6.tif")), 
+         plot = p, device = "tiff", width = 14, height = 10, dpi = 600, bg = "black", compression = "lzw")
   
   p2 <- ImageDimPlot(obj, group.by = "comb_subcluster", cols = subcluster_palette, size = 0.85) + 
     ggtitle(paste(sample_id, "Combined Subclusters"))
   
-  ggsave(file.path(plot_dir, paste0(sample_id, "_combSubcluster_GlobalSpatial0.85.png")), 
-         plot = p2, width = 14, height = 10, dpi = 300, bg = "black")
+  ggsave(file.path(plot_dir, paste0(sample_id, "_combSubcluster_GlobalSpatial0.85.tif")), 
+         plot = p2, device = "tiff", width = 14, height = 10, dpi = 600, bg = "black", compression = "lzw")
   
   # Generate the plot
   # Note: Ensure 'cluster_colors' is defined in your environment beforehand
@@ -100,12 +100,14 @@ process_xenium_sample <- function(sample_id) {
   
   # Save with a specific background color to ensure ggsave doesn't add white
   ggsave(
-    filename = file.path(plot_dir, paste0(sample_id, "_postQC_GlobalSpatial_plot0.85.png")), 
+    filename = file.path(plot_dir, paste0(sample_id, "_postQC_GlobalSpatial_plot0.85.tif")), 
     plot = p_wei,
+    device = "tiff",
     width = 12,
     height = 10,
-    dpi = 300,
-    bg = "black"  # Forces the saved file background to be black
+    dpi = 600,
+    bg = "black",  # Forces the saved file background to be black
+    compression = "lzw"
   )
   
   # Generate the plot
@@ -120,12 +122,14 @@ process_xenium_sample <- function(sample_id) {
   
   # Save with a specific background color to ensure ggsave doesn't add white
   ggsave(
-    filename = file.path(plot_dir, paste0(sample_id, "_postQC_GlobalSpatial_plot0.6.png")), 
+    filename = file.path(plot_dir, paste0(sample_id, "_postQC_GlobalSpatial_plot0.6.tif")), 
     plot = p_wei2,
+    device = "tiff",
     width = 12,
     height = 10,
-    dpi = 300,
-    bg = "black"  # Forces the saved file background to be black
+    dpi = 600,
+    bg = "black",  # Forces the saved file background to be black
+    compression = "lzw"
   )
   
   # Save RDS (Uncompressed for speed)

@@ -98,7 +98,7 @@ new_labels <- c(
   "16" = "MLIs",
   "17" = "eCN",
   "18" = "Maturing PCs"
-
+  
 )
 
 obj <- RenameIdents(obj, new_labels)
@@ -178,8 +178,8 @@ p <- DimPlot(obj,
   ggtitle("Xenium Merged VZ Subclusters") +
   theme(legend.text = element_text(size = 8))
 
-ggsave(file.path(plot_path, paste0("XenAld_VZ_Subcluster_UMAP.png")), 
-       p, width = 12, height = 9, dpi = 300)
+ggsave(file.path(plot_path, paste0("XenAld_VZ_Subcluster_UMAP.tif")), 
+       p, device = "tiff", width = 12, height = 9, dpi = 600, compression = "lzw")
 
 # 4. UMAP WITH "Other" Clusters removed
 # Define the clusters you want to REMOVE
@@ -199,8 +199,8 @@ p2 <- DimPlot(obj_subset,
   ggtitle("Xenium Merged VZ Subclusters (Filtered)") +
   theme(legend.text = element_text(size = 8))
 
-ggsave(file.path(plot_path, paste0("XenAld_VZ_Subcluster_rmGCP,eCN,Cyc_UMAP.png")), 
-       p2, width = 12, height = 9, dpi = 300)
+ggsave(file.path(plot_path, paste0("XenAld_VZ_Subcluster_rmGCP,eCN,Cyc_UMAP.tif")), 
+       p2, device = "tiff", width = 12, height = 9, dpi = 600, compression = "lzw")
 
 rm(obj_subset)
 
@@ -225,8 +225,8 @@ p1 <- DotPlot(obj,
   ) +
   ggtitle("Xenium Merged VZ Subcluster Markers")
 
-ggsave(file.path(plot_path, paste0("XenAld_VZ_SubclusterMarker_DotPlot.png")), 
-       p1, width = 12, height = 8, dpi = 300)
+ggsave(file.path(plot_path, paste0("XenAld_VZ_SubclusterMarker_DotPlot.tif")), 
+       p1, device = "tiff", width = 12, height = 8, dpi = 600, compression = "lzw")
 
 # ----------------------------------------------------------------              
 # 6. GENERATE TOP 5 MARKERS HEATMAP
@@ -266,8 +266,8 @@ p4 <- DoHeatmap(
   features = top5_markers,
   group.by = "VZ_subcluster",
   group.colors = vz_palette,
-  size = 4,           
-  angle = 45,         
+  size = 4,          
+  angle = 45,        
   draw.lines = TRUE,
   raster = FALSE
 ) + 
@@ -287,8 +287,8 @@ ggsave(
 
 # 5. Save the Heatmap
 ggsave(
-  file.path(plot_path, paste0("XenAld_VZ_Subcluster_Top5_Heatmap.png")), 
-  p4, width = 14, height = 12, dpi = 300
+  file.path(plot_path, paste0("XenAld_VZ_Subcluster_Top5_Heatmap.tif")), 
+  p4, device = "tiff", width = 14, height = 12, dpi = 600, compression = "lzw"
 )
 
 check_mem("HEATMAP COMPLETE")

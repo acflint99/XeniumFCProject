@@ -1,7 +1,7 @@
 Sys.setenv(
-  OMP_NUM_THREADS = 1, #1 for workers >1 for parallelism
-  MKL_NUM_THREADS = 1,
-  OPENBLAS_NUM_THREADS = 1
+  OMP_NUM_THREADS = 2, #1 for workers >1 for parallelism
+  MKL_NUM_THREADS = 2,
+  OPENBLAS_NUM_THREADS = 2
 )
 
 # Clear the environment
@@ -17,15 +17,19 @@ library(future.apply)
 # ----------------------------
 source(here("scripts", "XeniumCropCerebellum.R"))
 source(here("scripts", "XeniumQC.R"))
-source(here("scripts", "XeniumNormCluster_res1.5.R")) #CHANGED 7-30-26
+source(here("scripts", "XeniumNormCluster_res1.5.R")) #CHANGED 7-30-36
 
 # ----------------------------
 # 2. Sample names
 # ----------------------------
 sample_names <- c(
-  "FB78_X_G",
-  "FB198_X_G",
-  "FB330_1_X_G"
+  "GZFB_20_X_G_1",
+  "GZFB_20_X_G_11",
+  "GZFB_20_X_G_12",
+  "GZFB_20_X_G_2",
+  "GZFB_20_X_G_3",
+  "GZFB_20_X_G_4",
+  "GZFB_22_X_G_6"
   
 )
 

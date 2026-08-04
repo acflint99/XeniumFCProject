@@ -306,10 +306,10 @@ p1 <- ggplot(plot_linear_data, aes(x = PCW_num, y = PI, color = Interaction_Labe
   theme_minimal() +
   theme(legend.position = "none") # Labels are already in facet titles
 
-file_name_purkinje <- paste0("Purkinje_Linear_Signaling_", target_network, "_LinePlot.png")
+file_name_purkinje <- paste0("Purkinje_Linear_Signaling_", target_network, "_LinePlot.tif")
 
 ggsave(file.path(plot_dir, file_name_purkinje), 
-       plot = p1, width = 16, height = 12, dpi = 300)
+       plot = p1, device = "tiff", width = 16, height = 12, dpi = 600, compression = "lzw")
 
 # ==============================================================================
 # ANALYSIS E: GLOBAL LINEAR SIGNALING (ALL CELL TYPES)
@@ -361,24 +361,22 @@ p_global_linear <- ggplot(plot_global_linear_data, aes(x = PCW_num, y = PI, colo
   )
 
 # 5. Save the plot
-# Change the filename to include the network
-file_name_global <- paste0("Global_Linear_Signaling_", target_network, "_LinePlot.png")
+file_name_global <- paste0("Global_Linear_Signaling_", target_network, "_LinePlot.tif")
 
 ggsave(file.path(plot_dir, file_name_global), 
-       plot = p_global_linear, width = 16, height = 12, dpi = 300)
+       plot = p_global_linear, device = "tiff", width = 16, height = 12, dpi = 600, compression = "lzw")
 
 # ==============================================================================
 # ANALYSIS F: GRANULE-CENTRIC LINEAR SIGNALING
 # ==============================================================================
 
 # 1. Filter master LR table for Granule involvement (Sender or Receiver)
-# Ensure "Granule" matches your exact metadata label
 granule_lr_clean <- temporal_lr %>%
   filter(lig_cell_type == "Granule" | rec_cell_type == "Granule") %>%
   filter(p.adj < 0.05) %>%
-  filter(PI > 0) %>%         # Active signaling only
-  filter(lig_expr > 0.1) %>% # Bio-sanity ligand filter
-  filter(rec_expr > 0.1)     # Bio-sanity receptor filter
+  filter(PI > 0) %>%         
+  filter(lig_expr > 0.1) %>% 
+  filter(rec_expr > 0.1)     
 
 # 2. Calculate Correlation with Time
 granule_linear_dynamics <- granule_lr_clean %>%
@@ -420,7 +418,7 @@ p_granule_linear <- ggplot(plot_granule_linear_data, aes(x = PCW_num, y = PI, co
   theme(legend.position = "none", strip.text = element_text(size = 8, face = "bold"))
 
 # 5. Save the plot
-file_name_granule <- paste0("Granule_Linear_Signaling_", target_network, "_LinePlot.png")
+file_name_granule <- paste0("Granule_Linear_Signaling_", target_network, "_LinePlot.tif")
 
 ggsave(file.path(plot_dir, file_name_granule), 
-       plot = p_granule_linear, width = 16, height = 12, dpi = 300)
+       plot = p_granule_linear, device = "tiff", width = 16, height = 12, dpi = 600, compression = "lzw")

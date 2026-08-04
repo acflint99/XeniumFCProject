@@ -11,6 +11,7 @@
 # 1. Load Modules
 module purge
 module load rc-base
+module load GCC/13.2.0    # Add this to provide the updated libstdc++.so.6
 module load R/4.4.0-foss-2022b
 
 # 2. Move into project directory
@@ -22,4 +23,4 @@ export RENV_CONFIG_SANDBOX_ENABLED=FALSE
 # --------------------------
 # Run your R script using the project library
 # --------------------------
-Rscript scripts/XeniumABT_parallel_res1.5.R $SLURM_ARRAY_TASK_ID
+Rscript scripts/AnchorBasedTransfer_RPCA_res1.5.R $SLURM_ARRAY_TASK_ID

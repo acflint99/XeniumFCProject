@@ -32,7 +32,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   write.csv(stats, file.path(sample_plot_dir, paste0(sample_id, "_cluster_counts.csv")), row.names = FALSE)
   
   #----------------------------
-  #HELPER: Internal Highlight Function (Using png())
+  #HELPER: Internal Highlight Function (Using tiff)
   #----------------------------
   save_highlight <- function(seurat_obj, targets, title_suffix, filename) {
     
@@ -58,7 +58,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
       seurat_obj,
       group.by = group_name,
       cols = current_cols,
-      size =2
+      size = 2
     ) +
       ggtitle(paste(sample_id, title_suffix)) +
       theme(
@@ -70,10 +70,12 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     ggsave(
       filename = file.path(sample_plot_dir, filename),
       plot = p,
+      device = "tiff",
       width = 10,
       height = 8,
-      dpi = 300,
-      bg = "black"
+      dpi = 600,
+      bg = "black",
+      compression = "lzw"
     )
   }
   
@@ -81,7 +83,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   # ----------------------------
   # GENERATE & SAVE PLOTS
   # ----------------------------
-
+  
   # A. Global Spatial
   p_global <- ImageDimPlot(obj, # Removed the subset() here
                            group.by = "RL_subcluster",
@@ -89,20 +91,20 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
                            size = 2,
                            na.value = alpha("gray20", 0.3)) +
     ggtitle(paste(sample_id, "RL Subclusters"))
-
-  ggsave(file.path(sample_plot_dir, paste0(sample_id, "_Global_Spatial2.png")),
-         plot = p_global, width = 10, height = 8, dpi = 300)
-
+  
+  ggsave(file.path(sample_plot_dir, paste0(sample_id, "_Global_Spatial2.tif")),
+         plot = p_global, device = "tiff", width = 10, height = 8, dpi = 600, compression = "lzw")
+  
   # B. Group Highlights
   save_highlight(obj, c("RL VZ", "RL SVZ"),
-                 "RL_Lineage", paste0(sample_id, "_RL_Spatial.png"))
+                 "RL_Lineage", paste0(sample_id, "_RL_Spatial.tif"))
   save_highlight(obj, c("Prolif GCPs", "Maturing GCPs", "Differentiating GCs", "Migrating GCs", "Mature GCs"),
-                 "Granule_Lineage", paste0(sample_id, "_Granule_Spatial2.png"))
+                 "Granule_Lineage", paste0(sample_id, "_Granule_Spatial2.tif"))
   save_highlight(obj, c("RL VZ", "RL SVZ", "Prolif GCPs", "Maturing GCPs", "Differentiating GCs", "Migrating GCs", "Mature GCs"),
-                 "Granule&RL_Lineage", paste0(sample_id, "_Granule&RL_Spatial2.png"))
+                 "Granule&RL_Lineage", paste0(sample_id, "_Granule&RL_Spatial2.tif"))
   save_highlight(obj, c("RL VZ", "RL SVZ", "Intermediate Progenitors", "Immature UBCs", "Mature UBCs"),
-                 "UBC_Lineage", paste0(sample_id, "_UBC_Spatial2.png"))
-
+                 "UBC_Lineage", paste0(sample_id, "_UBC_Spatial2.tif"))
+  
   #C. Faceted Spatial
   coords <- GetTissueCoordinates(obj, type = "Xenium")
   plot_data <- cbind(coords, cluster = obj$RL_subcluster)
@@ -125,26 +127,26 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
       plot.margin = margin(10, 10, 10, 10)
     )
   
-  ggsave(file.path(sample_plot_dir, paste0(sample_id, "_Faceted_Clusters0.3.png")), 
-         plot = p_facet, width = 15, height = 10, dpi = 300)
+  ggsave(file.path(sample_plot_dir, paste0(sample_id, "_Faceted_Clusters0.3.tif")), 
+         plot = p_facet, device = "tiff", width = 15, height = 10, dpi = 600, compression = "lzw")
   
   # D. Marker DotPlot
   rev_levels <- factor(as.character(obj$RL_subcluster), levels = rev(rl_subcluster_order))
   names(rev_levels) <- Cells(obj)
   obj <- AddMetaData(obj, metadata = rev_levels, col.name = "subcluster_rev")
-
+  
   Idents(obj) <- "subcluster_rev"
   obj_plot <- subset(obj, idents = rl_subcluster_order)
-
+  
   p_dot <- DotPlot(obj_plot, features = rl_markers, cols = c("lightgrey", "red"),
                    dot.scale = 6, cluster.idents = FALSE) +
     RotatedAxis() +
     theme(axis.text.x = element_text(size = 8, face = "italic"),
           axis.text.y = element_text(size = 10, face = "bold")) +
     ggtitle(paste(sample_id, "RL Markers"))
-
-  ggsave(file.path(sample_plot_dir, paste0(sample_id, "_Markers_DotPlot.png")),
-         plot = p_dot, width = 12, height = 7, dpi = 300)
+  
+  ggsave(file.path(sample_plot_dir, paste0(sample_id, "_Markers_DotPlot.tif")),
+         plot = p_dot, device = "tiff", width = 12, height = 7, dpi = 600, compression = "lzw")
   
   # Clean up memory
   message(paste("Finished sample:", sample_id))
