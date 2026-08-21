@@ -3,14 +3,25 @@ rm(list = ls())
 
 # load libraries
 library(Seurat)
-library(tidyverse)
+#library(tidyverse)
 library(dplyr)
 library(patchwork)
 library(ggplot2)
 library(AnnotationDbi)
 library(org.Hs.eg.db)
-library(SingleCellExperiment)
+library(here)
+library(Cairo)
 
+# Source the color palette ----
+# Ensure color_palette.R is saved in your project root, or update this path accordingly.
+source(here("scripts", "color_palette.R"))
+
+# Define and create output directories ----
+plot_path <- here("outputs", "SeppPlots")
+RDS_path <- here("outputs", "SeppRDS")
+
+dir.create(plot_path, recursive = TRUE, showWarnings = FALSE)
+dir.create(RDS_path, recursive = TRUE, showWarnings = FALSE)
 
 #Load the FC dataset----
 Sepp = readRDS("/data/user/acflint/FC_published/SeppFC/Sepp_hum_sce_final.rds")
@@ -61,8 +72,10 @@ rm(data_mat)
 p1 <- DimPlot(SeuratObj, reduction = "umap2d", group.by = "cell_type")+
   guides(color = guide_legend(ncol = 1, override.aes = list(size = 3))) +
   theme(legend.text = element_text(size = 10))
-p1
-ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/SeppUMAP_origClusters.pdf", plot = p1, width = 7, height = 6)
+
+CairoTIFF(filename = file.path(plot_path, "SeppUMAP_origClusters.tiff"), width = 7, height = 6, units = "in", res = 600)
+print(p1)
+dev.off()
 
 
 #subset fetal cerebellum cells----
@@ -72,8 +85,10 @@ SeuratObj_FC <- subset(SeuratObj, subset = Stage %in% c("11 wpc", "17 wpc", "20 
 p2 <- DimPlot(SeuratObj_FC, reduction = "umap2d", group.by = "cell_type")+
   guides(color = guide_legend(ncol = 1, override.aes = list(size = 3))) +
   theme(legend.text = element_text(size = 10))
-p2
-ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/SeppUMAP_FC_origClusters.pdf", plot = p2, width = 7, height = 6)
+
+CairoTIFF(filename = file.path(plot_path, "SeppUMAP_FC_origClusters.tiff"), width = 7, height = 6, units = "in", res = 600)
+print(p2)
+dev.off()
 
 # #check proportions of clusters----
 # cluster_counts <- table(Idents(SeuratObj_FC))
@@ -120,15 +135,24 @@ SeuratObj_FC_filtered$clusters_refined <- dplyr::recode(
   "UBC" = "UBC",
   "VZ_neuroblast" = "VZ",
   "GC/UBC" = "RL"
-  )
+)
 
 # remove cells in "NA" cluster
 SeuratObj_FC_filtered_noNA <- subset(SeuratObj_FC_filtered, subset = !is.na(clusters_refined))
 
-# plot UMAP again with new cluster labels----
-p4 <- DimPlot(SeuratObj_FC_filtered_noNA, reduction = "umap2d", group.by = "clusters_refined")
-p4
-ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/SeppUMAP_FC_newClusters.pdf", plot = p4, width = 7, height = 6)
+# Apply celltype order from color_palette.R as factor levels
+SeuratObj_FC_filtered_noNA$clusters_refined <- factor(
+  SeuratObj_FC_filtered_noNA$clusters_refined, 
+  levels = intersect(celltype_order, unique(SeuratObj_FC_filtered_noNA$clusters_refined))
+)
+
+# plot UMAP again with new cluster labels and color_palette.R colors ----
+p4 <- DimPlot(SeuratObj_FC_filtered_noNA, reduction = "umap2d", group.by = "clusters_refined") +
+  scale_color_manual(values = cluster_colors)
+
+CairoTIFF(filename = file.path(plot_path, "SeppUMAP_FC_newClusters.tiff"), width = 7, height = 6, units = "in", res = 600)
+print(p4)
+dev.off()
 
 #redo PCA & UMAP----
 # 1️⃣ Normalize data
@@ -146,16 +170,23 @@ SeuratObj_FC_filtered_noNA_newUMAP <- RunPCA(SeuratObj_FC_filtered_noNA_newUMAP,
 # 5️⃣ Find neighbors
 SeuratObj_FC_filtered_noNA_newUMAP <- FindNeighbors(SeuratObj_FC_filtered_noNA_newUMAP, dims = 1:50)
 
-# retain previous cluster identities
+# retain previous cluster identities & order
+SeuratObj_FC_filtered_noNA_newUMAP$clusters_refined <- factor(
+  SeuratObj_FC_filtered_noNA_newUMAP$clusters_refined,
+  levels = intersect(celltype_order, unique(SeuratObj_FC_filtered_noNA_newUMAP$clusters_refined))
+)
 Idents(SeuratObj_FC_filtered_noNA_newUMAP) <- "clusters_refined"
 
 # 7️⃣ Run UMAP
 SeuratObj_FC_filtered_noNA_newUMAP <- RunUMAP(SeuratObj_FC_filtered_noNA_newUMAP, dims = 1:50)
 
-# 8️⃣ Plot UMAP
-p5 <- DimPlot(SeuratObj_FC_filtered_noNA_newUMAP, reduction = "umap", group.by = "clusters_refined")
-p5
-ggsave("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/SeppUMAP_FC_newClusters_newUMAP50v1.pdf", plot = p5, width = 7, height = 6)
+# 8️⃣ Plot UMAP with color_palette.R colors ----
+p5 <- DimPlot(SeuratObj_FC_filtered_noNA_newUMAP, reduction = "umap", group.by = "clusters_refined") +
+  scale_color_manual(values = cluster_colors)
+
+CairoTIFF(filename = file.path(plot_path, "SeppUMAP_FC_newClusters_newUMAP50v1.tiff"), width = 7, height = 6, units = "in", res = 600)
+print(p5)
+dev.off()
 
 #remove scale.data for all assays to reduce file size----
 # Get assay names
@@ -185,6 +216,5 @@ for (assay in assay_names) {
 #   )
 
 #export new Seurat object as .rds----
-saveRDS(SeuratObj_FC_filtered_noNA, file = "/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Sepp_FC_newClusters.rds")
-saveRDS(SeuratObj_FC_filtered_noNA_newUMAP, file = "/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Sepp_FC_newClusters_newUMAPv1.rds")
-
+saveRDS(SeuratObj_FC_filtered_noNA, file = file.path(RDS_path, "Sepp_newClusters.rds"))
+saveRDS(SeuratObj_FC_filtered_noNA_newUMAP, file = file.path(RDS_path, "Sepp_newClusters_newUMAPv1.rds"))

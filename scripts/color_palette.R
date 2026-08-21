@@ -17,7 +17,8 @@ cluster_colors <- c(
   OPC         = "#FFD700",  # neon yellow
   Meninges    = "#00CED1",  # neon cyan / teal
   Endothelial = "#FF1A1A",  # deep red
-  Immune      = "#E066FF"   # neon lavender
+  Immune      = "#E066FF",   # neon lavender
+  Unknown = "grey80"
 )
 
 # Optional: function to validate palette
@@ -37,7 +38,7 @@ validate_palette <- function(labels) {
 celltype_order <- c(
   "RL", "UBC", "Granule",
   "VZ", "Purkinje", "GABA", "Glia", "OPC", "Meninges",
-  "Endothelial", "Immune"
+  "Endothelial", "Immune", "Unknown"
 )
 
 markers <- list(

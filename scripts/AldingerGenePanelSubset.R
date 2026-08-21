@@ -9,6 +9,13 @@ library(ggplot2)
 library(here)
 library(Cairo) # Required for CairoTIFF
 
+# Define and create output directories ----
+plot_path <- here("outputs", "AldingerPlots")
+RDS_path <- here("outputs", "AldingerRDS")
+
+dir.create(plot_path, recursive = TRUE, showWarnings = FALSE)
+dir.create(RDS_path, recursive = TRUE, showWarnings = FALSE)
+
 # =====================================================
 # Source the color palette and aesthetics
 # =====================================================
@@ -19,7 +26,7 @@ source(here("scripts", "color_palette.R"))
 # Load and Subset the FC dataset
 # =====================================================
 # Use here() to dynamically build paths relative to the project root
-Aldinger = readRDS(here("outputs", "SingleCellRDS", "Aldinger_newClusters_newUMAPv1.rds"))
+Aldinger = readRDS(here("outputs", "AldingerRDS", "Aldinger_newClusters_newUMAPv1.rds"))
 xenium_genes <- readRDS(here("inputs", "xenium_5k_genes.rds"))
 
 genes_present <- intersect(xenium_genes, rownames(Aldinger))
@@ -33,7 +40,7 @@ AldingerSubset <- subset(
 cat("Number of overlapping genes:", length(genes_present), "\n") 
 
 # export new Seurat object as .rds
-saveRDS(AldingerSubset, file = here("outputs", "SingleCellRDS", "Aldinger_newClusters_newUMAPv1_5k.rds"))
+saveRDS(AldingerSubset, file = file.path(RDS_path, "Aldinger_newClusters_newUMAPv1_5k.rds"))
 
 # =====================================================
 # Redo PCA & UMAP
@@ -71,8 +78,8 @@ p2 <- DimPlot(AldingerSubset_newUMAP, reduction = "umap", group.by = "clusters_r
   ggtitle("UMAP of Refined Clusters")
 
 # Save using CairoTIFF
-CairoTIFF(filename = here("outputs", "SingleCellPlots", "AldingerUMAP_newClusters_5k_newUMAP50v2.tiff"),
-          width = 7, height = 6, units = "in", res = 300)
+CairoTIFF(filename = file.path(plot_path, "AldingerUMAP_newClusters_5k_newUMAP50v2.tiff"),
+          width = 7, height = 6, units = "in", res = 600)
 print(p2)
 dev.off()
 
@@ -88,7 +95,7 @@ for (assay in assay_names) {
 }
 
 # export new Seurat object as .rds
-saveRDS(AldingerSubset_newUMAP, file = here("outputs", "SingleCellRDS", "Aldinger_newClusters_newUMAPv2_5k.rds"))
+saveRDS(AldingerSubset_newUMAP, file = file.path(RDS_path, "Aldinger_newClusters_newUMAPv2_5k.rds"))
 
 # =====================================================
 # Check key cell type markers via DotPlot
@@ -113,14 +120,14 @@ p3 <- DotPlot(
   ggtitle("High-Specificity Marker Expression by Cluster")
 
 # 1. Save Dotplot using CairoTIFF
-CairoTIFF(filename = here("outputs", "SingleCellPlots", "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.tiff"),
-          width = 10, height = 6, units = "in", res = 300)
+CairoTIFF(filename = file.path(plot_path, "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.tiff"),
+          width = 10, height = 6, units = "in", res = 600)
 print(p3)
 dev.off()
 
 # 2. Save Dotplot as PDF
 ggsave(
-  filename = here("outputs", "SingleCellPlots", "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.pdf"), 
+  filename = file.path(plot_path, "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.pdf"), 
   plot = p3, 
   width = 10, 
   height = 6,
