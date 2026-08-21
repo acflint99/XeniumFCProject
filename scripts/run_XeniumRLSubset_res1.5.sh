@@ -11,7 +11,7 @@
 # 1. Load Modules
 module purge
 module load rc-base
-module load R/4.4.0-foss-2022b
+module load R/4.4.1-foss-2023b
 
 # 2. Move into project directory (CRITICAL for here() and renv)
 cd ~/R/Projects/XeniumFCProject

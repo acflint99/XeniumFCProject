@@ -3,7 +3,6 @@ rm(list = ls())
 
 # load libraries
 library(Seurat)
-library(tidyverse)
 library(dplyr)
 library(patchwork)
 library(ggplot2)

@@ -3,7 +3,6 @@ rm(list = ls())
 
 # load libraries
 library(Seurat)
-library(tidyverse)
 library(dplyr)
 library(patchwork)
 library(jsonlite)
@@ -31,4 +30,3 @@ head(xenium_genes)
 
 saveRDS(xenium_genes, "/data/user/acflint/FC_published/Xenium/xenium_5k_genes.rds")
 writeLines(xenium_genes, "/data/user/acflint/FC_published/Xenium/xenium_5k_genes.txt")
-

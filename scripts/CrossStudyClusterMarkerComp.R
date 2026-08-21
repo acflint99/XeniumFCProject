@@ -3,7 +3,6 @@ rm(list = ls())
 
 # load libraries
 library(Seurat)
-library(tidyverse)
 library(dplyr)
 library(patchwork)
 library(ggplot2)
@@ -14,8 +13,6 @@ library(viridis)
 col_fun <- colorRamp2(c(0, 0.6), viridis(2))
 
 library(future)
-install.packages('devtools')
-devtools::install_github('immunogenomics/presto')
 
 Aldinger <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Aldinger_newClusters_newUMAPv2_5k.rds")
 Sepp <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Sepp_FC_newClusters_newUMAPv2_5k.rds")

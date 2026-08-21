@@ -3,8 +3,8 @@ rm(list = ls())
 
 # load libraries
 library(Seurat)
-library(tidyverse)
 library(dplyr)
+library(tibble)
 library(patchwork)
 library(ggplot2)
 library(pheatmap)
@@ -127,7 +127,6 @@ pheatmap(
   cluster_rows = FALSE,
   cluster_cols = FALSE
 )
-
 
 
 

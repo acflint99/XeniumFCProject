@@ -3,7 +3,6 @@ rm(list = ls())
 
 # load libraries
 library(Seurat)
-library(tidyverse)
 library(dplyr)
 library(patchwork)
 library(data.table)
@@ -82,5 +81,4 @@ Idents(obj_subset) <- obj_subset$figure_clusters
 DimPlot(obj_subset, reduction = "umap", group.by = "figure_clusters")
 
 saveRDS(obj_subset, "/data/user/acflint/FC_published/AldingerFC/Aldinger_seurat_updated.rds")
-
 
