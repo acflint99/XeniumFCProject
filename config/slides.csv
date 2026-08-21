@@ -1,0 +1,7 @@
+input_directory,input_layout,n_biological_samples,biological_samples,separation_method,notes
+GZFB_20_X_G_9__7__5,multi_sample_slide,3,GZFB_20_X_G_9|GZFB_20_X_G_7|GZFB_20_X_G_5,manual_cell_list,"Processed with the duo workflow"
+GZFB_22_X_G_4__2,multi_sample_slide,2,GZFB_22_X_G_4|GZFB_22_X_G_2,manual_cell_list,"Processed with the duo workflow"
+GZFB_22_X_G_5__3__1,multi_sample_slide,3,GZFB_22_X_G_5|GZFB_22_X_G_3|GZFB_22_X_G_1,manual_cell_list,"Processed with the duo workflow"
+GZFB_20_X_G_10__8__6,multi_sample_slide,3,GZFB_20_X_G_10|GZFB_20_X_G_8|GZFB_20_X_G_6,manual_cell_list,"Processed with the duo workflow"
+GZFB_12_X_G_5__GZFB_9_X_G_1,multi_sample_slide,2,GZFB_12_X_G_5|GZFB_9_X_G_1,manual_cell_list,"Processed with the duo workflow"
+GZFB_12_X_G_3__GZFB_12_X_G_4,multi_sample_slide,2,GZFB_12_X_G_3|GZFB_12_X_G_4,manual_cell_list,"Processed with the duo workflow"

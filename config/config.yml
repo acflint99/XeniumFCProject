@@ -1,0 +1,83 @@
+# Draft configuration inferred from the active scripts on 2026-08-21.
+# No analysis script reads this file yet.
+
+project:
+  name: "Fetal Cerebellum Xenium"
+  hpc_root: "/home/acflint/R/Projects/XeniumFCProject"
+  data_dir: "data/FCXeniumProject"
+  metadata_dir: "metadata"
+  outputs_dir: "outputs"
+  logs_dir: "logs"
+  scripts_dir: "scripts"
+
+manifests:
+  samples: "config/samples.csv"
+  slides: "config/slides.csv"
+  sample_metadata: "metadata/samples_meta.xlsx"
+
+runtime:
+  r_version: "4.4.1"
+  r_module: "R/4.4.1-foss-2023b"
+  random_seed: 42
+  future_globals_max_gb_default: 200
+  giotto_python: "/home/acflint/.conda/envs/giotto_env/bin/python"
+  spatrack_python: "/home/acflint/.conda/envs/spatrack_env/bin/python"
+
+inputs:
+  cerebellum_cell_stats_file: "cerebellum_cells_stats.csv"
+  xenium_panel_json_example: "/data/user/acflint/FCXeniumProject/FB124_X_G/gene_panel.json"
+  published_data_root: "/data/user/acflint/FC_published"
+  references:
+    aldinger: "outputs/SingleCellRDS/Aldinger_newClusters_newUMAPv2_5k.rds"
+    sepp: "outputs/SingleCellRDS/Sepp_FC_newClusters_newUMAPv2_5k.rds"
+    science: "outputs/SingleCellRDS/Science_newClusters_5k_UMAPv2.rds"
+
+qc:
+  mad_multiplier: 3
+  min_transcripts: 20
+  min_features: 10
+  min_cell_area: 15
+  upper_quantile: 0.99
+  max_control_percent: 5
+
+initial_clustering:
+  assay: "Xenium"
+  variable_features: 2000
+  pca_components: 50
+  dimensions: 50
+  neighbor_method: "annoy"
+  algorithm: 1
+  resolution: 1.5
+  iterations: 100
+
+label_transfer:
+  method: "rpca"
+  reference_identity: "clusters_refined"
+  variable_features: 3000
+  dimensions: 30
+  reference_cells_per_identity: 1000
+  prediction_score_threshold: 0.4
+  k_anchor: 20
+  k_score: 30
+
+regional_subsets:
+  vz_broad_labels:
+    - "Glia"
+    - "GABA"
+    - "Purkinje"
+    - "OPC"
+  rl_broad_labels:
+    - "RL"
+    - "Granule"
+    - "UBC"
+  integration_dimensions_default: 30
+  post_qc_dimensions_observed: 50
+  neighbor_k_post_qc: 30
+
+plotting:
+  tiff_device: "Cairo::CairoTIFF"
+  tiff_dpi: 600
+  tiff_compression: "none"
+  pdf_device: "grDevices::cairo_pdf"
+  pdf_for_umap: false
+  pdf_for_spatial: false
