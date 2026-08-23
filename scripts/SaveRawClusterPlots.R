@@ -17,7 +17,7 @@ global_cluster_plot <- ImageDimPlot(
   fov = "fov",
   group.by = "seurat_clusters",
   cols = cluster_colors,
-  size = 0.75,
+  size = 0.75
 ) + scale_y_reverse() +
   ggtitle(paste(sample_name, "- Raw Clusters"))
 
@@ -25,9 +25,9 @@ global_cluster_plot <- ImageDimPlot(
 global_cluster_plot$layers[[1]]$aes_params$stroke <- 0
 
 # Export Global Plot
-png_file_global <- file.path(here("outputs"), paste0(sample_name, "_GlobalRawClustersSpatialPlot.png"))
+tif_file_global <- file.path(here("outputs"), paste0(sample_name, "_GlobalRawClustersSpatialPlot.tif"))
 # We use a high res (300-600 DPI) for Xenium to keep the dots sharp
-png(png_file_global, width = 10, height = 10, units = "in", res = 300)
+Cairo::CairoTIFF(tif_file_global, width = 10, height = 10, units = "in", res = 600)
 print(global_cluster_plot)
 dev.off()
 
@@ -51,9 +51,9 @@ facet_cluster_plot <- ggplot(plot_data, aes(x = y, y = x, color = cluster)) +
 
 
 # Export Facet Plot
-png_file_facet <- file.path(here("outputs"), paste0(sample_name, "_FacetRawClustersSpatialPlot.png"))
-png(png_file_facet, width = 12, height = 10, units = "in", res = 300)
+tif_file_facet <- file.path(here("outputs"), paste0(sample_name, "_FacetRawClustersSpatialPlot.tif"))
+Cairo::CairoTIFF(tif_file_facet, width = 12, height = 10, units = "in", res = 600)
 print(facet_cluster_plot)
 dev.off()
 
-message("Saved spatial plots PNGs")
+message("Saved spatial plots as 600-DPI Cairo TIFFs")

@@ -308,8 +308,17 @@ p1 <- ggplot(plot_linear_data, aes(x = PCW_num, y = PI, color = Interaction_Labe
 
 file_name_purkinje <- paste0("Purkinje_Linear_Signaling_", target_network, "_LinePlot.tif")
 
-ggsave(file.path(plot_dir, file_name_purkinje), 
-       plot = p1, device = "tiff", width = 16, height = 12, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, file_name_purkinje),
+  width = 16,
+  height = 12,
+  units = "in",
+  res = 600
+)
+print(p1)
+grDevices::dev.off()
+ggplot2::ggsave(file.path(plot_dir, sub("\\.tif$", ".pdf", file_name_purkinje)), p1,
+                device = grDevices::cairo_pdf, width = 16, height = 12)
 
 # ==============================================================================
 # ANALYSIS E: GLOBAL LINEAR SIGNALING (ALL CELL TYPES)
@@ -363,8 +372,17 @@ p_global_linear <- ggplot(plot_global_linear_data, aes(x = PCW_num, y = PI, colo
 # 5. Save the plot
 file_name_global <- paste0("Global_Linear_Signaling_", target_network, "_LinePlot.tif")
 
-ggsave(file.path(plot_dir, file_name_global), 
-       plot = p_global_linear, device = "tiff", width = 16, height = 12, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, file_name_global),
+  width = 16,
+  height = 12,
+  units = "in",
+  res = 600
+)
+print(p_global_linear)
+grDevices::dev.off()
+ggplot2::ggsave(file.path(plot_dir, sub("\\.tif$", ".pdf", file_name_global)), p_global_linear,
+                device = grDevices::cairo_pdf, width = 16, height = 12)
 
 # ==============================================================================
 # ANALYSIS F: GRANULE-CENTRIC LINEAR SIGNALING
@@ -420,5 +438,14 @@ p_granule_linear <- ggplot(plot_granule_linear_data, aes(x = PCW_num, y = PI, co
 # 5. Save the plot
 file_name_granule <- paste0("Granule_Linear_Signaling_", target_network, "_LinePlot.tif")
 
-ggsave(file.path(plot_dir, file_name_granule), 
-       plot = p_granule_linear, device = "tiff", width = 16, height = 12, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, file_name_granule),
+  width = 16,
+  height = 12,
+  units = "in",
+  res = 600
+)
+print(p_granule_linear)
+grDevices::dev.off()
+ggplot2::ggsave(file.path(plot_dir, sub("\\.tif$", ".pdf", file_name_granule)), p_granule_linear,
+                device = grDevices::cairo_pdf, width = 16, height = 12)

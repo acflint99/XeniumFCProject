@@ -8,6 +8,7 @@ library(RColorBrewer)
 library(dplyr)
 library(tidyr)
 library(tibble)
+library(here)
 
 xen_path <- here("outputs", "XenAld_VZ_Res1.5_RDS", "Xenium_VZ_Res1.5_newSubclusters_3-28-26.rds")
 xenium_merged <- readRDS(xen_path)
@@ -81,8 +82,17 @@ p1 <- pheatmap(
   border_color = "white"
 )
 
-ggsave(filename = file.path(plot_dir, paste0("XenAld_VZ_CorrPlot.png")), 
-       p1, width = 10, height = 10, dpi = 300)
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, paste0("XenAld_VZ_CorrPlot.tif")),
+  width = 10,
+  height = 10,
+  units = "in",
+  res = 600
+)
+print(p1)
+grDevices::dev.off()
+ggplot2::ggsave(file.path(plot_dir, "XenAld_VZ_CorrPlot.pdf"), p1,
+                device = grDevices::cairo_pdf, width = 10, height = 10)
 
 # --- 4. Optional: Save the matrix ---
 # write.csv(cor_matrix, "Xenium_snRNAseq_correlation_matrix.csv")
@@ -130,8 +140,15 @@ for (clust in cluster_names) {
   
   # 4. Save or Print the plot
   print(p) 
-  ggsave(filename = file.path(plot_dir, paste0("XenAld_VZ_", clust, "_Sign_UMAP.png")), 
-         p, width = 10, height = 10, dpi = 300)
+  Cairo::CairoTIFF(
+    filename = file.path(plot_dir, paste0("XenAld_VZ_", clust, "_Sign_UMAP.tif")),
+    width = 10,
+    height = 10,
+    units = "in",
+    res = 600
+  )
+  print(p)
+  grDevices::dev.off()
 }
 
 # --- 5. Signature Heatmap (Module Score Comparison) ---
@@ -182,5 +199,14 @@ p_sig <- pheatmap(
 )
 
 # Save the plot
-ggsave(filename = file.path(plot_dir, "XenAld_VZ_Signature_Heatmap.png"), 
-       plot = p_sig, width = 12, height = 10, dpi = 300)
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, "XenAld_VZ_Signature_Heatmap.tif"),
+  width = 12,
+  height = 10,
+  units = "in",
+  res = 600
+)
+print(p_sig)
+grDevices::dev.off()
+ggplot2::ggsave(file.path(plot_dir, "XenAld_VZ_Signature_Heatmap.pdf"), p_sig,
+                device = grDevices::cairo_pdf, width = 12, height = 10)

@@ -137,13 +137,29 @@ if (exists("master_subcluster_order") && "comb_subcluster" %in% colnames(obj@met
 # Generate the Plots
 p1 <- DimPlot(obj, reduction = "umap.harmony", group.by = "sample_id", raster = TRUE) + 
   ggtitle("Integrated by Sample")
-ggsave(file.path(plot_dir, "XenAld_VZ_RL_Subclusters_Spatial_Merged_SampleID_UMAP.png"), p1, width = 14, height = 14)
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, "XenAld_VZ_RL_Subclusters_Spatial_Merged_SampleID_UMAP.tif"),
+  width = 14,
+  height = 14,
+  units = "in",
+  res = 600
+)
+print(p1)
+grDevices::dev.off()
 
 if ("cluster_weighted" %in% colnames(obj@meta.data) && exists("cluster_colors")) {
   p2 <- DimPlot(obj, reduction = "umap.harmony", group.by = "cluster_weighted", label = TRUE, raster = TRUE) + 
     scale_color_manual(values = cluster_colors) + 
     ggtitle("Integrated: Broad Clusters")
-  ggsave(file.path(plot_dir, "XenAld_VZ_RL_Subclusters_Spatial_Merged_BroadClusters_UMAPs2.png"), p2, width = 14, height = 14)
+  Cairo::CairoTIFF(
+    filename = file.path(plot_dir, "XenAld_VZ_RL_Subclusters_Spatial_Merged_BroadClusters_UMAPs2.tif"),
+    width = 14,
+    height = 14,
+    units = "in",
+    res = 600
+  )
+  print(p2)
+  grDevices::dev.off()
 }
 
 if ("comb_subcluster" %in% colnames(obj@meta.data) && exists("subcluster_palette")) {
@@ -163,7 +179,15 @@ if ("comb_subcluster" %in% colnames(obj@meta.data) && exists("subcluster_palette
       legend.key.size = unit(0.5, "cm")     
     ) +
     guides(color = guide_legend(ncol = 1, override.aes = list(size = 5)))
-  ggsave(file.path(plot_dir, "XenAld_VZ_RL_Subclusters_Spatial_Merged_Subclusters_UMAP2.png"), p3, width = 14, height = 14)
+  Cairo::CairoTIFF(
+    filename = file.path(plot_dir, "XenAld_VZ_RL_Subclusters_Spatial_Merged_Subclusters_UMAP2.tif"),
+    width = 14,
+    height = 14,
+    units = "in",
+    res = 600
+  )
+  print(p3)
+  grDevices::dev.off()
 }
 
 # --- 10. Save ---

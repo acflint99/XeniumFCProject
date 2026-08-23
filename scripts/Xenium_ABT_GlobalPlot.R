@@ -47,15 +47,16 @@ for (sample_name in sample_list) {
       ggtitle(paste(sample_name, "(Weighted)"))
     
     # Save with a specific background color to ensure ggsave doesn't add white
-    ggsave(
-      filename = file.path(output_dir, paste0(sample_name, "_GlobalSpatial_plot0.75.png")), 
-      plot = p_wei,
+    Cairo::CairoTIFF(
+      filename = file.path(output_dir, paste0(sample_name, "_GlobalSpatial_plot0.75.tif")),
       width = 12,
       height = 10,
       units = "in",
-      dpi = 300,
-      bg = "black"  # Forces the saved file background to be black
+      res = 600,
+      bg = "black"
     )
+    print(p_wei)
+    grDevices::dev.off()
     
     # Clean up memory (optional but recommended for large Xenium objects)
     rm(xenium_obj)

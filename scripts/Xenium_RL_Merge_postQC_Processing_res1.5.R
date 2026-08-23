@@ -80,8 +80,15 @@ p1 <- DimPlot(obj,
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
 
-ggsave(filename = file.path(plot_path, paste0("XenAld_RL_PostQC_OrigCluster_UMAP.tif")), 
-       plot = p1, device = "tiff", width = 10, height = 8, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_path, paste0("XenAld_RL_PostQC_OrigCluster_UMAP.tif")),
+  width = 10,
+  height = 8,
+  units = "in",
+  res = 600
+)
+print(p1)
+grDevices::dev.off()
 
 # Now loop only for sorting and plotting
 for(res in res_list) {
@@ -111,8 +118,15 @@ for(res in res_list) {
     theme_classic() +
     theme(plot.title = element_text(hjust = 0.5, face = "bold"))
   
-  ggsave(filename = file.path(plot_path, paste0("XenAld_RL_PostQC_UMAP_Res_", res, ".tif")), 
-         plot = p, device = "tiff", width = 10, height = 8, dpi = 600, compression = "lzw")
+  Cairo::CairoTIFF(
+    filename = file.path(plot_path, paste0("XenAld_RL_PostQC_UMAP_Res_", res, ".tif")),
+    width = 10,
+    height = 8,
+    units = "in",
+    res = 600
+  )
+  print(p)
+  grDevices::dev.off()
   
   rm(p)
   gc()

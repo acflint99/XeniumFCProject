@@ -105,7 +105,16 @@ p <- ggplot(plot_df, aes(x = PCW_num, y = relative_percent, fill = cluster_weigh
     axis.text = element_text(color = "black")
   )
 
-tiff(filename = here(plot_dir, paste0("XenAldingerABT_res1.5_ClusterPropPlot.tif")), 
-     width = 10, height = 6, units = "in", res = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = here(plot_dir, "XenAldingerABT_res1.5_ClusterPropPlot.tif"),
+  width = 10,
+  height = 6,
+  units = "in",
+  res = 600
+)
 print(p)
-dev.off()
+grDevices::dev.off()
+ggplot2::ggsave(
+  filename = here(plot_dir, "XenAldingerABT_res1.5_ClusterPropPlot.pdf"),
+  plot = p, device = grDevices::cairo_pdf, width = 10, height = 6
+)

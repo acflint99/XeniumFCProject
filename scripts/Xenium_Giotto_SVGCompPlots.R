@@ -120,5 +120,14 @@ p_spatial_decay <- ggplot(plot_svg_data, aes(x = Axis_Pos, y = log10_pval, color
   scale_color_manual(values = c("Sample A (5-Slide)" = "steelblue", "Sample B (3-Slide)" = "darkorange"))
 
 # 5. Save the plot as TIFF
-ggsave(file.path(plot_dir, "GlobalComp_SVG_LinePlot.tif"), 
-       plot = p_spatial_decay, device = "tiff", width = 16, height = 12, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, "GlobalComp_SVG_LinePlot.tif"),
+  width = 16,
+  height = 12,
+  units = "in",
+  res = 600
+)
+print(p_spatial_decay)
+grDevices::dev.off()
+ggplot2::ggsave(file.path(plot_dir, "GlobalComp_SVG_LinePlot.pdf"), p_spatial_decay,
+                device = grDevices::cairo_pdf, width = 16, height = 12)

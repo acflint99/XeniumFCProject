@@ -110,7 +110,7 @@ rl_subcluster_order <- c(
   "Intermediate Progenitors", "Immature UBCs", "Mature UBCs",
   "Prolif GCPs", "Maturing GCPs",
   "Differentiating GCs", "Migrating GCs", "Mature GCs",
-  "BG", "Ependymal Cells", "Maturing PCs" #"RG Progenitors", 
+  "BG", "Ependymal Cells", "Maturing PCs" #"RG Progenitors"
 )
 
 rl_palette <- c(

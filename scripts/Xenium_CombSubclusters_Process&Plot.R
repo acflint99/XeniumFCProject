@@ -64,7 +64,15 @@ p1 <- DimPlot(merged_obj, reduction = "umap.unintegrated", group.by = "orig.iden
 p2 <- DimPlot(merged_obj, reduction = "umap.harmony", group.by = "orig.ident", raster = TRUE) + 
   ggtitle("Post-Harmony (Harmony UMAP)")
 
-ggsave(filename = file.path(plot_dir, "XenAld_Batch_Comp_UMAP.tif"), plot = p1 + p2, device = "tiff", width = 16, height = 7, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, "XenAld_Batch_Comp_UMAP.tif"),
+  width = 16,
+  height = 7,
+  units = "in",
+  res = 600
+)
+print(p1 + p2)
+grDevices::dev.off()
 
 # 2. Generate the Plot
 p_orig <- DimPlot(merged_obj, 
@@ -86,8 +94,15 @@ p_orig <- DimPlot(merged_obj,
   )
 
 # 3. Save the Plot
-ggsave(filename = file.path(plot_dir, "XenAld_Merged_OrigClusterWeighted_UMAP.tif"), 
-       plot = p_orig, device = "tiff", width = 12, height = 9, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, "XenAld_Merged_OrigClusterWeighted_UMAP.tif"),
+  width = 12,
+  height = 9,
+  units = "in",
+  res = 600
+)
+print(p_orig)
+grDevices::dev.off()
 
 # Filter markers to only those present in the Xenium assay
 existing_markers <- lapply(markers, function(x) intersect(x, rownames(merged_obj)))
@@ -103,8 +118,17 @@ p5 <- DotPlot(merged_obj, features = existing_markers, assay = "Xenium") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
   ggtitle("Xenium Merged Marker Expression (LogNorm)")
 
-ggsave(filename = file.path(plot_dir, "XenAld_Merged_cluster_weighted_DotPlot_markers.tif"), 
-       plot = p5, device = "tiff", width = 14, height = 6, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, "XenAld_Merged_cluster_weighted_DotPlot_markers.tif"),
+  width = 14,
+  height = 6,
+  units = "in",
+  res = 600
+)
+print(p5)
+grDevices::dev.off()
+ggplot2::ggsave(file.path(plot_dir, "XenAld_Merged_cluster_weighted_DotPlot_markers.pdf"), p5,
+                device = grDevices::cairo_pdf, width = 14, height = 6)
 
 
 # 1. Define the Purkinje Cell clusters and your markers of interest
@@ -146,15 +170,17 @@ p_pc_dots <- DotPlot(
   ggtitle("Purkinje Cell Lineage Marker Expression")
 
 # 6. Save the plot
-ggsave(
-  filename = file.path(plot_dir, "XenAld_Purkinje_Specific_DotPlot.tif"), 
-  plot = p_pc_dots, 
-  device = "tiff",
-  width = 8, 
-  height = 5, 
-  dpi = 600,
-  compression = "lzw"
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, "XenAld_Purkinje_Specific_DotPlot.tif"),
+  width = 8,
+  height = 5,
+  units = "in",
+  res = 600
 )
+print(p_pc_dots)
+grDevices::dev.off()
+ggplot2::ggsave(file.path(plot_dir, "XenAld_Purkinje_Specific_DotPlot.pdf"), p_pc_dots,
+                device = grDevices::cairo_pdf, width = 8, height = 5)
 
 # ----------------------------------------------------------------                
 # 6. GENERATE TOP 5 MARKERS HEATMAP
@@ -222,16 +248,21 @@ p4 <- DoHeatmap(
   ggtitle("Top 5 Markers per Cluster")
 
 # 4. SAVE AS PDF
-ggsave(
+ggplot2::ggsave(
   file.path(plot_dir, paste0("XenAld_Merged_Cluster_Top5_Heatmap.pdf")), 
-  p4, width = 14, height = 12, device = "pdf", useDingbats = FALSE
+  p4, width = 14, height = 12, device = grDevices::cairo_pdf, useDingbats = FALSE
 )
 
 # 5. Save the Heatmap
-ggsave(
-  file.path(plot_dir, paste0("XenAld_Merged_Cluster_Top5_Heatmap.tif")), 
-  p4, device = "tiff", width = 14, height = 12, dpi = 600, compression = "lzw"
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, paste0("XenAld_Merged_Cluster_Top5_Heatmap.tif")),
+  width = 14,
+  height = 12,
+  units = "in",
+  res = 600
 )
+print(p4)
+grDevices::dev.off()
 
 
 # ==============================================================================
@@ -260,12 +291,14 @@ p_kit_vln <- VlnPlot(
 )
 
 # 4. Save the plot
-ggsave(
-  filename = file.path(plot_dir, "XenAld_Signaling_Genes_dual_VlnPlot.tif"), 
-  plot = p_kit_vln, 
-  device = "tiff",
-  width = 20, 
-  height = 20, 
-  dpi = 600,
-  compression = "lzw"
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, "XenAld_Signaling_Genes_dual_VlnPlot.tif"),
+  width = 20,
+  height = 20,
+  units = "in",
+  res = 600
 )
+print(p_kit_vln)
+grDevices::dev.off()
+ggplot2::ggsave(file.path(plot_dir, "XenAld_Signaling_Genes_dual_VlnPlot.pdf"), p_kit_vln,
+                device = grDevices::cairo_pdf, width = 20, height = 20)

@@ -96,8 +96,20 @@ for (set_name in names(cluster_sets)) {
     )
   
   # Save
-  file_name <- paste0("XenAld_CombVZ&RL_", set_name, "_ClusterCountPlot.png")
-  ggsave(file.path(plot_out_dir, file_name), p, width = 10, height = 6, dpi = 300)
+  file_name <- paste0("XenAld_CombVZ&RL_", set_name, "_ClusterCountPlot.tif")
+  Cairo::CairoTIFF(
+    filename = file.path(plot_out_dir, file_name),
+    width = 10,
+    height = 6,
+    units = "in",
+    res = 600
+  )
+  print(p)
+  grDevices::dev.off()
+  ggplot2::ggsave(
+    file.path(plot_out_dir, sub("\\.tif$", ".pdf", file_name)),
+    p, device = grDevices::cairo_pdf, width = 10, height = 6
+  )
   
   message("Saved plot: ", file_name)
 }

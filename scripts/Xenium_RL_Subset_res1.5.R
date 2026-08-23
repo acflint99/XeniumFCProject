@@ -15,7 +15,7 @@ samples <- c(
   "GZFB_12_X_G_1", "GZFB_12_X_G_2", "GZFB_12_X_G_3",
   #"FB78_X_G",  "GZFB_1_X_G", 
   "GZFB_12_X_G_4", "GZFB_12_X_G_5", "GZFB_9_X_G_3"
-  #"GZFB_9_X_G_1", "GZFB_9_X_G_2", 
+  #"GZFB_9_X_G_1", "GZFB_9_X_G_2"
 )
 
 current_sample <- samples[task_id]

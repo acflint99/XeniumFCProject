@@ -40,15 +40,29 @@ vz_obj <- RunUMAP(vz_obj, reduction = "pca", dims = 1:30,
 
 p1 <- DimPlot(vz_obj, reduction = "umap_uncorrected", group.by = "clusters_refined")
 
-ggsave(filename = file.path(plot_dir, paste0("Sepp_VZ_VZClusterUMAP.png")), 
-       p1, width = 10, height = 10, dpi = 300)
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, paste0("Sepp_VZ_VZClusterUMAP.tif")),
+  width = 10,
+  height = 10,
+  units = "in",
+  res = 600
+)
+print(p1)
+grDevices::dev.off()
 
 vz_obj <- FindClusters(vz_obj, resolution = 0.8, verbose = TRUE)
 
 p2 <- DimPlot(vz_obj, reduction = "umap_uncorrected", group.by = "RNA_snn_res.0.8")
 
-ggsave(filename = file.path(plot_dir, paste0("Sepp_VZ_RawCluster_UMAP_Res_0.8.png")), 
-       p2, width = 10, height = 10, dpi = 300)
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, paste0("Sepp_VZ_RawCluster_UMAP_Res_0.8.tif")),
+  width = 10,
+  height = 10,
+  units = "in",
+  res = 600
+)
+print(p2)
+grDevices::dev.off()
 
 output_path <- file.path(rds_dir, "Sepp_VZ_4126.rds")
 saveRDS(vz_obj, output_path, compress = FALSE)

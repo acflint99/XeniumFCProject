@@ -67,16 +67,16 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
         plot.margin = margin(0, 0, 0, 0, "pt")
       )
     
-    ggsave(
+    Cairo::CairoTIFF(
       filename = file.path(sample_plot_dir, filename),
-      plot = p,
-      device = "tiff",
       width = 10,
       height = 8,
-      dpi = 600,
-      bg = "black",
-      compression = "lzw"
+      units = "in",
+      res = 600,
+      bg = "black"
     )
+    print(p)
+    grDevices::dev.off()
   }
   
   
@@ -92,8 +92,15 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
                            na.value = alpha("gray20", 0.3)) +
     ggtitle(paste(sample_id, "RL Subclusters"))
   
-  ggsave(file.path(sample_plot_dir, paste0(sample_id, "_Global_Spatial2.tif")),
-         plot = p_global, device = "tiff", width = 10, height = 8, dpi = 600, compression = "lzw")
+  Cairo::CairoTIFF(
+    filename = file.path(sample_plot_dir, paste0(sample_id, "_Global_Spatial2.tif")),
+    width = 10,
+    height = 8,
+    units = "in",
+    res = 600
+  )
+  print(p_global)
+  grDevices::dev.off()
   
   # B. Group Highlights
   save_highlight(obj, c("RL VZ", "RL SVZ"),
@@ -127,8 +134,15 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
       plot.margin = margin(10, 10, 10, 10)
     )
   
-  ggsave(file.path(sample_plot_dir, paste0(sample_id, "_Faceted_Clusters0.3.tif")), 
-         plot = p_facet, device = "tiff", width = 15, height = 10, dpi = 600, compression = "lzw")
+  Cairo::CairoTIFF(
+    filename = file.path(sample_plot_dir, paste0(sample_id, "_Faceted_Clusters0.3.tif")),
+    width = 15,
+    height = 10,
+    units = "in",
+    res = 600
+  )
+  print(p_facet)
+  grDevices::dev.off()
   
   # D. Marker DotPlot
   rev_levels <- factor(as.character(obj$RL_subcluster), levels = rev(rl_subcluster_order))
@@ -145,8 +159,19 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
           axis.text.y = element_text(size = 10, face = "bold")) +
     ggtitle(paste(sample_id, "RL Markers"))
   
-  ggsave(file.path(sample_plot_dir, paste0(sample_id, "_Markers_DotPlot.tif")),
-         plot = p_dot, device = "tiff", width = 12, height = 7, dpi = 600, compression = "lzw")
+  Cairo::CairoTIFF(
+    filename = file.path(sample_plot_dir, paste0(sample_id, "_Markers_DotPlot.tif")),
+    width = 12,
+    height = 7,
+    units = "in",
+    res = 600
+  )
+  print(p_dot)
+  grDevices::dev.off()
+  ggplot2::ggsave(
+    file.path(sample_plot_dir, paste0(sample_id, "_Markers_DotPlot.pdf")),
+    plot = p_dot, device = grDevices::cairo_pdf, width = 12, height = 7
+  )
   
   # Clean up memory
   message(paste("Finished sample:", sample_id))

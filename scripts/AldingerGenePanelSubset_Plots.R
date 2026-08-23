@@ -37,10 +37,15 @@ validate_palette(unique(AldingerSubset_newUMAP$clusters_refined))
 
 p2 <- DimPlot(AldingerSubset_newUMAP, reduction = "umap", group.by = "clusters_refined", cols = cluster_colors)
 p2
-png(filename = here("outputs", "SingleCellPlots", "AldingerUMAP_newClusters_5k_newUMAP50v2.png"), 
-    width = 7, height = 6, units = "in", res = 300)
+Cairo::CairoTIFF(
+  filename = here("outputs", "SingleCellPlots", "AldingerUMAP_newClusters_5k_newUMAP50v2.tif"),
+  width = 7,
+  height = 6,
+  units = "in",
+  res = 600
+)
 print(p2)
-dev.off()
+grDevices::dev.off()
 
 
 # --- check key cell type markers ---
@@ -66,10 +71,19 @@ p3 <- DotPlot(
   ggtitle("High-Specificity Marker Expression by Cluster")
 
 p3
-png(filename = here("outputs", "SingleCellPlots", "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.png"), 
-    width = 14, height = 6, units = "in", res = 300)
+Cairo::CairoTIFF(
+  filename = here("outputs", "SingleCellPlots", "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.tif"),
+  width = 14,
+  height = 6,
+  units = "in",
+  res = 600
+)
 print(p3)
-dev.off()
+grDevices::dev.off()
+ggplot2::ggsave(
+  filename = here("outputs", "SingleCellPlots", "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.pdf"),
+  plot = p3, device = grDevices::cairo_pdf, width = 14, height = 6
+)
 
 #### --- Proportion Plot: clusters_refined by PCW --- ####
 target_clusters <- c("RL", "UBC", "Granule", "Purkinje", "GABA") 
@@ -102,7 +116,16 @@ p4 <- ggplot(prop_data, aes(x = age, y = percent, fill = clusters_refined)) +
 
 # Show and Save
 p4
-png(filename = here("outputs", "SingleCellPlots", "AldingerBarPlot_newClusters_5k_newUMAP50v2_rmPCW16PCW21_prop.png"), 
-    width = 8, height = 6, units = "in", res = 300)
+Cairo::CairoTIFF(
+  filename = here("outputs", "SingleCellPlots", "AldingerBarPlot_newClusters_5k_newUMAP50v2_rmPCW16PCW21_prop.tif"),
+  width = 8,
+  height = 6,
+  units = "in",
+  res = 600
+)
 print(p4)
-dev.off()
+grDevices::dev.off()
+ggplot2::ggsave(
+  filename = here("outputs", "SingleCellPlots", "AldingerBarPlot_newClusters_5k_newUMAP50v2_rmPCW16PCW21_prop.pdf"),
+  plot = p4, device = grDevices::cairo_pdf, width = 8, height = 6
+)

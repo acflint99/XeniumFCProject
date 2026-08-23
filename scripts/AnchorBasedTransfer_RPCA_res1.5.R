@@ -261,7 +261,7 @@ annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "
   CairoTIFF(here(plots_dir, paste0(sample_name, "_Broad_PredictionScores_Hist.tif")), width = 6, height = 4, units = "in", res = 600)
   print(p_hist)
   dev.off()
-  ggsave(here(plots_dir, paste0(sample_name, "_Broad_PredictionScores_Hist.pdf")), p_hist, device = "pdf", width = 6, height = 4)
+  ggplot2::ggsave(here(plots_dir, paste0(sample_name, "_Broad_PredictionScores_Hist.pdf")), p_hist, device = grDevices::cairo_pdf, width = 6, height = 4)
   
   # --- Spatial Plots ---
   p_wei <- ImageDimPlot(xenium_obj, group.by = "cluster_weighted", size = 0.75, cols = cluster_colors) + 
@@ -317,7 +317,7 @@ annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "
   CairoTIFF(here(plots_dir, paste0(sample_name, "_Broad_Marker_DotPlot_Weighted.tif")), width = 10, height = 6, units = "in", res = 600)
   print(p_dot_wei)
   dev.off()
-  ggsave(here(plots_dir, paste0(sample_name, "_Broad_Marker_DotPlot_Weighted.pdf")), p_dot_wei, device = "pdf", width = 10, height = 6)
+  ggplot2::ggsave(here(plots_dir, paste0(sample_name, "_Broad_Marker_DotPlot_Weighted.pdf")), p_dot_wei, device = grDevices::cairo_pdf, width = 10, height = 6)
   
   # Majority DotPlot
   Idents(xenium_obj) <- factor(xenium_obj$cluster_majority, levels = rev(celltype_order))
@@ -328,7 +328,7 @@ annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "
   CairoTIFF(here(plots_dir, paste0(sample_name, "_Broad_Marker_DotPlot_Majority.tif")), width = 10, height = 6, units = "in", res = 600)
   print(p_dot_maj)
   dev.off()
-  ggsave(here(plots_dir, paste0(sample_name, "_Broad_Marker_DotPlot_Majority.pdf")), p_dot_maj, device = "pdf", width = 10, height = 6)
+  ggplot2::ggsave(here(plots_dir, paste0(sample_name, "_Broad_Marker_DotPlot_Majority.pdf")), p_dot_maj, device = grDevices::cairo_pdf, width = 10, height = 6)
   
   ## ----------------------------
   ## 6. Save & Return

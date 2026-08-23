@@ -106,8 +106,8 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
     fov = "fov",
     group.by = "seurat_clusters",
     cols = cluster_colors,
-    size = 0.75,
-  ) +
+    size = 0.75
+) +
     ggtitle(paste(sample_name, "- Raw Clusters"))
   
   # This line removes the stroke from the actual points in the plot

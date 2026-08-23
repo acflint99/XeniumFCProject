@@ -126,4 +126,4 @@ CairoTIFF(filename = file.path(plot_path, "SeppDotPlot_FC_newClusters_5k_newUMAP
 print(p3)
 dev.off()
 
-ggsave(filename = file.path(plot_path, "SeppDotPlot_FC_newClusters_5k_newUMAP50v2_markers.pdf"), plot = p3, width = 10, height = 6)
+ggplot2::ggsave(filename = file.path(plot_path, "SeppDotPlot_FC_newClusters_5k_newUMAP50v2_markers.pdf"), plot = p3, device = grDevices::cairo_pdf, width = 10, height = 6)

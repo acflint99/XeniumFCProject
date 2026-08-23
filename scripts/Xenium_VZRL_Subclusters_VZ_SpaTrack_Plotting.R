@@ -83,7 +83,15 @@ p1 <- FeaturePlot(vz_obj, features = "VZ_ptime", reduction = "umap.vz", raster =
   scale_color_viridis_c(option = "magma", na.value = "lightgrey") +
   ggtitle("Ventricular Zone Lineage: Pseudotime Trajectory")
 
-ggsave(file.path(plot_out_dir, "VZ_Lineage_UMAP_Pseudotime.png"), p1, width = 10, height = 10)
+Cairo::CairoTIFF(
+  filename = file.path(plot_out_dir, "VZ_Lineage_UMAP_Pseudotime.tif"),
+  width = 10,
+  height = 10,
+  units = "in",
+  res = 600
+)
+print(p1)
+grDevices::dev.off()
 
 # --- 5B. Spatial Feature Plot (The Safe Way) ---
 sample_to_plot <- "FB124_X_G"
@@ -108,7 +116,15 @@ p2 <- SpatialFeaturePlot(raw_obj, features = "VZ_ptime", pt.size.factor = 1.5) +
   scale_fill_viridis_c(option = "magma", na.value = "black") +
   ggtitle(paste("Spatial Pseudotime:", sample_to_plot))
 
-ggsave(file.path(plot_out_dir, paste0(sample_to_plot, "_Spatial_Pseudotime.png")), p2, width = 10, height = 10)
+Cairo::CairoTIFF(
+  filename = file.path(plot_out_dir, paste0(sample_to_plot, "_Spatial_Pseudotime.tif")),
+  width = 10,
+  height = 10,
+  units = "in",
+  res = 600
+)
+print(p2)
+grDevices::dev.off()
 
 # Clean up
 rm(raw_obj)

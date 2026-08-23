@@ -68,10 +68,21 @@ for (set_name in names(cluster_sets)) {
     theme(panel.grid = element_blank(), axis.text = element_text(color = "black"))
   
   # Save with a dynamic filename based on the set_name
-  file_name <- paste0("XenAld_VZ_", set_name, "_ClusterCountPlot.png")
+  file_name <- paste0("XenAld_VZ_", set_name, "_ClusterCountPlot.tif")
   
-  ggsave(here("outputs", "XenAld_VZ_Subclusters_Res1.5_Plots", file_name), 
-         p, width = 10, height = 6, dpi = 300)
+  Cairo::CairoTIFF(
+    filename = here("outputs", "XenAld_VZ_Subclusters_Res1.5_Plots", file_name),
+    width = 10,
+    height = 6,
+    units = "in",
+    res = 600
+  )
+  print(p)
+  grDevices::dev.off()
+  ggplot2::ggsave(
+    here("outputs", "XenAld_VZ_Subclusters_Res1.5_Plots", sub("\\.tif$", ".pdf", file_name)),
+    p, device = grDevices::cairo_pdf, width = 10, height = 6
+  )
   
   message(paste("Successfully saved plot for:", set_name))
 }

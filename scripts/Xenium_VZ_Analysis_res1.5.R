@@ -178,8 +178,15 @@ p <- DimPlot(obj,
   ggtitle("Xenium Merged VZ Subclusters") +
   theme(legend.text = element_text(size = 8))
 
-ggsave(file.path(plot_path, paste0("XenAld_VZ_Subcluster_UMAP.tif")), 
-       p, device = "tiff", width = 12, height = 9, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_path, paste0("XenAld_VZ_Subcluster_UMAP.tif")),
+  width = 12,
+  height = 9,
+  units = "in",
+  res = 600
+)
+print(p)
+grDevices::dev.off()
 
 # 4. UMAP WITH "Other" Clusters removed
 # Define the clusters you want to REMOVE
@@ -199,8 +206,15 @@ p2 <- DimPlot(obj_subset,
   ggtitle("Xenium Merged VZ Subclusters (Filtered)") +
   theme(legend.text = element_text(size = 8))
 
-ggsave(file.path(plot_path, paste0("XenAld_VZ_Subcluster_rmGCP,eCN,Cyc_UMAP.tif")), 
-       p2, device = "tiff", width = 12, height = 9, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_path, paste0("XenAld_VZ_Subcluster_rmGCP,eCN,Cyc_UMAP.tif")),
+  width = 12,
+  height = 9,
+  units = "in",
+  res = 600
+)
+print(p2)
+grDevices::dev.off()
 
 rm(obj_subset)
 
@@ -225,8 +239,19 @@ p1 <- DotPlot(obj,
   ) +
   ggtitle("Xenium Merged VZ Subcluster Markers")
 
-ggsave(file.path(plot_path, paste0("XenAld_VZ_SubclusterMarker_DotPlot.tif")), 
-       p1, device = "tiff", width = 12, height = 8, dpi = 600, compression = "lzw")
+Cairo::CairoTIFF(
+  filename = file.path(plot_path, paste0("XenAld_VZ_SubclusterMarker_DotPlot.tif")),
+  width = 12,
+  height = 8,
+  units = "in",
+  res = 600
+)
+print(p1)
+grDevices::dev.off()
+ggplot2::ggsave(
+  file.path(plot_path, "XenAld_VZ_SubclusterMarker_DotPlot.pdf"),
+  p1, device = grDevices::cairo_pdf, width = 12, height = 8
+)
 
 # ----------------------------------------------------------------              
 # 6. GENERATE TOP 5 MARKERS HEATMAP
@@ -280,16 +305,21 @@ p4 <- DoHeatmap(
   ggtitle("Top 5 Markers per VZ Subcluster")
 
 # 4. SAVE AS PDF
-ggsave(
+ggplot2::ggsave(
   file.path(plot_path, paste0("XenAld_VZ_Subcluster_Top5_Heatmap.pdf")), 
-  p4, width = 14, height = 12, device = "pdf", useDingbats = FALSE
+  p4, width = 14, height = 12, device = grDevices::cairo_pdf, useDingbats = FALSE
 )
 
 # 5. Save the Heatmap
-ggsave(
-  file.path(plot_path, paste0("XenAld_VZ_Subcluster_Top5_Heatmap.tif")), 
-  p4, device = "tiff", width = 14, height = 12, dpi = 600, compression = "lzw"
+Cairo::CairoTIFF(
+  filename = file.path(plot_path, paste0("XenAld_VZ_Subcluster_Top5_Heatmap.tif")),
+  width = 14,
+  height = 12,
+  units = "in",
+  res = 600
 )
+print(p4)
+grDevices::dev.off()
 
 check_mem("HEATMAP COMPLETE")
 

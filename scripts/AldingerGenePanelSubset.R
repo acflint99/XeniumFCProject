@@ -126,10 +126,10 @@ print(p3)
 dev.off()
 
 # 2. Save Dotplot as PDF
-ggsave(
+ggplot2::ggsave(
   filename = file.path(plot_path, "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.pdf"), 
   plot = p3, 
   width = 10, 
   height = 6,
-  device = "pdf"
+  device = grDevices::cairo_pdf
 )
