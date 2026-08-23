@@ -8,10 +8,14 @@ XeniumCropCerebellum <- function(sample_name,
                                  segmentations = "cell",
                                  flip_xy = TRUE,
                                  cell_stat_file = "cerebellum_cells_stats.csv",
-                                 output_folder = "outputs") {
+                                 output_folder = "outputs",
+                                 input_directory = sample_name,
+                                 sample_path = NULL) {
   
   # ---- 1. Validate paths FIRST ----
-  sample_path <- here("data", "FCXeniumProject", sample_name)
+  if (is.null(sample_path)) {
+    sample_path <- here("data", "FCXeniumProject", input_directory)
+  }
   
   if (!dir.exists(sample_path)) {
     stop("Sample folder does not exist: ", sample_path)

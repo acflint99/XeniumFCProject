@@ -120,7 +120,10 @@ The corresponding `run_*GenePanelSubset.slurm` files submit the panel-subsetting
 - saves a cropped spatial feature plot; and
 - writes `<sample>_CB.rds` to `outputs/XeniumRDS/`.
 
-`XeniumCropCerebellum_duo.R` is a special-case version for combined/duo sample directories.
+For combined-slide data, `XeniumCropCerebellum.R` accepts the shared input
+directory and sample-specific cell-stat CSV separately. The manifest-driven
+`XeniumPreProcess_split_slides.R` driver uses this interface automatically.
+`XeniumCropCerebellum_duo.R` remains as the earlier manual version.
 
 `XeniumQC.R` calculates:
 
@@ -145,7 +148,9 @@ There are separate driver variants for different resource strategies:
 - `XeniumPreProcess.R` – configurable primary driver;
 - `XeniumPreProcess_parallel.R` – multisample parallel processing;
 - `XeniumPreProcess_seq.R` – one-sample sequential processing;
-- `XeniumPreProcess_seq_duo.R` – sequential processing for combined/duo input.
+- `XeniumPreProcess_seq_duo.R` – earlier manual combined-slide driver; and
+- `XeniumPreProcess_split_slides.R` – manifest-driven Slurm-array driver for
+  all manually separated biological samples.
 
 ### 4. Initial normalization and clustering
 
@@ -306,6 +311,26 @@ On the configured cluster, submit the matching launcher:
 sbatch scripts/run_XeniumVZSubset_res1.5.sh
 ```
 
+To inspect the split-slide task mapping and dry-run one task:
+
+```bash
+Rscript scripts/XeniumPreProcess_split_slides.R --list
+Rscript scripts/XeniumPreProcess_split_slides.R --dry-run 1
+```
+
+To submit all tasks after reviewing the dry runs:
+
+```bash
+sbatch scripts/run_XeniumPreProcess_split_slides.sh
+```
+
+The launcher submits 15 tasks and runs at most three concurrently. Each task
+processes one biological sample using its shared slide directory and unique
+cell-stat CSV from `config/samples.csv`. The driver stops if any expected
+output already exists. An intentional rerun requires the explicit
+`--overwrite` option, or `SPLIT_PREPROCESS_OVERWRITE=true` when submitting the
+launcher.
+
 Before submission, verify:
 
 1. the uncommented R sample list;
@@ -324,7 +349,8 @@ Most outputs are written beneath `outputs/` in stage-specific directories. Commo
   TIFF compression behavior);
 - Cairo PDF companions for histograms, dot plots, bar graphs, and other
   non-spatial graphs;
-- TIFF-only output for UMAPs and spatial plots;
+- TIFF-only output for UMAPs and spatial plots, except for spatial QC pages
+  retained in the combined QC PDF report;
 - CSV marker, QC, spatial-gene, and comparison tables;
 - Giotto objects and interaction statistics in `.rds` format; and
 - AnnData `.h5ad` files for Python trajectory tools.

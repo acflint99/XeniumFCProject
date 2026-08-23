@@ -1,5 +1,6 @@
-# Draft configuration inferred from the active scripts on 2026-08-21.
-# No analysis script reads this file yet.
+# Configuration inferred from the active scripts on 2026-08-21.
+# Split-slide preprocessing reads the paths and runtime defaults below; most
+# other analysis scripts have not yet been migrated to this configuration.
 
 project:
   name: "Fetal Cerebellum Xenium"
