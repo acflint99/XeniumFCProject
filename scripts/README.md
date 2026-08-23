@@ -34,7 +34,7 @@ Crop cerebellum -> cell QC -> normalization/PCA/UMAP -> clustering (resolution 1
 Prepare Aldinger / Sepp / Science reference objects and subset to Xenium panel genes
                  |
                  v
-RPCA label transfer (or experimental RCTD annotation) -> broad annotated samples
+RPCA label transfer -> broad annotated samples
                  |
           +------+------+
           |             |
@@ -56,6 +56,10 @@ The scripts assume they are stored in a project whose root can be found by the `
 
 ```text
 XeniumFCProject/
+├── config/
+│   ├── config.yml
+│   ├── samples.csv
+│   └── slides.csv
 ├── data/
 │   └── FCXeniumProject/
 │       └── <sample>/
@@ -72,6 +76,15 @@ XeniumFCProject/
 ```
 
 For each Xenium sample, `cerebellum_cells_stats.csv` must contain a `Cell ID` column. An area column named `cell_area`, `Area`, or another name containing `area` is preferred.
+
+The files in `config/` record project paths, plotting defaults, biological
+samples, and the six multi-sample slide directories. They are currently
+validated metadata scaffolding; not every analysis script reads them yet. From
+the project root, validate their structure and referenced input files with:
+
+```bash
+Rscript scripts/validate_config.R --check-files
+```
 
 ## Main analysis stages
 
@@ -165,7 +178,6 @@ The sample to process is selected by a one-based command-line task ID. `run_ABT_
 Related scripts:
 
 - `XeniumABT_seq.R` – sequential annotation driver;
-- `AnchorBasedTransfer_RCTD_res1.5.R` – alternative annotation/deconvolution using `spacexr`/RCTD;
 - `Xenium_ABT_res1.5_comp.R` – merges comparison tables from the three reference runs;
 - `Xenium_ABT_GlobalPlot.R` – broad annotation maps;
 - `Xenium_ABT_PropGraph.R` – attaches sample metadata and plots cell-type proportions;
@@ -255,16 +267,16 @@ These scripts require configured Python/Conda environments and currently contain
 
 ## Software requirements
 
-The scripts were written around R 4.4 on Slurm. Frequently used R packages include:
+The configured Slurm environment uses R 4.4.1 from the
+`R/4.4.1-foss-2023b` module. Frequently used R packages include:
 
 - `Seurat`
 - `harmony`
 - `future` and `future.apply`
-- `dplyr`, `tidyr`, `purrr`, and `tidyverse`
+- `dplyr`, `tidyr`, `purrr`, and `tibble`
 - `ggplot2`, `patchwork`, `ggh4x`, `randomcoloR`, and `Cairo`
 - `ComplexHeatmap`, `pheatmap`, `circlize`, and `viridis`
 - `Giotto`
-- `spacexr`
 - `reticulate`
 - `readxl` and `jsonlite`
 - `AnnotationDbi` and `org.Hs.eg.db`
@@ -308,7 +320,11 @@ Before submission, verify:
 Most outputs are written beneath `outputs/` in stage-specific directories. Common artifact types are:
 
 - uncompressed Seurat `.rds` files for large intermediate objects;
-- TIFF, PNG, and PDF figures;
+- 600-DPI TIFF figures written with `Cairo::CairoTIFF` (using Cairo's default
+  TIFF compression behavior);
+- Cairo PDF companions for histograms, dot plots, bar graphs, and other
+  non-spatial graphs;
+- TIFF-only output for UMAPs and spatial plots;
 - CSV marker, QC, spatial-gene, and comparison tables;
 - Giotto objects and interaction statistics in `.rds` format; and
 - AnnData `.h5ad` files for Python trajectory tools.
@@ -324,13 +340,16 @@ Many intermediate filenames contain manually assigned dates. Downstream scripts 
 - Some scripts restore or refresh `renv` during a job, while others assume the library is already available.
 - Large objects can require 64–500 GB RAM depending on the stage. Do not copy the largest objects across too many `future` workers.
 - Random seeds are set in major Seurat stages, but manual cluster renaming and dated file selection remain part of the workflow.
-- The `OLD/` directory contains superseded or experimental versions and is not part of the workflow documented above.
+- The ignored `OLD/` directory contains superseded or experimental versions
+  and is not part of the active workflow. This includes
+  `AnchorBasedTransfer_RCTD_res1.5.R` and `SeppPreProcess.R`.
 
 ## Recommended maintenance
 
 For future runs, the highest-impact improvements would be:
 
-1. move sample definitions and paths into one configuration file;
+1. migrate remaining hard-coded sample definitions and paths to the existing
+   configuration files;
 2. replace dated input filenames with stable stage names or a manifest;
 3. validate Slurm array lengths automatically;
 4. eliminate absolute user-specific paths;
