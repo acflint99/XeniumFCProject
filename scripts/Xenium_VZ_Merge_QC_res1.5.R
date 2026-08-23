@@ -118,12 +118,12 @@ message("Marker analysis complete! Results saved to CSV.")
 
 
 # 2. Define Paths and "Master Key"
-input_dir  <- here("outputs", "Xenium_AldingerABT_Res1.5_PCW_RDS")
+input_dir  <- here("outputs", "Xenium_ConsensusABT_Res1.5_RDS")
 output_dir <- here("outputs", "Xenium_AldingerABT_VZ_QC_Res1.5_RDS")
 if(!dir.exists(output_dir)) dir.create(output_dir)
 
 # Update pattern to match your original whole objects
-sample_files <- list.files(input_dir, pattern = "_Aldinger_annotated\\.rds$", full.names = TRUE)
+sample_files <- list.files(input_dir, pattern = "_Consensus_annotated\\.rds$", full.names = TRUE)
 
 # Identify barcodes in Cluster 7 from the integrated 'obj'
 # We use names() because these barcodes include the 'SampleName_' prefix
@@ -135,7 +135,7 @@ message("Starting filtering of Cluster 7 from whole objects...")
 updated_status <- future_lapply(sample_files, function(f) {
   
   # Strip suffix to get sample name
-  s_name <- gsub("_Aldinger_annotated\\.rds", "", basename(f))
+  s_name <- gsub("_Consensus_annotated\\.rds", "", basename(f))
   
   # Load the WHOLE object
   temp_obj <- readRDS(f)

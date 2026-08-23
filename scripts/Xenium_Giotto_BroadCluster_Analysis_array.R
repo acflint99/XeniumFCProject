@@ -61,7 +61,7 @@ seurat_obj <- readRDS(file_to_load)
 
 # 1. FILTER CLUSTERS
 clusters_to_exclude <- c("Meninges", "Immune", "Endothelial")
-seurat_obj <- subset(seurat_obj, subset = cluster_weighted %in% clusters_to_exclude, invert = TRUE)
+seurat_obj <- subset(seurat_obj, subset = consensus_label %in% clusters_to_exclude, invert = TRUE)
 
 # 2. EXTRACT DATA AFTER FILTERING (Crucial to keep dimensions in sync)
 message(">> Tracer: Extracting Expression Matrix...")
@@ -92,7 +92,7 @@ meta_df$cell_ID <- rownames(meta_df)
   
   # Get counts per cluster
   counts <- LayerData(seurat_obj, assay = "Xenium", layer = "counts")
-  clusters <- as.character(meta_df$cluster_weighted)
+  clusters <- as.character(meta_df$consensus_label)
   
   # Calculate % of cells expressing each gene per cluster
   # (Returns a list of vectors, one per cluster)
@@ -103,7 +103,7 @@ meta_df$cell_ID <- rownames(meta_df)
   
   # --- THE FACTOR FIX ---
   # Strip Seurat's hidden factor levels so Giotto LR interactions do not crash
-  meta_df$cluster_weighted <- as.character(meta_df$cluster_weighted)
+  meta_df$consensus_label <- as.character(meta_df$consensus_label)
   
   message(">> Tracer: Building Giotto Object...")
   g_obj <- createGiottoObject(
@@ -148,7 +148,7 @@ meta_df$cell_ID <- rownames(meta_df)
   
   # 7. Cell-Cell Proximity
   prox_stats <- cellProximityEnrichment(g_obj, 
-                                        cluster_column = "cluster_weighted", 
+                                        cluster_column = "consensus_label", 
                                         spatial_network_name = "Delaunay_network",
                                         number_of_simulations = 100)
   saveRDS(prox_stats, paste0(output_dir, s, "_proximity_stats.rds"))
@@ -194,7 +194,7 @@ meta_df$cell_ID <- rownames(meta_df)
   } else {
     # 1. Update Metadata
     my_metadata <- pDataDT(g_obj)
-    my_metadata$cluster_weighted <- as.character(my_metadata$cluster_weighted)
+    my_metadata$consensus_label <- as.character(my_metadata$consensus_label)
     g_obj <- addCellMetadata(g_obj, new_metadata = my_metadata, by_column = TRUE, column_cell_ID = "cell_ID")
     
     # 2. RUN DELAUNAY (Contact-Dependent)
@@ -202,7 +202,7 @@ meta_df$cell_ID <- rownames(meta_df)
     lr_delaunay <- spatCellCellcom(
       gobject = g_obj,
       spatial_network_name = "Delaunay_network",
-      cluster_column = "cluster_weighted",
+      cluster_column = "consensus_label",
       feat_set_1 = as.character(LR_data_filtered$ligand),
       feat_set_2 = as.character(LR_data_filtered$receptor),
       min_observations = 10, # Higher threshold for reliability
@@ -214,7 +214,7 @@ meta_df$cell_ID <- rownames(meta_df)
     lr_knn <- spatCellCellcom(
       gobject = g_obj,
       spatial_network_name = "kNN_network",
-      cluster_column = "cluster_weighted",
+      cluster_column = "consensus_label",
       feat_set_1 = as.character(LR_data_filtered$ligand),
       feat_set_2 = as.character(LR_data_filtered$receptor),
       min_observations = 10,

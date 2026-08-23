@@ -145,14 +145,14 @@ grDevices::dev.off()
 # 2. Generate the Plot
 p_orig <- DimPlot(obj, 
                   reduction = "umap_harmony", 
-                  group.by = "cluster_weighted", # Use your original label column here
+                  group.by = "consensus_label",
                   label = TRUE, 
                   label.size = 4,
                   label.box = TRUE,       # Makes original labels easier to see
                   raster = TRUE, 
                   pt.size = 0.5, 
                   alpha = 0.8) +
-  ggtitle("Xenium Aldinger VZ Integrated UMAP: Original Cluster Weighted Labels") +
+  ggtitle("Xenium VZ Integrated UMAP: Consensus Labels") +
   theme_classic() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
@@ -162,7 +162,7 @@ p_orig <- DimPlot(obj,
 
 # 3. Save the Plot
 Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "XenAld_VZ_OrigClusterWeighted_UMAP.tif"),
+  filename = file.path(plot_dir, "Xenium_VZ_ConsensusLabel_UMAP.tif"),
   width = 12,
   height = 9,
   units = "in",

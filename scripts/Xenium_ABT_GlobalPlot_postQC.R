@@ -13,7 +13,7 @@ source(here("scripts", "color_palette.R"))
 # Define your directory and sample list
 input_dir <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS")
 
-output_dir <- here("outputs", "Xenium_AldingerABT_Res1.5_postQC_GlobalPlots")
+output_dir <- here("outputs", "Xenium_ConsensusABT_Res1.5_postQC_GlobalPlots")
 
 # Create output directory if it doesn't exist
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
@@ -42,15 +42,15 @@ for (sample_name in sample_list) {
     # Note: Ensure 'cluster_colors' is defined in your environment beforehand
     p_wei <- ImageDimPlot(
       xenium_obj, 
-      group.by = "cluster_weighted", 
+      group.by = "consensus_label", 
       size = 1.5, 
       cols = cluster_colors
     ) + 
-      ggtitle(paste(sample_name, "-Post QC (Weighted)"))
+      ggtitle(paste(sample_name, "-Post QC (Consensus)"))
     
     # Save with a specific background color to ensure ggsave doesn't add white
     Cairo::CairoTIFF(
-      filename = file.path(output_dir, paste0(sample_name, "_postQC_GlobalSpatial_plot1.5.tif")),
+      filename = file.path(output_dir, paste0(sample_name, "_postQC_Consensus_GlobalSpatial_plot1.5.tif")),
       width = 12,
       height = 10,
       units = "in",

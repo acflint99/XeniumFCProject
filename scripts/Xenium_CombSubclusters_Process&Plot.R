@@ -77,7 +77,7 @@ grDevices::dev.off()
 # 2. Generate the Plot
 p_orig <- DimPlot(merged_obj, 
                   reduction = "umap.harmony", 
-                  group.by = "cluster_weighted", # Use your original label column here
+                  group.by = "consensus_label", # Use your original label column here
                   label = TRUE, 
                   label.size = 4,
                   label.box = TRUE,       # Makes original labels easier to see
@@ -85,7 +85,7 @@ p_orig <- DimPlot(merged_obj,
                   pt.size = 0.5, 
                   alpha = 0.8,
                   cols = cluster_colors) +
-  ggtitle("Xenium Aldinger Merged UMAP: Original Cluster Weighted Labels") +
+  ggtitle("Xenium Merged UMAP: Consensus Labels") +
   theme_classic() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
@@ -95,7 +95,7 @@ p_orig <- DimPlot(merged_obj,
 
 # 3. Save the Plot
 Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "XenAld_Merged_OrigClusterWeighted_UMAP.tif"),
+  filename = file.path(plot_dir, "Xenium_Merged_ConsensusLabel_UMAP.tif"),
   width = 12,
   height = 9,
   units = "in",
@@ -110,7 +110,7 @@ existing_markers <- lapply(markers, function(x) intersect(x, rownames(merged_obj
 # existing_markers <- c("OTX2", "EOMES", "RELN", "FOXP2", "PAX2", "TNC",
 #                      "OLIG1", "FOXC1", "CLDN5", "P2RY12")
 
-Idents(merged_obj) <- factor(merged_obj$cluster_weighted, levels = rev(celltype_order))
+Idents(merged_obj) <- factor(merged_obj$consensus_label, levels = rev(celltype_order))
 
 p5 <- DotPlot(merged_obj, features = existing_markers, assay = "Xenium") + 
   RotatedAxis() +
@@ -119,7 +119,7 @@ p5 <- DotPlot(merged_obj, features = existing_markers, assay = "Xenium") +
   ggtitle("Xenium Merged Marker Expression (LogNorm)")
 
 Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "XenAld_Merged_cluster_weighted_DotPlot_markers.tif"),
+  filename = file.path(plot_dir, "XenAld_Merged_consensus_label_DotPlot_markers.tif"),
   width = 14,
   height = 6,
   units = "in",
@@ -127,7 +127,7 @@ Cairo::CairoTIFF(
 )
 print(p5)
 grDevices::dev.off()
-ggplot2::ggsave(file.path(plot_dir, "XenAld_Merged_cluster_weighted_DotPlot_markers.pdf"), p5,
+ggplot2::ggsave(file.path(plot_dir, "XenAld_Merged_consensus_label_DotPlot_markers.pdf"), p5,
                 device = grDevices::cairo_pdf, width = 14, height = 6)
 
 
@@ -141,7 +141,7 @@ pc_specific_markers <- c("FOXP1", "ITPR1","COL5A1",
                          "PCDH10", "EBF1", "BCL11A", "RORB", "EN1")
 
 # 2. Subset the object
-# We use cluster_weighted because that is where your labels are stored
+# We use consensus_label because that is where your labels are stored
 pc_subset <- subset(merged_obj, subset = VZ_subcluster %in% pc_clusters)
 
 # 3. Clean up the factor levels
@@ -221,8 +221,8 @@ celltype_order <- c(
 )
 
 # Apply the factor levels to the temporary object
-temp_obj$cluster_weighted <- factor(
-  temp_obj$cluster_weighted, 
+temp_obj$consensus_label <- factor(
+  temp_obj$consensus_label, 
   levels = celltype_order
 )
 
@@ -232,7 +232,7 @@ temp_obj$cluster_weighted <- factor(
 p4 <- DoHeatmap(
   subset(temp_obj, downsample = 100), 
   features = top5_markers,
-  group.by = "cluster_weighted",
+  group.by = "consensus_label",
   group.colors = cluster_colors,
   size = 4,           
   angle = 45,         
@@ -270,7 +270,7 @@ grDevices::dev.off()
 # ==============================================================================
 
 # 1. Set Ident to your broad cluster labels
-Idents(merged_obj) <- "cluster_weighted"
+Idents(merged_obj) <- "consensus_label"
 
 # 2. Define the genes of interest
 kit_genes <- c("APP", "TNFRSF21", "CADM3", "CADM4", "NECTIN3", "CNTN2", "L1CAM", "CXCL12","CXCR4", "EFNB2", "EPHA4", "GJA1", "NCAM1",

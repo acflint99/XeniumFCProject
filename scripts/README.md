@@ -34,7 +34,7 @@ Crop cerebellum -> cell QC -> normalization/PCA/UMAP -> clustering (resolution 1
 Prepare Aldinger / Sepp / Science reference objects and subset to Xenium panel genes
                  |
                  v
-RPCA label transfer -> broad annotated samples
+RPCA label transfer -> compare references -> consensus-labelled samples
                  |
           +------+------+
           |             |
@@ -201,16 +201,37 @@ with `--overwrite`, or submitted with `ABT_OVERWRITE=true` after review.
 Related scripts:
 
 - `XeniumABT_seq.R` – sequential annotation driver;
-- `Xenium_ABT_res1.5_comp.R` – merges comparison tables from the three reference runs;
-- `Xenium_ABT_GlobalPlot.R` – broad annotation maps;
-- `Xenium_ABT_PropGraph.R` – attaches sample metadata and plots cell-type proportions;
-- `Xenium_ABT_GlobalPlot_postQC.R` – annotation maps after regional refinement/QC.
+- `Xenium_ABT_res1.5_comp.R` – merges the three reference comparisons and calculates one cluster-level `consensus_label`;
+- `Xenium_ABT_ConsensusLabels.R` – adds consensus labels and PCW metadata to individual objects, makes consensus labels the active identities, and writes consensus UMAP, spatial, and marker DotPlot figures;
+- `run_XeniumConsensusLabels.slurm` – submits all 34 consensus-label tasks, capped at three concurrent jobs;
+- `Xenium_ABT_GlobalPlot.R` – additional consensus spatial maps;
+- `Xenium_ABT_PropGraph.R` – attaches sample metadata and plots consensus cell-type proportions;
+- `Xenium_ABT_GlobalPlot_postQC.R` – consensus maps after regional refinement/QC.
+
+The consensus calculation ignores missing and `Unknown` labels and selects the
+most frequent label across Aldinger, Sepp, and Science majority/weighted
+results. Ties retain the existing comparison-table order. Original reference
+labels remain in the object; `consensus_label` is added without overwriting
+them. Inspect the task mapping and one task before running:
+
+```bash
+Rscript scripts/Xenium_ABT_ConsensusLabels.R --list
+Rscript scripts/Xenium_ABT_ConsensusLabels.R --dry-run 1
+```
+
+Consensus objects are written to
+`outputs/Xenium_ConsensusABT_Res1.5_RDS/<sample>_Consensus_annotated.rds`.
+The driver refuses to overwrite existing objects or plots unless explicitly
+given `--overwrite` or submitted with `CONSENSUS_OVERWRITE=true`. PCW is read
+from `metadata/samples_meta.xlsx` during this stage, so downstream objects
+inherit it without a second full-size PCW RDS copy. Consensus UMAP and spatial
+plots are TIFF-only; the marker DotPlot is saved as both TIFF and Cairo PDF.
 
 ### 6. VZ analysis
 
 The VZ branch generally follows this order:
 
-1. `Xenium_VZ_Subset_res1.5.R` – extracts target broad identities per sample.
+1. `Xenium_VZ_Subset_res1.5.R` – extracts configured consensus identities per sample.
 2. `Xenium_VZ_Merge_res1.5.R` – merges sample subsets after removing unnecessary spatial overhead.
 3. `Xenium_VZ_Merge_Processing_res1.5.R` – normalization, PCA, Harmony integration, UMAP, and clustering.
 4. `Xenium_VZ_Merge_QC_res1.5.R` – merged-cluster QC summaries and cell flags.
@@ -220,7 +241,9 @@ The VZ branch generally follows this order:
 8. `Xenium_VZ_SamplePlots_res1.5.R` and `XeniumVZSamplePlots_Loop_res1.5.R` – per-sample spatial reports.
 9. `Xenium_VZ_CountPlot_res1.5.R` – VZ cell/subcluster counts.
 
-Submit per-sample extraction with `run_XeniumVZSubset_res1.5.slurm`. Submit
+The VZ driver reads all 34 samples from `config/samples.csv` and supports
+`--list`, `--dry-run`, and protected `--overwrite` operation. Submit
+per-sample extraction with `run_XeniumVZSubset_res1.5.slurm`. Submit
 post-QC merged processing with `run_XeniumVZMergePostQC.slurm`.
 `run_VZSamplePlots.slurm` launches the plotting stage.
 
@@ -228,7 +251,7 @@ post-QC merged processing with `run_XeniumVZMergePostQC.slurm`.
 
 The RL branch mirrors the VZ branch:
 
-1. `Xenium_RL_Subset_res1.5.R`
+1. `Xenium_RL_Subset_res1.5.R` – extracts configured consensus identities per sample.
 2. `Xenium_RL_Merge_res1.5.R`
 3. `Xenium_RL_Merge_Processing_res1.5.R`
 4. `Xenium_RL_Merge_QC_res1.5.R`
@@ -238,7 +261,9 @@ The RL branch mirrors the VZ branch:
 8. `Xenium_RL_SamplePlots_res1.5.R` and `Xenium_RL_SamplePlots_Loop_res1.5.R`
 9. `Xenium_RL_CountPlot_res1.5.R`
 
-`run_XeniumRLSubset_res1.5.slurm` submits RL extraction, and
+The RL driver also reads all 34 samples from `config/samples.csv` and supports
+the same inspection and overwrite protections. `run_XeniumRLSubset_res1.5.slurm`
+submits RL extraction, and
 `run_XeniumRLMergePostQC.slurm` submits post-QC merged processing.
 
 ### 8. Combined VZ/RL objects
@@ -361,7 +386,7 @@ tested here causes an illegal-instruction failure.
 
 Before submission, verify:
 
-1. the uncommented R sample list;
+1. the script's `--list` task mapping;
 2. the Slurm `--array` range;
 3. input and output RDS filenames;
 4. requested memory, time, CPUs, and partition;
@@ -388,7 +413,8 @@ Many intermediate filenames contain manually assigned dates. Downstream scripts 
 ## Reproducibility notes and known caveats
 
 - Several scripts contain absolute paths under `/home/acflint`, `/data/user/acflint`, or `~/R/Projects/XeniumFCProject`. Replace these when running elsewhere.
-- Active sample lists are commonly selected by commenting entries in or out. Treat the Slurm array bounds and R sample vectors as a coupled configuration.
+- Some legacy scripts still select samples by commenting entries in or out.
+  Consensus labelling and VZ/RL subsetting instead use `config/samples.csv`.
 - VZ and RL post-QC merged processing use the matching
   `run_XeniumVZMergePostQC.slurm` and `run_XeniumRLMergePostQC.slurm`
   launchers.

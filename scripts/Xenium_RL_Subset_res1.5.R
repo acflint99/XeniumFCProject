@@ -1,54 +1,75 @@
-library(here)
-library(Seurat)
-library(dplyr)
+#!/usr/bin/env Rscript
 
-# Capture Slurm Array ID
+rm(list = ls())
+
+suppressPackageStartupMessages({
+  library(here)
+  library(Seurat)
+})
+
+source(here("scripts", "R", "config.R"))
+config <- load_pipeline_config()
+samples <- load_sample_manifest(config)
+task_map <- data.frame(task_id = seq_len(nrow(samples)), sample_id = samples$sample_id)
+
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) == 0) {
-  stop("No Task ID provided. This script should be run via Slurm array.")
+if (identical(args, "--list")) {
+  write.table(task_map, row.names = FALSE, quote = FALSE, sep = "\t")
+  quit(save = "no", status = 0L)
 }
-task_id <- as.numeric(args[1])
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
+task_args <- args[!args %in% valid_options]
+if (length(task_args) > 1L) {
+  stop("Usage: Rscript scripts/Xenium_RL_Subset_res1.5.R [--dry-run|--overwrite] [TASK_ID]")
+}
+task_value <- if (length(task_args) == 1L) task_args[[1]] else Sys.getenv("SLURM_ARRAY_TASK_ID", unset = "")
+task_id <- suppressWarnings(as.integer(task_value))
+if (is.na(task_id) || task_id < 1L || task_id > nrow(samples)) {
+  stop("TASK_ID must be between 1 and ", nrow(samples), ". Use --list to inspect the mapping.")
+}
 
-# Define your 15 samples explicitly to match the array index
-samples <- c(
-  #"GZFB4_X_G", "FB124_X_G", "FB198_X_G", "FB328_1_X_G", "FB330_1_X_G", "GZFB5_X_G", 
-  "GZFB_12_X_G_1", "GZFB_12_X_G_2", "GZFB_12_X_G_3",
-  #"FB78_X_G",  "GZFB_1_X_G", 
-  "GZFB_12_X_G_4", "GZFB_12_X_G_5", "GZFB_9_X_G_3"
-  #"GZFB_9_X_G_1", "GZFB_9_X_G_2"
+current_sample <- samples$sample_id[[task_id]]
+output_root <- here(config$project$outputs_dir)
+input_path <- file.path(
+  output_root, "Xenium_ConsensusABT_Res1.5_RDS",
+  paste0(current_sample, "_Consensus_annotated.rds")
 )
+output_dir <- file.path(output_root, "XenAld_RL_Subsets_Res1.5_RDS")
+output_path <- file.path(output_dir, paste0(current_sample, "_RLsubset.rds"))
 
-current_sample <- samples[task_id]
-
-# Use here() to build the input path
-# Structure: project_root/outputs/XeniumAldingerABT_RDS/...
-input_path <- here("outputs", "Xenium_AldingerABT_Res1.5_PCW_RDS", paste0(current_sample, "_Aldinger_annotated.rds"))
-
-message("Loading: ", input_path)
-if (!file.exists(input_path)) stop("File not found: ", input_path)
+if (dry_run) {
+  cat("Task:", task_id, "of", nrow(samples), "\n")
+  cat("Biological sample:", current_sample, "\n")
+  cat("Consensus input:", input_path, "\n")
+  cat("Output:", output_path, "\n")
+  cat("Output exists:", file.exists(output_path), "\n")
+  quit(save = "no", status = 0L)
+}
+if (!file.exists(input_path)) stop("Consensus-labelled input not found: ", input_path)
+if (file.exists(output_path) && !overwrite) {
+  stop("Refusing to overwrite existing RL subset: ", output_path, "\nUse --overwrite only after review.")
+}
 
 obj <- readRDS(input_path)
-
-# Identify the clusters you want to pull out for re-analysis
-# (Update these strings to match your exact 'annotated' cluster names)
-target_clusters <- c("RL", "Granule", "UBC") 
-
-# 2. Find which of those actually exist in the object's active identities
+if (!"consensus_label" %in% colnames(obj[[]])) {
+  stop("Input object lacks 'consensus_label': ", input_path)
+}
+Idents(obj) <- "consensus_label"
+target_clusters <- unlist(config$regional_subsets$rl_broad_labels, use.names = FALSE)
 existing_clusters <- intersect(target_clusters, levels(Idents(obj)))
-
-# 3. Subset using only the clusters that were found
-if (length(existing_clusters) > 0) {
-  obj_subset <- subset(obj, idents = existing_clusters)
-  message("Subset successful using: ", paste(existing_clusters, collapse = ", "))
-} else {
-  stop("None of the target clusters were found in the object.")
+if (!length(existing_clusters)) stop("No configured RL consensus labels found in ", current_sample, ".")
+missing_clusters <- setdiff(target_clusters, existing_clusters)
+if (length(missing_clusters)) {
+  warning("RL labels absent from ", current_sample, ": ", paste(missing_clusters, collapse = ", "))
 }
 
-# Define and create output directory using here()
-output_dir <- here("outputs", "XenAld_RL_Subsets_Res1.5_RDS")
-if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
-
-output_path <- file.path(output_dir, paste0(current_sample, "_RLsubset.rds"))
-saveRDS(obj_subset, file = output_path)
-
-message("Successfully saved subset for ", current_sample, " to ", output_path)
+obj_subset <- subset(obj, idents = existing_clusters)
+Idents(obj_subset) <- "consensus_label"
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+saveRDS(obj_subset, output_path, compress = FALSE)
+message("Saved RL consensus subset for ", current_sample, ": ", output_path)

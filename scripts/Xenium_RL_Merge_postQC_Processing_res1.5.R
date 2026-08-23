@@ -69,7 +69,7 @@ check_mem("POST-BATCH-CLUSTERING")
 
 p1 <- DimPlot(obj, 
               reduction = "umap_clean", 
-              group.by = "cluster_weighted", 
+              group.by = "consensus_label", 
               label = TRUE, 
               label.size = 5,
               label.box = TRUE,

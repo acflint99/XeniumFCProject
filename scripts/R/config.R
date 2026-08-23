@@ -82,8 +82,10 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   errors <- character()
   add_error <- function(...) errors <<- c(errors, paste0(...))
 
-  required_sections <- c("project", "manifests", "inputs", "qc",
-                         "initial_clustering", "label_transfer", "plotting")
+  required_sections <- c(
+    "project", "manifests", "inputs", "qc", "initial_clustering",
+    "label_transfer", "regional_subsets", "plotting"
+  )
   missing_sections <- setdiff(required_sections, names(config))
   if (length(missing_sections)) {
     add_error("Missing config sections: ", paste(missing_sections, collapse = ", "))
@@ -134,10 +136,22 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
     max_control_percent = config$qc$max_control_percent,
     clustering_dimensions = config$initial_clustering$dimensions,
     clustering_resolution = config$initial_clustering$resolution,
-    transfer_dimensions = config$label_transfer$dimensions
+    transfer_dimensions = config$label_transfer$dimensions,
+    regional_integration_dimensions = config$regional_subsets$integration_dimensions_default,
+    regional_post_qc_dimensions = config$regional_subsets$post_qc_dimensions_observed,
+    regional_neighbor_k = config$regional_subsets$neighbor_k_post_qc
   )
   if (any(!is.finite(numeric_checks)) || any(numeric_checks <= 0)) {
     add_error("QC, clustering, and transfer numeric settings must be finite and positive.")
+  }
+
+  vz_labels <- unlist(config$regional_subsets$vz_broad_labels, use.names = FALSE)
+  rl_labels <- unlist(config$regional_subsets$rl_broad_labels, use.names = FALSE)
+  if (!length(vz_labels) || any(!nzchar(vz_labels)) || anyDuplicated(vz_labels)) {
+    add_error("regional_subsets.vz_broad_labels must contain unique, nonblank labels.")
+  }
+  if (!length(rl_labels) || any(!nzchar(rl_labels)) || anyDuplicated(rl_labels)) {
+    add_error("regional_subsets.rl_broad_labels must contain unique, nonblank labels.")
   }
 
   if (isTRUE(check_files)) {

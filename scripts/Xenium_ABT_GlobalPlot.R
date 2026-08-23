@@ -7,27 +7,23 @@ library(ggplot2)
 library(here)
 
 source(here("scripts", "color_palette.R"))
+source(here("scripts", "R", "config.R"))
 
 # Define your directory and sample list
-input_dir <- here("outputs", "Xenium_AldingerABT_Res1.5_RDS")
+input_dir <- here("outputs", "Xenium_ConsensusABT_Res1.5_RDS")
 
-output_dir <- here("outputs", "Xenium_AldingerABT_Res1.5_GlobalPlots")
+output_dir <- here("outputs", "Xenium_ConsensusABT_Res1.5_GlobalPlots")
 
 # Create output directory if it doesn't exist
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-sample_list <- c(
-  "GZFB4_X_G", "FB124_X_G", "FB198_X_G", "FB328_1_X_G", 
-  "FB330_1_X_G", "FB78_X_G", "GZFB5_X_G", "GZFB_12_X_G_1", 
-  "GZFB_12_X_G_2", "GZFB_12_X_G_3", "GZFB_12_X_G_4", "GZFB_12_X_G_5", 
-  "GZFB_1_X_G", "GZFB_9_X_G_1", "GZFB_9_X_G_2", "GZFB_9_X_G_3"
-)
+sample_list <- load_sample_manifest(load_pipeline_config())$sample_id
 
 # Loop through each sample
 for (sample_name in sample_list) {
   
   # FIX: Use file.path() instead of paste0() to ensure slashes are correct
-  file_path <- file.path(input_dir, paste0(sample_name, "_Aldinger_annotated.rds"))
+  file_path <- file.path(input_dir, paste0(sample_name, "_Consensus_annotated.rds"))
   
   # Check if the file actually exists
   if (file.exists(file_path)) {
@@ -40,15 +36,15 @@ for (sample_name in sample_list) {
     # Note: Ensure 'cluster_colors' is defined in your environment beforehand
     p_wei <- ImageDimPlot(
       xenium_obj, 
-      group.by = "cluster_weighted", 
+      group.by = "consensus_label", 
       size = 0.75, 
       cols = cluster_colors
     ) + 
-      ggtitle(paste(sample_name, "(Weighted)"))
+      ggtitle(paste(sample_name, "(Consensus)"))
     
     # Save with a specific background color to ensure ggsave doesn't add white
     Cairo::CairoTIFF(
-      filename = file.path(output_dir, paste0(sample_name, "_GlobalSpatial_plot0.75.tif")),
+      filename = file.path(output_dir, paste0(sample_name, "_Consensus_GlobalSpatial_plot0.75.tif")),
       width = 12,
       height = 10,
       units = "in",

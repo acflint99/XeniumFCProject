@@ -38,10 +38,10 @@ process_xenium_sample <- function(sample_id) {
   message("--- Processing: ", sample_id, " ---")
   obj <- readRDS(path)
   
-  # Combine columns: Priority VZ -> RL -> Weighted
+  # Combine columns: Priority VZ -> RL -> consensus broad label
   obj@meta.data <- obj@meta.data %>%
     mutate(
-      comb_subcluster = coalesce(VZ_subcluster, RL_subcluster, cluster_weighted),
+      comb_subcluster = coalesce(VZ_subcluster, RL_subcluster, consensus_label),
       # Set the factor levels to your 32-label list
       # intersect() ensures it only sets levels for labels actually present in this sample
       comb_subcluster = factor(comb_subcluster, levels = intersect(master_subcluster_order, unique(comb_subcluster)))
@@ -56,17 +56,17 @@ process_xenium_sample <- function(sample_id) {
   total_cells <- ncol(obj)
   message("Total cells in ", sample_id, ": ", total_cells)
   
-  # 2. Calculate counts for cluster_weighted
-  weighted_counts <- as.data.frame(table(obj$cluster_weighted))
-  colnames(weighted_counts) <- c("Cluster_Weighted", "Cell_Count")
+  # 2. Calculate counts for consensus_label
+  consensus_counts <- as.data.frame(table(obj$consensus_label))
+  colnames(consensus_counts) <- c("Consensus_Label", "Cell_Count")
   
   # 3. Calculate counts for comb_subcluster
   comb_counts <- as.data.frame(table(obj$comb_subcluster))
   colnames(comb_counts) <- c("Combined_Subcluster", "Cell_Count")
   
   # 4. Save tables to CSV
-  write.csv(weighted_counts, 
-            file = file.path(table_dir, paste0(sample_id, "_counts_clusterweighted.csv")), 
+  write.csv(consensus_counts,
+            file = file.path(table_dir, paste0(sample_id, "_counts_consensus_label.csv")), 
             row.names = FALSE)
   
   write.csv(comb_counts, 
@@ -108,11 +108,11 @@ process_xenium_sample <- function(sample_id) {
   # Note: Ensure 'cluster_colors' is defined in your environment beforehand
   p_wei <- ImageDimPlot(
     obj, 
-    group.by = "cluster_weighted", 
+    group.by = "consensus_label", 
     size = 0.85, 
     cols = cluster_colors
   ) + 
-    ggtitle(paste(sample_id, "-Post QC (Weighted)"))
+    ggtitle(paste(sample_id, "-Post QC (Consensus)"))
   
   # Save with a specific background color to ensure ggsave doesn't add white
   Cairo::CairoTIFF(
@@ -130,11 +130,11 @@ process_xenium_sample <- function(sample_id) {
   # Note: Ensure 'cluster_colors' is defined in your environment beforehand
   p_wei2 <- ImageDimPlot(
     obj, 
-    group.by = "cluster_weighted", 
+    group.by = "consensus_label", 
     size = 0.6, 
     cols = cluster_colors
   ) + 
-    ggtitle(paste(sample_id, "-Post QC (Weighted)"))
+    ggtitle(paste(sample_id, "-Post QC (Consensus)"))
   
   # Save with a specific background color to ensure ggsave doesn't add white
   Cairo::CairoTIFF(

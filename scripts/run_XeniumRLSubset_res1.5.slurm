@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --job-name=Xenium_RLSubsets
+#SBATCH --array=1-34%3
+#SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/RLsubset_%a.out
+#SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/RLsubset_%a.err
+#SBATCH --time=04:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=64G             
+#SBATCH --partition=short
+#SBATCH --constraint=intel
+
+# 1. Load Modules
+module purge
+module load rc-base
+module load R/4.4.1-foss-2023b
+
+# 2. Move into project directory (CRITICAL for here() and renv)
+cd ~/R/Projects/XeniumFCProject
+
+# 3. Disable renv sandbox (Smart move—prevents slow symlinking on HPC)
+export RENV_CONFIG_SANDBOX_ENABLED=FALSE
+
+driver_options=()
+if [[ "${RL_SUBSET_OVERWRITE:-false}" == "true" ]]; then
+  driver_options+=(--overwrite)
+fi
+
+Rscript scripts/Xenium_RL_Subset_res1.5.R \
+  "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"

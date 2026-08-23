@@ -120,10 +120,10 @@ DefaultAssay(obj) <- "Xenium"
 message("Generating Plots...")
 
 # Enforce cluster ordering safely
-if (exists("celltype_order") && "cluster_weighted" %in% colnames(obj@meta.data)) {
-  obj$cluster_weighted <- factor(
-    obj$cluster_weighted, 
-    levels = intersect(celltype_order, unique(obj$cluster_weighted))
+if (exists("celltype_order") && "consensus_label" %in% colnames(obj@meta.data)) {
+  obj$consensus_label <- factor(
+    obj$consensus_label, 
+    levels = intersect(celltype_order, unique(obj$consensus_label))
   )
 }
 
@@ -147,8 +147,8 @@ Cairo::CairoTIFF(
 print(p1)
 grDevices::dev.off()
 
-if ("cluster_weighted" %in% colnames(obj@meta.data) && exists("cluster_colors")) {
-  p2 <- DimPlot(obj, reduction = "umap.harmony", group.by = "cluster_weighted", label = TRUE, raster = TRUE) + 
+if ("consensus_label" %in% colnames(obj@meta.data) && exists("cluster_colors")) {
+  p2 <- DimPlot(obj, reduction = "umap.harmony", group.by = "consensus_label", label = TRUE, raster = TRUE) + 
     scale_color_manual(values = cluster_colors) + 
     ggtitle("Integrated: Broad Clusters")
   Cairo::CairoTIFF(
