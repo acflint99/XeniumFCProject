@@ -18,8 +18,8 @@ cd ~/R/Projects/XeniumFCProject
 # 2. Tell R where your library is
 export R_LIBS_USER=~/R/Projects/XeniumFCProject/renv/library/linux-rhel-7.9/R-4.4/x86_64-pc-linux-gnu
 
-# 3. Use 'renv::refresh' to fix version mismatches automatically
-Rscript -e 'renv::refresh()'
+# The project .Rprofile activates the existing renv library. Dependency
+# changes must be resolved manually before job submission.
 
-# 4. Run the main analysis
+# 3. Run the main analysis
 Rscript scripts/XeniumVZSamplePlots_Loop_res1.5.R

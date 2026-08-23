@@ -304,7 +304,11 @@ The configured Slurm environment uses R 4.4.1 from the
 - `readxl` and `jsonlite`
 - `AnnotationDbi` and `org.Hs.eg.db`
 
-Some scripts call `source("renv/activate.R")`, and several launchers run `renv::restore()`. Restore the environment once before launching large arrays; simultaneous array jobs should not compete for an `renv` library lock.
+Some scripts call `source("renv/activate.R")`, while project-root jobs also
+activate `renv` through `.Rprofile`. Active launchers do not install, restore,
+refresh, or snapshot dependencies. Run `renv::restore()` manually once before
+submission when the lockfile changes; compute jobs must treat the library as
+read-only.
 
 Giotto and trajectory scripts additionally require the corresponding Python/Conda environments. Giotto downloads the human CellChat database at runtime, so compute nodes need network access or the database must be cached locally.
 

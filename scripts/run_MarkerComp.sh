@@ -24,16 +24,8 @@ cd ~/R/Projects/XeniumFCProject
 # --------------------------
 export RENV_CONFIG_SANDBOX_ENABLED=FALSE
 
-# --------------------------
-# Restore project environment (only installs missing packages)
-# --------------------------
-Rscript -e '
-if (!requireNamespace("renv", quietly = TRUE)) {
-    install.packages("renv", repos = "https://cloud.r-project.org/")
-}
-library(renv)
-renv::restore(prompt = FALSE)
-'
+# The project .Rprofile activates renv. Run renv::restore() manually before
+# submission when the lockfile changes; never mutate the library inside a job.
 
 # --------------------------
 # Run your R script using the project library

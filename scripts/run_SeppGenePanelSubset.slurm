@@ -15,8 +15,8 @@ module load R/4.4.1-foss-2023b
 # Move into the project directory (CRITICAL)
 cd ~/R/Projects/XeniumFCProject
 
-# Restore the renv environment (installs missing packages if needed)
-Rscript -e 'install.packages("renv", repos="https://cloud.r-project.org/"); library(renv); renv::restore(prompt = FALSE)'
+# The project .Rprofile activates renv. Run renv::restore() manually before
+# submission when the lockfile changes; never mutate the library inside a job.
 
-# Run your R script using the project library
+# Run the analysis using the existing project library
 Rscript scripts/SeppGenePanelSubset.R
