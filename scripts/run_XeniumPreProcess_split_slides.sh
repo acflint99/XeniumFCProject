@@ -10,6 +10,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=200G
 #SBATCH --partition=medium
+#SBATCH --constraint=intel
 #SBATCH --export=ALL
 
 module purge

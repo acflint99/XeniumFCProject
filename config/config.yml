@@ -19,6 +19,7 @@ manifests:
 runtime:
   r_version: "4.4.1"
   r_module: "R/4.4.1-foss-2023b"
+  slurm_constraint: "intel"
   random_seed: 42
   future_globals_max_gb_default: 200
   giotto_python: "/home/acflint/.conda/envs/giotto_env/bin/python"

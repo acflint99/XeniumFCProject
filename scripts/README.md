@@ -329,7 +329,9 @@ processes one biological sample using its shared slide directory and unique
 cell-stat CSV from `config/samples.csv`. The driver stops if any expected
 output already exists. An intentional rerun requires the explicit
 `--overwrite` option, or `SPLIT_PREPROCESS_OVERWRITE=true` when submitting the
-launcher.
+launcher. The launcher requests Intel nodes because the project's native R
+packages are compiled with Broadwell flags; loading `yaml` on the AMD nodes
+tested here causes an illegal-instruction failure.
 
 Before submission, verify:
 
