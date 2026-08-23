@@ -186,13 +186,13 @@ Rscript scripts/AnchorBasedTransfer_RPCA_res1.5.R --list
 Rscript scripts/AnchorBasedTransfer_RPCA_res1.5.R --dry-run Aldinger 1
 ```
 
-`run_ABT_res1.5.sh` submits a 34-task array, capped at two concurrent jobs. To
+`run_ABT_res1.5.slurm` submits a 34-task array, capped at two concurrent jobs. To
 submit all three reference analyses:
 
 ```bash
-sbatch --job-name=Xen_ABT_Aldinger --export=ALL,REFERENCE=Aldinger scripts/run_ABT_res1.5.sh
-sbatch --job-name=Xen_ABT_Sepp --export=ALL,REFERENCE=Sepp scripts/run_ABT_res1.5.sh
-sbatch --job-name=Xen_ABT_Science --export=ALL,REFERENCE=Science scripts/run_ABT_res1.5.sh
+sbatch --job-name=Xen_ABT_Aldinger --export=ALL,REFERENCE=Aldinger scripts/run_ABT_res1.5.slurm
+sbatch --job-name=Xen_ABT_Sepp --export=ALL,REFERENCE=Sepp scripts/run_ABT_res1.5.slurm
+sbatch --job-name=Xen_ABT_Science --export=ALL,REFERENCE=Science scripts/run_ABT_res1.5.slurm
 ```
 
 The driver refuses to replace any existing annotation output unless called
@@ -220,7 +220,9 @@ The VZ branch generally follows this order:
 8. `Xenium_VZ_SamplePlots_res1.5.R` and `XeniumVZSamplePlots_Loop_res1.5.R` – per-sample spatial reports.
 9. `Xenium_VZ_CountPlot_res1.5.R` – VZ cell/subcluster counts.
 
-Submit per-sample extraction with `run_XeniumVZSubset_res1.5.sh`. `run_VZSamplePlots.slurm` launches the plotting stage.
+Submit per-sample extraction with `run_XeniumVZSubset_res1.5.slurm`. Submit
+post-QC merged processing with `run_XeniumVZMergePostQC.slurm`.
+`run_VZSamplePlots.slurm` launches the plotting stage.
 
 ### 7. RL analysis
 
@@ -236,7 +238,8 @@ The RL branch mirrors the VZ branch:
 8. `Xenium_RL_SamplePlots_res1.5.R` and `Xenium_RL_SamplePlots_Loop_res1.5.R`
 9. `Xenium_RL_CountPlot_res1.5.R`
 
-`run_XeniumRLSubset_res1.5.sh` submits RL extraction. `run_XeniumRLAnalysis.slurm` currently invokes a post-QC processing script and should be checked against the intended stage before submission.
+`run_XeniumRLSubset_res1.5.slurm` submits RL extraction, and
+`run_XeniumRLMergePostQC.slurm` submits post-QC merged processing.
 
 ### 8. Combined VZ/RL objects
 
@@ -249,7 +252,7 @@ The refined regional labels are combined and analyzed with:
 - `Xenium_VZRL_Subclusters_Spatial_Merge_Processing.R` – Seurat v5 sketch/integration workflow on the merged data;
 - `Xenium_VZ&RL_CountPlot_res1.5.R` – combined lineage count plots.
 
-`run_VZRL_Subcluster_Merge.sh` submits the merge stage.
+`run_VZRL_Subcluster_Merge.slurm` submits the merge stage.
 
 ### 9. Spatial and trajectory analyses
 
@@ -264,14 +267,15 @@ The refined regional labels are combined and analyzed with:
 
 `Xenium_Giotto_BroadCluster_Analysis_array.R` runs the corresponding broad-cluster analysis. Plotting helpers include `Xenium_Giotto_SVGPlots.R`, `Xenium_Giotto_SVGCompPlots.R`, and `Xenium_Giotto_TimePlots.R`.
 
-Launchers are `run_GiottoAnalysis.sh`, `run_GiottoAnalysis_array.sh`, and `run_GiottoBroadAnalysis_array.sh`.
+Launchers are `run_GiottoAnalysis.slurm`, `run_GiottoAnalysis_array.slurm`, and
+`run_GiottoBroadAnalysis_array.slurm`.
 
 #### SpaTrack and CellRank export
 
 - `Xenium_VZRL_Subclusters_VZ_h5adExport.R` exports VZ-lineage expression, metadata, embeddings, and spatial coordinates to `h5ad`.
 - `Xenium_VZRL_Subclusters_VZ_SpaTrack.R` prepares/runs the per-sample SpaTrack workflow through `reticulate`.
 - `Xenium_VZRL_Subclusters_VZ_SpaTrack_Plotting.R` imports pseudotime and creates spatial plots.
-- `run_VZSpaTrack_array.sh` submits per-sample trajectory jobs.
+- `run_VZSpaTrack_array.slurm` submits per-sample trajectory jobs.
 
 These scripts require configured Python/Conda environments and currently contain environment-specific paths.
 
@@ -286,7 +290,7 @@ These scripts require configured Python/Conda environments and currently contain
 - `CrossStudyClusterCorr.R` computes pseudobulk cluster-expression correlations across Aldinger, Sepp, and Science.
 - `CrossStudyClusterMarkerComp.R` compares cluster marker programs and produces heatmaps.
 - `CrossStudyModuleScoreTransfer.R` transfers dataset-specific marker modules among references.
-- `run_MarkerComp.sh` submits the marker comparison.
+- `run_MarkerComp.slurm` submits the marker comparison.
 
 ## Software requirements
 
@@ -330,7 +334,7 @@ Rscript scripts/Xenium_VZ_Subset_res1.5.R 1
 On the configured cluster, submit the matching launcher:
 
 ```bash
-sbatch scripts/run_XeniumVZSubset_res1.5.sh
+sbatch scripts/run_XeniumVZSubset_res1.5.slurm
 ```
 
 To inspect the split-slide task mapping and dry-run one task:
@@ -343,7 +347,7 @@ Rscript scripts/XeniumPreProcess_split_slides.R --dry-run 1
 To submit all tasks after reviewing the dry runs:
 
 ```bash
-sbatch scripts/run_XeniumPreProcess_split_slides.sh
+sbatch scripts/run_XeniumPreProcess_split_slides.slurm
 ```
 
 The launcher submits 15 tasks and runs at most three concurrently. Each task
@@ -385,8 +389,9 @@ Many intermediate filenames contain manually assigned dates. Downstream scripts 
 
 - Several scripts contain absolute paths under `/home/acflint`, `/data/user/acflint`, or `~/R/Projects/XeniumFCProject`. Replace these when running elsewhere.
 - Active sample lists are commonly selected by commenting entries in or out. Treat the Slurm array bounds and R sample vectors as a coupled configuration.
-- `run_XeniumRLAnalysis.slurm` invokes `Xenium_RL_Merge_postQC_Processing_res1.5.R`, despite its broader job name.
-- Some scripts restore or refresh `renv` during a job, while others assume the library is already available.
+- VZ and RL post-QC merged processing use the matching
+  `run_XeniumVZMergePostQC.slurm` and `run_XeniumRLMergePostQC.slurm`
+  launchers.
 - Large objects can require 64–500 GB RAM depending on the stage. Do not copy the largest objects across too many `future` workers.
 - Random seeds are set in major Seurat stages, but manual cluster renaming and dated file selection remain part of the workflow.
 - The ignored `OLD/` directory contains superseded or experimental versions
