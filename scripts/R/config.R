@@ -78,34 +78,6 @@ resolve_sample_paths <- function(sample_record, config = load_pipeline_config())
   )
 }
 
-get_array_sample <- function(task_id,
-                             stage,
-                             samples = NULL,
-                             config = load_pipeline_config()) {
-  if (is.null(samples)) samples <- load_sample_manifest(config)
-  stage_column <- paste0("include_", stage)
-  if (!stage_column %in% names(samples)) {
-    stop("Unknown stage '", stage, "'. Missing column: ", stage_column)
-  }
-
-  stage_values <- as.character(samples[[stage_column]])
-  stage_values[is.na(stage_values)] <- ""
-  stage_values <- tolower(trimws(stage_values))
-  if (any(!stage_values %in% c("", "true", "false"))) {
-    stop("Column ", stage_column, " contains values other than TRUE, FALSE, or blank.")
-  }
-  if (any(stage_values == "")) {
-    stop("Column ", stage_column, " contains unreviewed blank values.")
-  }
-
-  selected <- samples[stage_values == "true", , drop = FALSE]
-  task_id <- suppressWarnings(as.integer(task_id))
-  if (length(task_id) != 1L || is.na(task_id) || task_id < 1L || task_id > nrow(selected)) {
-    stop("Task ID must be between 1 and ", nrow(selected), " for stage '", stage, "'.")
-  }
-  selected[task_id, , drop = FALSE]
-}
-
 validate_pipeline_config <- function(config = load_pipeline_config(), check_files = FALSE) {
   errors <- character()
   add_error <- function(...) errors <<- c(errors, paste0(...))
@@ -121,8 +93,7 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   slides <- load_slide_manifest(config)
 
   required_sample_columns <- c(
-    "sample_id", "input_directory", "input_layout", "cell_stats_file",
-    "include_preprocess", "include_annotation", "include_vz", "include_rl"
+    "sample_id", "input_directory", "input_layout", "cell_stats_file"
   )
   missing_sample_columns <- setdiff(required_sample_columns, names(samples))
   if (length(missing_sample_columns)) {
@@ -132,16 +103,6 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   if (any(!nzchar(samples$sample_id))) add_error("Blank sample IDs found.")
   if (any(!samples$input_layout %in% c("single", "multi_sample_slide"))) {
     add_error("input_layout must be 'single' or 'multi_sample_slide'.")
-  }
-
-  stage_columns <- grep("^include_", names(samples), value = TRUE)
-  for (column in stage_columns) {
-    values <- as.character(samples[[column]])
-    values[is.na(values)] <- ""
-    values <- tolower(trimws(values))
-    if (any(!values %in% c("", "true", "false"))) {
-      add_error(column, " contains values other than TRUE, FALSE, or blank.")
-    }
   }
 
   multi <- samples[samples$input_layout == "multi_sample_slide", , drop = FALSE]

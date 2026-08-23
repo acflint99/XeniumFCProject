@@ -26,12 +26,12 @@ config_path <- here::here("config", "config.yml")
 samples_path <- here::here("config", "samples.csv")
 ```
 
-## Review required
+## Scope
 
-All stage inclusion columns in `samples.csv` are intentionally blank. They
-must be reviewed before they control stage-specific job submission. Blank
-means “not decided,” not `FALSE`. The split-slide preprocessing driver selects
-rows by `input_layout` and does not use these inclusion columns.
+All 34 biological samples are intended to undergo preprocessing, annotation,
+VZ analysis, and RL analysis. The manifest therefore does not contain
+stage-specific inclusion columns. Completion is determined from expected
+outputs rather than stored as changing state in the configuration.
 
 `samples.csv` has one row per biological sample. `slides.csv` has one row per
 physical Xenium input directory and records which biological samples were
