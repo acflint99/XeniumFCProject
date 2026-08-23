@@ -381,14 +381,14 @@ Many intermediate filenames contain manually assigned dates. Downstream scripts 
 
 - Several scripts contain absolute paths under `/home/acflint`, `/data/user/acflint`, or `~/R/Projects/XeniumFCProject`. Replace these when running elsewhere.
 - Active sample lists are commonly selected by commenting entries in or out. Treat the Slurm array bounds and R sample vectors as a coupled configuration.
-- `run_NormCluster1.5.sh` calls `XeniumNormCluster_res1.5.R`, but that file currently defines a function and does not read the array task ID. Use a preprocessing driver or update the launcher before running it.
 - `run_XeniumRLAnalysis.slurm` invokes `Xenium_RL_Merge_postQC_Processing_res1.5.R`, despite its broader job name.
 - Some scripts restore or refresh `renv` during a job, while others assume the library is already available.
 - Large objects can require 64–500 GB RAM depending on the stage. Do not copy the largest objects across too many `future` workers.
 - Random seeds are set in major Seurat stages, but manual cluster renaming and dated file selection remain part of the workflow.
 - The ignored `OLD/` directory contains superseded or experimental versions
   and is not part of the active workflow. This includes
-  `AnchorBasedTransfer_RCTD_res1.5.R` and `SeppPreProcess.R`.
+  `AnchorBasedTransfer_RCTD_res1.5.R`, `SeppPreProcess.R`, and the broken
+  `run_NormCluster1.5.sh` launcher.
 
 ## Recommended maintenance
 
