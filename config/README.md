@@ -1,8 +1,9 @@
 # Pipeline configuration
 
 These files provide validated configuration metadata for the fetal cerebellum
-Xenium pipeline. The split-slide preprocessing driver reads them directly;
-most other analysis scripts have not yet been migrated.
+Xenium pipeline. The split-slide preprocessing and annotation drivers read the
+sample manifest directly; most other analysis scripts have not yet been
+migrated.
 
 When this directory is moved to the HPC project root, the intended layout is:
 
@@ -38,10 +39,11 @@ physical Xenium input directory and records which biological samples were
 captured together. Each manually separated sample has its own
 `cell_stats_file` within the shared input directory.
 
-`config.yml` is the source of truth for the split-slide preprocessing paths
-and runtime defaults. It is not yet the source of truth for the full pipeline.
-In particular, VZ/RL integration settings differ among scripts and should not
-be unified without checking the intended scientific workflow.
+`config.yml` records the split-slide preprocessing paths, runtime defaults,
+and the confirmed v2 reference RDS paths. It is not yet the source of truth
+for the full pipeline. In particular, VZ/RL integration settings differ among
+scripts and should not be unified without checking the intended scientific
+workflow.
 
 ## Validation
 

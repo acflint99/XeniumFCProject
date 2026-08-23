@@ -178,7 +178,25 @@ Processed objects are saved as `outputs/Xenium_Res1.5_RDS/<sample>_CB_QC_cluster
 - applies a default prediction-score threshold of 0.4; and
 - derives cluster-level majority and weighted-vote labels.
 
-The sample to process is selected by a one-based command-line task ID. `run_ABT_res1.5.sh` submits the current array.
+The reference and sample are selected explicitly from the command line. The
+sample task ID maps to all 34 rows in `config/samples.csv`:
+
+```bash
+Rscript scripts/AnchorBasedTransfer_RPCA_res1.5.R --list
+Rscript scripts/AnchorBasedTransfer_RPCA_res1.5.R --dry-run Aldinger 1
+```
+
+`run_ABT_res1.5.sh` submits a 34-task array, capped at two concurrent jobs. To
+submit all three reference analyses:
+
+```bash
+sbatch --job-name=Xen_ABT_Aldinger --export=ALL,REFERENCE=Aldinger scripts/run_ABT_res1.5.sh
+sbatch --job-name=Xen_ABT_Sepp --export=ALL,REFERENCE=Sepp scripts/run_ABT_res1.5.sh
+sbatch --job-name=Xen_ABT_Science --export=ALL,REFERENCE=Science scripts/run_ABT_res1.5.sh
+```
+
+The driver refuses to replace any existing annotation output unless called
+with `--overwrite`, or submitted with `ABT_OVERWRITE=true` after review.
 
 Related scripts:
 

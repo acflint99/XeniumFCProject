@@ -1,74 +1,152 @@
-# ----------------------------
-# Setup & Libraries
-# ----------------------------
+# Manifest-driven annotation for every biological sample and reference.
+# Use --list or --dry-run before launching heavy Seurat work.
+
+rm(list = ls())
+
+library(here)
+
+sample_manifest <- read.csv(
+  here("config", "samples.csv"),
+  check.names = FALSE,
+  stringsAsFactors = FALSE,
+  na.strings = character()
+)
+sample_list <- sample_manifest$sample_id
+
+reference_paths <- c(
+  Aldinger = here("outputs", "AldingerRDS", "Aldinger_newClusters_newUMAPv2_5k.rds"),
+  Sepp = here("outputs", "SeppRDS", "Sepp_newClusters_newUMAPv2_5k.rds"),
+  Science = here("outputs", "ScienceRDS", "Science_newClusters_newUMAPv2_5k.rds")
+)
+
+args <- commandArgs(trailingOnly = TRUE)
+
+if (identical(args, "--list")) {
+  cat("References:", paste(names(reference_paths), collapse = ", "), "\n")
+  write.table(
+    data.frame(task_id = seq_along(sample_list), sample_id = sample_list),
+    row.names = FALSE,
+    quote = FALSE,
+    sep = "\t"
+  )
+  quit(save = "no", status = 0L)
+}
+
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options) > 0L) {
+  stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+}
+
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) {
+  stop("--dry-run and --overwrite cannot be used together.")
+}
+
+job_args <- args[!args %in% valid_options]
+if (length(job_args) != 2L) {
+  stop(
+    "Usage: Rscript scripts/AnchorBasedTransfer_RPCA_res1.5.R ",
+    "[--dry-run|--overwrite] REFERENCE TASK_ID"
+  )
+}
+
+reference_match <- match(tolower(job_args[[1]]), tolower(names(reference_paths)))
+if (is.na(reference_match)) {
+  stop("REFERENCE must be Aldinger, Sepp, or Science.")
+}
+reference_name <- names(reference_paths)[reference_match]
+reference_path <- unname(reference_paths[[reference_name]])
+
+task_id <- suppressWarnings(as.integer(job_args[[2]]))
+if (is.na(task_id) || task_id < 1L || task_id > length(sample_list)) {
+  stop("TASK_ID must be between 1 and ", length(sample_list), ".")
+}
+
+current_sample <- sample_list[[task_id]]
+input_file <- here(
+  "outputs", "Xenium_Res1.5_RDS",
+  paste0(current_sample, "_CB_QC_cluster.rds")
+)
+plots_dir <- here("outputs", paste0("Xenium_", reference_name, "ABT_Res1.5_Plots"))
+tables_dir <- here("outputs", paste0("Xenium_", reference_name, "ABT_Res1.5_Tables"))
+rds_dir <- here("outputs", paste0("Xenium_", reference_name, "ABT_Res1.5_RDS"))
+
+expected_outputs <- c(
+  file.path(tables_dir, paste0(current_sample, "_", reference_name, "_majority_vs_weighted.csv")),
+  file.path(tables_dir, paste0(current_sample, "_", reference_name, "_prediction_cellcounts.csv")),
+  file.path(plots_dir, paste0(current_sample, "_", reference_name, "_Broad_ClusterWeighted_UMAP.tif")),
+  file.path(plots_dir, paste0(current_sample, "_", reference_name, "_Broad_ClusterMajority_UMAP.tif")),
+  file.path(plots_dir, paste0(current_sample, "_Broad_PredictionScores_Hist.tif")),
+  file.path(plots_dir, paste0(current_sample, "_Broad_PredictionScores_Hist.pdf")),
+  file.path(plots_dir, paste0(current_sample, "_Broad_GlobalSpatial_ClusterWeighted.tif")),
+  file.path(plots_dir, paste0(current_sample, "_Broad_GlobalSpatial_ClusterMajority.tif")),
+  file.path(plots_dir, paste0(current_sample, "_Broad_FacetSpatial_ClusterWeighted.tif")),
+  file.path(plots_dir, paste0(current_sample, "_Broad_FacetSpatial_ClusterMajority.tif")),
+  file.path(plots_dir, paste0(current_sample, "_Broad_Marker_DotPlot_Weighted.tif")),
+  file.path(plots_dir, paste0(current_sample, "_Broad_Marker_DotPlot_Weighted.pdf")),
+  file.path(plots_dir, paste0(current_sample, "_Broad_Marker_DotPlot_Majority.tif")),
+  file.path(plots_dir, paste0(current_sample, "_Broad_Marker_DotPlot_Majority.pdf")),
+  file.path(rds_dir, paste0(current_sample, "_", reference_name, "_annotated.rds"))
+)
+existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+
+if (!file.exists(input_file)) stop("Input file not found: ", input_file)
+if (!file.exists(reference_path)) stop("Reference file not found: ", reference_path)
+
+if (dry_run) {
+  cat("Reference:", reference_name, "\n")
+  cat("Task:", task_id, "of", length(sample_list), "\n")
+  cat("Sample:", current_sample, "\n")
+  cat("Input:", input_file, "\n")
+  cat("Reference RDS:", reference_path, "\n")
+  write.table(
+    data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
+    row.names = FALSE,
+    quote = FALSE,
+    sep = "\t"
+  )
+  quit(save = "no", status = 0L)
+}
+
+if (length(existing_outputs) > 0L && !overwrite) {
+  stop(
+    "Refusing to overwrite existing ", reference_name,
+    " annotation outputs for ", current_sample, ":\n- ",
+    paste(existing_outputs, collapse = "\n- "),
+    "\nRerun with --overwrite only after reviewing these files."
+  )
+}
+if (length(existing_outputs) > 0L) {
+  warning(
+    "Overwriting ", length(existing_outputs), " existing ", reference_name,
+    " annotation outputs for ", current_sample, "."
+  )
+}
+
 library(future)
 library(Seurat)
 library(ggplot2)
 library(patchwork)
 library(dplyr)
-library(here)
 library(tidyr)
 library(Cairo)
 
-# Increase the global object size limit
 options(future.globals.maxSize = 400 * 1024^3)
 
-# =========================================================
-# Sample Mapping Logic (Slurm Array Support)
-# =========================================================
-sample_list <- c(
-  # "FB328_1_X_G",
-  #  "FB330_1_X_G",
-  # "FB78_X_G",
-  # "GZFB5_X_G",
-  #  "GZFB_12_X_G_1",
-  # "GZFB_12_X_G_2",
-  # "GZFB_12_X_G_3",
-  #  "GZFB_12_X_G_4",
-  # "GZFB_12_X_G_5",
-  # "GZFB_1_X_G",
-  # "GZFB_9_X_G_1",
-  # "GZFB_9_X_G_2",
-  # "GZFB_9_X_G_3",
-  # "GZFB_20_X_G_1",
-  # "GZFB_20_X_G_11",
-  # "GZFB_20_X_G_12"
-  # "GZFB_20_X_G_2",
-  # "GZFB_20_X_G_3",
-  # "GZFB_20_X_G_4",
-  # "GZFB_22_X_G_6",
-  # "GZFB_20_X_G_9",
-  # "GZFB_20_X_G_7",
-  # "GZFB_20_X_G_5",
-  # "GZFB_20_X_G_10",
-  # "GZFB_20_X_G_8",
-  # "GZFB_20_X_G_6",
-  # "GZFB_22_X_G_4",
-  # "GZFB_22_X_G_2",
-  # "GZFB_22_X_G_5",
-  # "GZFB_22_X_G_3",
-  # "GZFB_22_X_G_1"
-   "GZFB4_X_G",
-   "FB124_X_G",
-   "FB198_X_G"
-  
+message(
+  "### Processing ", reference_name, " annotation for sample [",
+  task_id, "/", length(sample_list), "]: ", current_sample, " ###"
 )
-
-# Get the Task ID from Slurm (e.g., --array=1-16)
-args <- commandArgs(trailingOnly = TRUE)
-task_id <- as.numeric(args[1])
-
-if (is.na(task_id) || task_id < 1 || task_id > length(sample_list)) {
-  stop("Error: Task ID is out of bounds or not provided.")
-}
-
-current_sample <- sample_list[task_id]
-message("### Processing Annotation for Sample [", task_id, "]: ", current_sample, " ###")
 
 # =========================================================
 # Annotation Function
 # =========================================================
-annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "Science") {
+annotate_xenium_from_ref <- function(xenium_obj,
+                                     sample_name,
+                                     reference_name,
+                                     reference_path) {
   
   ## ----------------------------
   ## 0. Setup & Paths
@@ -91,7 +169,7 @@ annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "
   ## ----------------------------
   ## 1. Load Reference
   ## ----------------------------
-  ref_path <- here(output_root, paste0(reference_name, "RDS"), paste0(reference_name, "_newClusters_newUMAPv2_5k.rds"))
+  ref_path <- reference_path
   if (!file.exists(ref_path)) stop("Reference file not found: ", ref_path)
   reference <- readRDS(ref_path)
   
@@ -345,11 +423,10 @@ annotate_xenium_from_ref <- function(xenium_obj, sample_name, reference_name = "
 # =========================================================
 # Execution
 # =========================================================
-input_file <- here("outputs", "Xenium_Res1.5_RDS", paste0(current_sample, "_CB_QC_cluster.rds"))
-
-if (file.exists(input_file)) {
-  seu <- readRDS(input_file)
-  annotate_xenium_from_ref(seu, current_sample)
-} else {
-  stop("Input file not found: ", input_file)
-}
+seu <- readRDS(input_file)
+annotate_xenium_from_ref(
+  xenium_obj = seu,
+  sample_name = current_sample,
+  reference_name = reference_name,
+  reference_path = reference_path
+)
