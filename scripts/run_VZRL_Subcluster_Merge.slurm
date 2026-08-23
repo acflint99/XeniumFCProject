@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=VZSamplePlots_job
-#SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/VZSamplePlots_job_%j.out
-#SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/VZSamplePlots_job_%j.err
+#SBATCH --job-name=VZRL_Merge_job
+#SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/VZRL_Merge_job.out
+#SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/VZRL_Merge_job.err
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --partition=short
 
 # Load R module first
@@ -21,5 +21,7 @@ export R_LIBS_USER=~/R/Projects/XeniumFCProject/renv/library/linux-rhel-7.9/R-4.
 # The project .Rprofile activates the existing renv library. Dependency
 # changes must be resolved manually before job submission.
 
+ulimit -s unlimited
+
 # 3. Run the main analysis
-Rscript scripts/XeniumVZSamplePlots_Loop_res1.5.R
+Rscript scripts/Xenium_VZRL_Subclusters_Spatial_Merge.R

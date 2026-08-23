@@ -23,7 +23,7 @@ check_mem <- function(step_label) {
 }
 
 # 1. PARALLELIZATION 
-plan(multisession, workers = 4) 
+plan(multisession, workers = 7)
 options(future.globals.maxSize = 200 * 1024^3)
 
 plot_path <- here("outputs", "XenAld_RL_postQC_Res1.5_Plots")
