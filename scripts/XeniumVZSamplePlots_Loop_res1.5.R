@@ -1,59 +1,69 @@
-# Clear the environment
-rm(list = ls())
+#!/usr/bin/env Rscript
 
+# Slurm-array driver for one manifest-defined VZ spatial report per task.
+rm(list = ls())
 options(bitmapType = "cairo")
 
-# 0. Load Libraries
-source("renv/activate.R")
-library(Seurat)
-library(here)
+suppressPackageStartupMessages(library(here))
+source(here("scripts", "R", "config.R"))
 
-# 1. Load the function and your palette/config
-# This defines generate_spatial_reports() and your color variables
-source(here("scripts", "Xenium_VZ_SamplePlots_res1.5.R"))
-source(here("scripts", "color_palette.R"))
-
-# 3. Define Samples (run one line (3-4 samples) at a time)
-samples_to_run <- c(
-  #"GZFB4_X_G", "FB124_X_G", "FB198_X_G", "FB328_1_X_G"
-  #"FB330_1_X_G", "FB78_X_G", "GZFB5_X_G", "GZFB_12_X_G_1"
-  #"GZFB_12_X_G_2", "GZFB_12_X_G_3", "GZFB_12_X_G_4", "GZFB_12_X_G_5"
-  "GZFB_1_X_G", "GZFB_9_X_G_1", "GZFB_9_X_G_2", "GZFB_9_X_G_3"
-)
-
-# 3. Define Paths
-input_base <- here("outputs", "Xenium_AldingerABT_VZsubclusters_Res1.5_RDS")
-output_base <- here("outputs", "Xenium_AldingerABT_VZsubclusters_Res1.5_Results")
-if(!dir.exists(output_base)) dir.create(output_base)
-
-# 4. Run Sequential Loop
-message("Starting sequential processing...")
-
-for (s in samples_to_run) {
-  
-  input_path <- file.path(input_base, paste0(s, "_Ald_VZ_QC_Subclusters.rds"))
-  
-  if (!file.exists(input_path)) {
-    warning(paste("File not found, skipping:", input_path))
-    next
-  }
-  
-  message(paste(">>> Processing Sample:", s))
-  
-  tryCatch({
-    generate_spatial_reports(
-      sample_id = s, 
-      input_rds_path = input_path, 
-      base_plot_dir = output_base
-    )
-  }, error = function(e) {
-    message(paste("Error in sample", s, ":", e$message))
-    
-    # Create error log
-    err_path <- file.path(output_base, s)
-    if(!dir.exists(err_path)) dir.create(err_path, recursive = TRUE)
-    writeLines(as.character(e), file.path(err_path, "error_log.txt"))
-  })
+config <- load_pipeline_config()
+sample_ids <- load_sample_manifest(config)$sample_id
+task_map <- data.frame(task_id = seq_along(sample_ids), sample_id = sample_ids)
+args <- commandArgs(trailingOnly = TRUE)
+if (identical(args, "--list")) {
+  write.table(task_map, row.names = FALSE, quote = FALSE, sep = "\t")
+  quit(save = "no", status = 0L)
+}
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
+task_args <- args[!args %in% valid_options]
+if (length(task_args) > 1L) {
+  stop("Usage: Rscript scripts/XeniumVZSamplePlots_Loop_res1.5.R [--list|--dry-run|--overwrite] [TASK_ID]")
+}
+task_value <- if (length(task_args)) task_args[[1]] else Sys.getenv("SLURM_ARRAY_TASK_ID", unset = "")
+task_id <- suppressWarnings(as.integer(task_value))
+if (is.na(task_id) || task_id < 1L || task_id > length(sample_ids)) {
+  stop("TASK_ID must be between 1 and ", length(sample_ids), ". Use --list to inspect the mapping.")
 }
 
-message("All tasks complete.")
+sample_id <- sample_ids[[task_id]]
+output_root <- here(config$project$outputs_dir)
+input_path <- file.path(
+  output_root, "Xenium_AldingerABT_VZsubclusters_Res1.5_RDS",
+  paste0(sample_id, "_Ald_VZ_QC_Subclusters.rds")
+)
+output_base <- file.path(output_root, "Xenium_AldingerABT_VZsubclusters_Res1.5_Results")
+sample_dir <- file.path(output_base, sample_id)
+output_suffixes <- c(
+  "_cluster_counts.csv", "_Global_Spatial1.5.tif", "_Purkinje_Spatial1.5.tif",
+  "_Glia_Spatial1.5.tif", "_GABA_Spatial1.5.tif", "_Faceted_Clusters0.3.tif",
+  "_Markers_DotPlot.tif", "_Markers_DotPlot.pdf"
+)
+output_paths <- file.path(sample_dir, paste0(sample_id, output_suffixes))
+
+if (dry_run) {
+  cat("Task:", task_id, "of", length(sample_ids), "\n")
+  cat("Biological sample:", sample_id, "\n")
+  cat("VZ mapped input:", input_path, "\n")
+  cat("Input exists:", file.exists(input_path), "\n")
+  write.table(data.frame(output = output_paths, exists = file.exists(output_paths)),
+              row.names = FALSE, quote = FALSE, sep = "\t")
+  quit(save = "no", status = 0L)
+}
+if (!file.exists(input_path)) stop("VZ mapped input not found: ", input_path)
+existing_outputs <- output_paths[file.exists(output_paths)]
+if (length(existing_outputs) && !overwrite) {
+  stop("Refusing to overwrite existing VZ report outputs:\n- ",
+       paste(existing_outputs, collapse = "\n- "), "\nUse --overwrite only after review.")
+}
+
+source(here("scripts", "Xenium_VZ_SamplePlots_res1.5.R"))
+generate_spatial_reports(sample_id, input_path, output_base)
+missing_outputs <- output_paths[!file.exists(output_paths)]
+if (length(missing_outputs)) stop("VZ report did not create:\n- ", paste(missing_outputs, collapse = "\n- "))
+message("Completed VZ spatial report for ", sample_id, ".")

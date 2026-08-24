@@ -238,14 +238,15 @@ The VZ branch generally follows this order:
 5. `Xenium_VZ_Merge_postQC_Processing_res1.5.R` – removes failed cells and recomputes integration and reductions.
 6. `Xenium_VZ_Analysis_res1.5.R` – VZ subcluster annotation and marker analysis.
 7. `Xenium_VZ_Mapping_res1.5.R` – maps refined VZ labels back to all 34 configured samples.
-8. `Xenium_VZ_SamplePlots_res1.5.R` and `XeniumVZSamplePlots_Loop_res1.5.R` – per-sample spatial reports.
+8. `Xenium_VZ_SamplePlots_res1.5.R` and `XeniumVZSamplePlots_Loop_res1.5.R` – manifest-defined per-sample spatial reports.
 9. `Xenium_VZ_CountPlot_res1.5.R` – VZ cell/subcluster counts.
 
 The VZ driver reads all 34 samples from `config/samples.csv` and supports
 `--list`, `--dry-run`, and protected `--overwrite` operation. Submit
 per-sample extraction with `run_XeniumVZSubset_res1.5.slurm`. Submit
 post-QC merged processing with `run_XeniumVZMergePostQC.slurm`.
-`run_VZSamplePlots.slurm` launches the plotting stage.
+`run_XeniumVZMapping.slurm` maps the refined identities, and
+`run_XeniumVZSamplePlots.slurm` launches 34 protected plotting tasks.
 
 Before merging, inspect completeness without loading any Seurat objects:
 
@@ -296,6 +297,13 @@ refuses to replace existing outputs unless given `--overwrite`. It verifies
 that every cell in the master VZ object maps exactly once and writes
 `Xenium_VZ_Mapping_manifest.csv` with per-sample cell counts and PCW.
 
+Inspect the VZ plotting task map and one sample without creating plots:
+
+```bash
+Rscript scripts/XeniumVZSamplePlots_Loop_res1.5.R --list
+Rscript scripts/XeniumVZSamplePlots_Loop_res1.5.R --dry-run 1
+```
+
 ### 7. RL analysis
 
 The RL branch mirrors the VZ branch:
@@ -307,7 +315,7 @@ The RL branch mirrors the VZ branch:
 5. `Xenium_RL_Merge_postQC_Processing_res1.5.R`
 6. `Xenium_RL_Analysis_res1.5.R`
 7. `Xenium_RL_Mapping_res1.5.R` – maps refined RL labels back to all 34 configured samples.
-8. `Xenium_RL_SamplePlots_res1.5.R` and `Xenium_RL_SamplePlots_Loop_res1.5.R`
+8. `Xenium_RL_SamplePlots_res1.5.R` and `Xenium_RL_SamplePlots_Loop_res1.5.R` – manifest-defined per-sample reports.
 9. `Xenium_RL_CountPlot_res1.5.R`
 
 The RL driver also reads all 34 samples from `config/samples.csv` and supports
@@ -354,6 +362,14 @@ overwrite, barcode-matching, and manifest checks as the VZ mapping stage. It
 also requires the VZ subcluster metadata inherited from the preceding branch
 and writes `Xenium_RL_Mapping_manifest.csv`.
 
+Use `run_XeniumRLMapping.slurm` for mapping and
+`run_XeniumRLSamplePlots.slurm` for the 34-task plotting array. Inspect one
+plotting task first with:
+
+```bash
+Rscript scripts/Xenium_RL_SamplePlots_Loop_res1.5.R --dry-run 1
+```
+
 The stable processed object is
 `outputs/XenAld_RL_Res1.5_RDS/Xenium_RL_Res1.5.rds`; RL QC and post-QC
 processing now consume that path.
@@ -382,6 +398,7 @@ This stage reads sample IDs from `config/samples.csv`, requires all 34 mapped
 inputs, and refuses to replace any existing output unless given `--overwrite`.
 Combined identities use VZ subclusters first, RL subclusters second, and the
 broad consensus label for all remaining cells.
+Submit it with `run_XeniumCombineSubclusters.slurm`.
 
 The subsequent clean/merge stage also requires all 34 inputs and removes
 spatial images, scale data, and control assays before merging. Because its
@@ -405,6 +422,8 @@ The stable processed object is `XenAld_VZRL_clean_merge_processed.rds`.
 Plot-only runs verify that the input merge has not changed, and they never
 repeat normalization, PCA, Harmony, or UMAP. UMAP outputs remain TIFF-only;
 DotPlots, the marker heatmap, and violin plots are saved as TIFF and Cairo PDF.
+The corresponding launchers are `run_XeniumCombinedCleanMerge.slurm`,
+`run_XeniumCombinedProcess.slurm`, and `run_XeniumCombinedPlots.slurm`.
 
 ### 9. Spatial and trajectory analyses
 
@@ -453,7 +472,7 @@ The configured Slurm environment uses R 4.4.1 from the
 - `harmony`
 - `future` and `future.apply`
 - `dplyr`, `tidyr`, `purrr`, and `tibble`
-- `ggplot2`, `patchwork`, `ggh4x`, `randomcoloR`, and `Cairo`
+- `ggplot2`, `patchwork`, `randomcoloR`, and `Cairo`
 - `ComplexHeatmap`, `pheatmap`, `circlize`, and `viridis`
 - `Giotto`
 - `reticulate`

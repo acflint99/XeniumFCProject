@@ -5,7 +5,6 @@ library(Seurat)
 library(ggplot2)
 library(here)
 library(dplyr)
-library(ggh4x)
 
 # Load your new palette and order
 source(here("scripts", "color_palette.R"))
@@ -23,6 +22,9 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   
   # 2. Load Data
   obj <- readRDS(input_rds_path)
+  if (!all(c("VZ_subcluster", "consensus_label", "PCW") %in% colnames(obj[[]]))) {
+    stop(sample_id, " lacks required VZ plotting metadata.")
+  }
   obj$VZ_subcluster <- factor(obj$VZ_subcluster, levels = vz_subcluster_order)
   
   # Export Cluster Statistics
@@ -114,14 +116,15 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   
   #C. Faceted Spatial
   coords <- GetTissueCoordinates(obj, type = "Xenium")
-  plot_data <- cbind(coords, cluster = obj$VZ_subcluster)
-  design <- "ABCDE\nFGHI#\nJKLM#\nNOPQ#"
-  
+  if (!"cell" %in% colnames(coords)) stop("Spatial coordinates lack the cell identifier column.")
+  coordinate_cells <- match(as.character(coords$cell), colnames(obj))
+  if (anyNA(coordinate_cells)) stop("Spatial coordinates do not align with ", sample_id, ".")
+  plot_data <- cbind(coords, cluster = obj$VZ_subcluster[coordinate_cells])
   p_facet <- plot_data %>%
     filter(!is.na(cluster)) %>%
     ggplot(aes(x = y, y = x, color = cluster)) +
     geom_point(size = 0.3) +
-    facet_manual(~cluster, design = design) + 
+    facet_wrap(~cluster, ncol = 5) +
     scale_color_manual(values = vz_palette) +
     coord_fixed() + 
     theme_void() +
@@ -150,9 +153,14 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   obj <- AddMetaData(obj, metadata = rev_levels, col.name = "subcluster_rev")
   
   Idents(obj) <- "subcluster_rev"
-  obj_plot <- subset(obj, idents = vz_subcluster_order)
-  
-  p_dot <- DotPlot(obj_plot, features = vz_markers, cols = c("lightgrey", "red"),
+  plotted_cells <- Cells(obj)[!is.na(obj$VZ_subcluster)]
+  if (!length(plotted_cells)) stop(sample_id, " contains no mapped VZ cells.")
+  obj_plot <- subset(obj, cells = plotted_cells)
+  existing_vz_markers <- lapply(vz_markers, function(x) intersect(x, rownames(obj_plot)))
+  existing_vz_markers <- existing_vz_markers[lengths(existing_vz_markers) > 0L]
+  if (!length(existing_vz_markers)) stop("No VZ marker genes are present in ", sample_id, ".")
+
+  p_dot <- DotPlot(obj_plot, features = existing_vz_markers, cols = c("lightgrey", "red"),
                    dot.scale = 6, cluster.idents = FALSE) +
     RotatedAxis() +
     theme(axis.text.x = element_text(size = 8, face = "italic"),

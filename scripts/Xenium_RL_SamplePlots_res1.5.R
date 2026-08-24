@@ -3,7 +3,6 @@ library(Seurat)
 library(ggplot2)
 library(here)
 library(dplyr)
-library(ggh4x)
 
 # Load your new palette and order
 source(here("scripts", "color_palette.R"))
@@ -21,6 +20,9 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   
   # 2. Load Data
   obj <- readRDS(input_rds_path)
+  if (!all(c("RL_subcluster", "consensus_label", "PCW") %in% colnames(obj[[]]))) {
+    stop(sample_id, " lacks required RL plotting metadata.")
+  }
   obj$RL_subcluster <- factor(obj$RL_subcluster, levels = rl_subcluster_order)
   
   # Export Cluster Statistics
@@ -114,14 +116,15 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   
   #C. Faceted Spatial
   coords <- GetTissueCoordinates(obj, type = "Xenium")
-  plot_data <- cbind(coords, cluster = obj$RL_subcluster)
-  design <- "ABCDE\nFGHIJ\nKLMN#"
-  
+  if (!"cell" %in% colnames(coords)) stop("Spatial coordinates lack the cell identifier column.")
+  coordinate_cells <- match(as.character(coords$cell), colnames(obj))
+  if (anyNA(coordinate_cells)) stop("Spatial coordinates do not align with ", sample_id, ".")
+  plot_data <- cbind(coords, cluster = obj$RL_subcluster[coordinate_cells])
   p_facet <- plot_data %>%
     filter(!is.na(cluster)) %>%
     ggplot(aes(x = y, y = x, color = cluster)) +
     geom_point(size = 0.3) +
-    facet_manual(~cluster, design = design) + 
+    facet_wrap(~cluster, ncol = 5) +
     scale_color_manual(values = rl_palette) +
     coord_fixed() + 
     theme_void() +
@@ -150,9 +153,14 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   obj <- AddMetaData(obj, metadata = rev_levels, col.name = "subcluster_rev")
   
   Idents(obj) <- "subcluster_rev"
-  obj_plot <- subset(obj, idents = rl_subcluster_order)
-  
-  p_dot <- DotPlot(obj_plot, features = rl_markers, cols = c("lightgrey", "red"),
+  plotted_cells <- Cells(obj)[!is.na(obj$RL_subcluster)]
+  if (!length(plotted_cells)) stop(sample_id, " contains no mapped RL cells.")
+  obj_plot <- subset(obj, cells = plotted_cells)
+  existing_rl_markers <- lapply(rl_markers, function(x) intersect(x, rownames(obj_plot)))
+  existing_rl_markers <- existing_rl_markers[lengths(existing_rl_markers) > 0L]
+  if (!length(existing_rl_markers)) stop("No RL marker genes are present in ", sample_id, ".")
+
+  p_dot <- DotPlot(obj_plot, features = existing_rl_markers, cols = c("lightgrey", "red"),
                    dot.scale = 6, cluster.idents = FALSE) +
     RotatedAxis() +
     theme(axis.text.x = element_text(size = 8, face = "italic"),
