@@ -383,6 +383,29 @@ inputs, and refuses to replace any existing output unless given `--overwrite`.
 Combined identities use VZ subclusters first, RL subclusters second, and the
 broad consensus label for all remaining cells.
 
+The subsequent clean/merge stage also requires all 34 inputs and removes
+spatial images, scale data, and control assays before merging. Because its
+filename contains `&`, quote it in the shell:
+
+```bash
+Rscript 'scripts/Xenium_CombSubclusters_Clean&Merge.R' --dry-run
+```
+
+It writes the stable merged object `XenAld_VZRL_clean_merge.rds` and a
+per-sample cell-count/PCW manifest. Combined integration and plotting are
+separate operations:
+
+```bash
+Rscript 'scripts/Xenium_CombSubclusters_Process&Plot.R' --dry-run
+Rscript 'scripts/Xenium_CombSubclusters_Process&Plot.R' --process-only
+Rscript 'scripts/Xenium_CombSubclusters_Process&Plot.R' --plots-only
+```
+
+The stable processed object is `XenAld_VZRL_clean_merge_processed.rds`.
+Plot-only runs verify that the input merge has not changed, and they never
+repeat normalization, PCA, Harmony, or UMAP. UMAP outputs remain TIFF-only;
+DotPlots, the marker heatmap, and violin plots are saved as TIFF and Cairo PDF.
+
 ### 9. Spatial and trajectory analyses
 
 #### Giotto

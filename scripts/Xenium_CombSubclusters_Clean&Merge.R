@@ -1,70 +1,124 @@
-# Clear the environment
+#!/usr/bin/env Rscript
+
+# Remove spatial/QC overhead and merge the complete manifest-defined set of
+# combined VZ/RL whole-tissue objects.
+
 rm(list = ls())
 
-library(Seurat)
-library(here)
+suppressPackageStartupMessages({
+  library(here)
+  library(Seurat)
+})
+source(here("scripts", "R", "config.R"))
 
-options(future.globals.maxSize = +Inf)
+config <- load_pipeline_config()
+sample_ids <- load_sample_manifest(config)$sample_id
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!args %in% valid_options)) {
+  stop("Usage: Rscript scripts/Xenium_CombSubclusters_Clean&Merge.R [--dry-run|--overwrite]")
+}
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
-# 1. Setup Paths
-# Project root: /home/acflint/R/Projects/XeniumFCProject/
-i_path <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS")
-o_path <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_RDS")
+output_root <- here(config$project$outputs_dir)
+input_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS")
+output_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_RDS")
+input_names <- paste0(sample_ids, "_Ald_VZ_RL_QC_Subclusters.rds")
+input_paths <- file.path(input_dir, input_names)
+clean_names <- paste0("clean_", sample_ids, ".rds")
+clean_paths <- file.path(output_dir, clean_names)
+merged_path <- file.path(output_dir, "XenAld_VZRL_clean_merge.rds")
+manifest_path <- file.path(output_dir, "XenAld_VZRL_clean_merge_manifest.csv")
 
-if (!dir.exists(o_path)) dir.create(o_path, recursive = TRUE)
+observed_names <- if (dir.exists(input_dir)) {
+  list.files(input_dir, pattern = "\\.rds$", full.names = FALSE)
+} else character()
+missing_names <- input_names[!file.exists(input_paths)]
+unexpected_names <- setdiff(observed_names, input_names)
 
-files <- list.files(i_path, pattern = "\\.rds$", full.names = TRUE)
+if (dry_run) {
+  cat("Expected combined inputs:", length(input_paths), "\n")
+  cat("Existing combined inputs:", sum(file.exists(input_paths)), "\n")
+  cat("Unexpected top-level RDS files:", length(unexpected_names), "\n")
+  cat("Clean sample outputs existing:", sum(file.exists(clean_paths)), "of", length(clean_paths), "\n")
+  cat("Merged output:", merged_path, "\n")
+  cat("Merged output exists:", file.exists(merged_path), "\n")
+  write.table(
+    data.frame(sample_id = sample_ids, input_exists = file.exists(input_paths),
+               clean_output_exists = file.exists(clean_paths)),
+    row.names = FALSE, quote = FALSE, sep = "\t"
+  )
+  if (length(unexpected_names)) cat("Unexpected files:\n- ", paste(unexpected_names, collapse = "\n- "), "\n")
+  quit(save = "no", status = 0L)
+}
 
-# 2. Individual Cleaning Loop
-for (f in files) {
-  # Extract Sample ID (e.g., "GZFB5_X_G" from "GZFB5_X_G_Ald_VZ_RL_QC_Subclusters.rds")
-  s_id <- gsub("_Ald_VZ_RL_QC_Subclusters\\.rds", "", basename(f))
-  message("Processing Sample: ", s_id)
-  
-  # Load
-  tmp <- readRDS(f)
-  
-  # Strip the 3GB+ dense layer
-  tmp[["Xenium"]]@layers$scale.data <- NULL
-  
-  # Remove QC assays
-  tmp[["BlankCodeword"]] <- NULL
-  tmp[["ControlCodeword"]] <- NULL
-  tmp[["ControlProbe"]] <- NULL
-  tmp[["GenomicControl"]] <- NULL
-  
-  # REMOVE ALL SPATIAL DATA
-  tmp@images <- list()
-  
-  # Assign the clean Sample ID to the project name
-  tmp@project.name <- s_id
-  
-  # Save intermediate clean file
-  saveRDS(tmp, file.path(o_path, paste0("clean_", s_id, ".rds")), compress = FALSE)
-  
-  rm(tmp)
+if (length(missing_names)) {
+  stop("Cannot clean/merge combined objects; missing files:\n- ", paste(missing_names, collapse = "\n- "))
+}
+if (length(unexpected_names)) {
+  stop("Cannot clean/merge combined objects; unexpected RDS files:\n- ", paste(unexpected_names, collapse = "\n- "))
+}
+expected_outputs <- c(clean_paths, merged_path, manifest_path)
+existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+if (length(existing_outputs) && !overwrite) {
+  stop("Refusing to overwrite existing combined clean/merge outputs:\n- ",
+       paste(existing_outputs, collapse = "\n- "), "\nUse --overwrite only after review.")
+}
+
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+merge_manifest <- data.frame(
+  sample_id = sample_ids, input_path = input_paths, clean_path = clean_paths,
+  cells = integer(length(sample_ids)), PCW = character(length(sample_ids)),
+  stringsAsFactors = FALSE
+)
+merged_obj <- NULL
+
+for (i in seq_along(sample_ids)) {
+  sample_id <- sample_ids[[i]]
+  message("Cleaning and merging sample ", i, " of ", length(sample_ids), ": ", sample_id)
+  obj <- readRDS(input_paths[[i]])
+  required_metadata <- c("comb_subcluster", "consensus_label", "VZ_subcluster", "RL_subcluster", "PCW")
+  missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
+  if (length(missing_metadata)) stop(sample_id, " lacks metadata: ", paste(missing_metadata, collapse = ", "))
+  if (ncol(obj) == 0L) stop(sample_id, " contains zero cells.")
+  pcw_values <- unique(as.character(obj$PCW))
+  pcw_values <- pcw_values[!is.na(pcw_values) & nzchar(pcw_values)]
+  if (length(pcw_values) != 1L) stop(sample_id, " must contain exactly one nonblank PCW value.")
+
+  if ("scale.data" %in% Layers(obj[["Xenium"]])) obj[["Xenium"]]@layers$scale.data <- NULL
+  for (assay_name in c("BlankCodeword", "ControlCodeword", "ControlProbe", "GenomicControl")) {
+    if (assay_name %in% Assays(obj)) obj[[assay_name]] <- NULL
+  }
+  obj@images <- list()
+  obj@project.name <- sample_id
+  obj$orig.ident <- sample_id
+  Idents(obj) <- "comb_subcluster"
+  saveRDS(obj, clean_paths[[i]], compress = FALSE)
+
+  merge_manifest$cells[[i]] <- ncol(obj)
+  merge_manifest$PCW[[i]] <- pcw_values[[1]]
+  obj <- RenameCells(obj, add.cell.id = sample_id)
+  if (is.null(merged_obj)) {
+    merged_obj <- obj
+  } else {
+    merged_obj <- merge(merged_obj, obj, project = "Xenium_VZRL_Combined")
+  }
+  rm(obj)
   gc()
 }
 
-# 3. Merging
-clean_files <- list.files(o_path, pattern = "^clean_.*\\.rds$", full.names = TRUE)
-
-# Read all cleaned objects into a list
-obj_list <- lapply(clean_files, readRDS)
-
-# Extract IDs again for the list names to ensure merge uses them correctly
-names(obj_list) <- gsub("clean_|.rds", "", basename(clean_files))
-
-message("Merging ", length(obj_list), " samples...")
-
-# Merge into one master object
-merged_obj <- merge(
-  x = obj_list[[1]], 
-  y = obj_list[2:length(obj_list)], 
-  add.cell.ids = names(obj_list)
-)
-
-# 4. Final Save
-saveRDS(merged_obj, here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_RDS", "XenAld_VZ&RL_clean_merge_4-6-26.rds"), compress = FALSE)
-
-message("Done! Final object contains IDs like: ", paste(head(names(obj_list), 2), collapse = ", "))
+if (anyDuplicated(colnames(merged_obj))) stop("Combined merged object contains duplicate cell names.")
+if (ncol(merged_obj) != sum(merge_manifest$cells)) {
+  stop("Combined merged cell count does not equal the per-sample manifest total.")
+}
+if (!setequal(unique(as.character(merged_obj$orig.ident)), sample_ids)) {
+  stop("Combined merged object does not contain exactly the configured sample IDs.")
+}
+Idents(merged_obj) <- "comb_subcluster"
+saveRDS(merged_obj, merged_path, compress = FALSE)
+write.csv(merge_manifest, manifest_path, row.names = FALSE)
+message("Saved complete ", length(sample_ids), "-sample combined merge: ", merged_path)

@@ -1,304 +1,240 @@
-# Clear the environment
+#!/usr/bin/env Rscript
+
+# Process the complete combined VZ/RL merge, or create plots from the saved
+# processed object without repeating integration.
+
 rm(list = ls())
+options(bitmapType = "cairo")
 
-library(Seurat)
-library(harmony)
-library(ggplot2)
-library(here)
-library(future)
-
-# Set the number of workers (cores). 
-# Be careful not to exceed your RAM capacity, as each worker copies the object.
-plan("sequential")
-
-# Load your new palette and order
+suppressPackageStartupMessages({
+  library(here)
+  library(Seurat)
+  library(harmony)
+  library(ggplot2)
+  library(dplyr)
+  library(patchwork)
+  library(future)
+})
+source(here("scripts", "R", "config.R"))
 source(here("scripts", "color_palette.R"))
 
-# Ensure both directories exist
-plot_dir <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_Plots")
-if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = TRUE)
+config <- load_pipeline_config()
+sample_ids <- load_sample_manifest(config)$sample_id
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c("--process-only", "--plots-only", "--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!args %in% valid_options)) stop("All arguments must be named options.")
+process_only <- "--process-only" %in% args
+plots_only <- "--plots-only" %in% args
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (process_only && plots_only) stop("Choose --process-only or --plots-only, not both.")
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
-# # Load the merged object created in your previous script
-# merged_obj <- readRDS(here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_RDS", "XenAld_VZ&RL_clean_merge_4-6-26.rds"))
-# 
-# # 1. Identify the 'prefix' from the full cell name
-# # This regex looks for the start of the 16-character Xenium barcode (e.g., aaeb...) 
-# # and keeps everything before it.
-# full_names <- rownames(merged_obj@meta.data)
-# sample_ids <- gsub("_[a-z]{8,}.*", "", full_names)
-# 
-# # 2. Assign and check levels
-# merged_obj$orig.ident <- as.factor(sample_ids)
-# 
-# # 3. Verification
-# n_samples <- length(unique(merged_obj$orig.ident))
-# message("Total samples found: ", n_samples)
-# print(table(merged_obj$orig.ident))
-# 
-# # 1. Standard Pre-processing
-# merged_obj <- NormalizeData(merged_obj)
-# merged_obj <- FindVariableFeatures(merged_obj, nfeatures = 2000)
-# merged_obj <- JoinLayers(merged_obj)
-# merged_obj <- ScaleData(merged_obj)
-# merged_obj <- RunPCA(merged_obj, npcs = 30)
-# 
-# # Run UMAP on PCA (PRE-HARMONY) - Name it "umap.unintegrated"
-# merged_obj <- RunUMAP(merged_obj, reduction = "pca", dims = 1:30, reduction.name = "umap.unintegrated")
-# 
-# # 2. Run Harmony
-# merged_obj <- RunHarmony(merged_obj, group.by.vars = "orig.ident", assay.type = "Xenium")
-# 
-# # 3. Run UMAP on Harmony (POST-HARMONY) - Name it "umap.harmony"
-# merged_obj <- RunUMAP(merged_obj, reduction = "harmony", dims = 1:30, reduction.name = "umap.harmony")
-# 
-# saveRDS(merged_obj, here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_RDS", "XenAld_VZ&RL_clean_merge_processed_4-7-26.rds"))
+output_root <- here(config$project$outputs_dir)
+rds_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_RDS")
+plot_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_Plots")
+input_path <- file.path(rds_dir, "XenAld_VZRL_clean_merge.rds")
+input_manifest_path <- file.path(rds_dir, "XenAld_VZRL_clean_merge_manifest.csv")
+processed_path <- file.path(rds_dir, "XenAld_VZRL_clean_merge_processed.rds")
+processed_manifest_path <- file.path(rds_dir, "XenAld_VZRL_clean_merge_processed_manifest.csv")
 
-# --- PLOTTING ---
-
-merged_obj <- readRDS(here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_RDS", "XenAld_VZ&RL_clean_merge_processed_4-7-26.rds"))
-
-# Now p1 and p2 will actually look different
-p1 <- DimPlot(merged_obj, reduction = "umap.unintegrated", group.by = "orig.ident", raster = TRUE) + 
-  ggtitle("Pre-Harmony (PCA UMAP)")
-
-p2 <- DimPlot(merged_obj, reduction = "umap.harmony", group.by = "orig.ident", raster = TRUE) + 
-  ggtitle("Post-Harmony (Harmony UMAP)")
-
-Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "XenAld_Batch_Comp_UMAP.tif"),
-  width = 16,
-  height = 7,
-  units = "in",
-  res = 600
+plot_names <- c(
+  "XenAld_Batch_Comp_UMAP.tif",
+  "Xenium_Merged_ConsensusLabel_UMAP.tif",
+  "XenAld_Merged_consensus_label_DotPlot_markers.tif",
+  "XenAld_Merged_consensus_label_DotPlot_markers.pdf",
+  "XenAld_Purkinje_Specific_DotPlot.tif",
+  "XenAld_Purkinje_Specific_DotPlot.pdf",
+  "XenAld_Merged_Cluster_Top5_Heatmap.tif",
+  "XenAld_Merged_Cluster_Top5_Heatmap.pdf",
+  "XenAld_Signaling_Genes_dual_VlnPlot.tif",
+  "XenAld_Signaling_Genes_dual_VlnPlot.pdf"
 )
-print(p1 + p2)
-grDevices::dev.off()
+plot_paths <- file.path(plot_dir, plot_names)
 
-# 2. Generate the Plot
-p_orig <- DimPlot(merged_obj, 
-                  reduction = "umap.harmony", 
-                  group.by = "consensus_label", # Use your original label column here
-                  label = TRUE, 
-                  label.size = 4,
-                  label.box = TRUE,       # Makes original labels easier to see
-                  raster = TRUE, 
-                  pt.size = 0.5, 
-                  alpha = 0.8,
-                  cols = cluster_colors) +
-  ggtitle("Xenium Merged UMAP: Consensus Labels") +
-  theme_classic() +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
-    axis.text = element_blank(),
-    axis.ticks = element_blank()
+if (dry_run) {
+  cat("Combined merge:", input_path, "\n")
+  cat("Combined merge exists:", file.exists(input_path), "\n")
+  cat("Input manifest exists:", file.exists(input_manifest_path), "\n")
+  cat("Processed object:", processed_path, "\n")
+  cat("Processed object exists:", file.exists(processed_path), "\n")
+  cat("Plot outputs existing:", sum(file.exists(plot_paths)), "of", length(plot_paths), "\n")
+  cat("Requested mode:", if (process_only) "processing" else if (plots_only) "plotting" else "inspection only", "\n")
+  quit(save = "no", status = 0L)
+}
+if (!process_only && !plots_only) {
+  stop("Choose --process-only for integration or --plots-only after processing.")
+}
+
+if (process_only) {
+  if (!file.exists(input_path)) stop("Combined merge not found: ", input_path)
+  if (!file.exists(input_manifest_path)) stop("Combined merge manifest not found: ", input_manifest_path)
+  existing_outputs <- c(processed_path, processed_manifest_path)[
+    file.exists(c(processed_path, processed_manifest_path))
+  ]
+  if (length(existing_outputs) && !overwrite) {
+    stop("Refusing to overwrite combined processed outputs:\n- ",
+         paste(existing_outputs, collapse = "\n- "), "\nUse --overwrite only after review.")
+  }
+
+  input_manifest <- read.csv(input_manifest_path, stringsAsFactors = FALSE)
+  if (nrow(input_manifest) != length(sample_ids) ||
+      !setequal(input_manifest$sample_id, sample_ids)) {
+    stop("Combined input manifest must contain exactly the configured 34 samples.")
+  }
+  merged_obj <- readRDS(input_path)
+  required_metadata <- c("orig.ident", "comb_subcluster", "consensus_label", "VZ_subcluster", "RL_subcluster", "PCW")
+  missing_metadata <- setdiff(required_metadata, colnames(merged_obj[[]]))
+  if (length(missing_metadata)) stop("Combined merge lacks metadata: ", paste(missing_metadata, collapse = ", "))
+  if (ncol(merged_obj) != sum(input_manifest$cells)) {
+    stop("Combined merge cell count does not match its manifest.")
+  }
+  if (!setequal(unique(as.character(merged_obj$orig.ident)), sample_ids)) {
+    stop("Combined merge does not contain exactly the configured sample IDs.")
+  }
+
+  set.seed(config$runtime$random_seed)
+  plan(sequential)
+  DefaultAssay(merged_obj) <- "Xenium"
+  merged_obj <- NormalizeData(merged_obj)
+  merged_obj <- FindVariableFeatures(merged_obj, nfeatures = 2000)
+  merged_obj <- JoinLayers(merged_obj)
+  merged_obj <- ScaleData(merged_obj)
+  merged_obj <- RunPCA(merged_obj, npcs = 30, seed.use = config$runtime$random_seed)
+  merged_obj <- RunUMAP(
+    merged_obj, reduction = "pca", dims = 1:30,
+    reduction.name = "umap.unintegrated", seed.use = config$runtime$random_seed
   )
+  merged_obj <- RunHarmony(
+    merged_obj, group.by.vars = "orig.ident", reduction.use = "pca",
+    reduction.save = "harmony"
+  )
+  merged_obj <- RunUMAP(
+    merged_obj, reduction = "harmony", dims = 1:30,
+    reduction.name = "umap.harmony", seed.use = config$runtime$random_seed
+  )
+  saveRDS(merged_obj, processed_path, compress = FALSE)
+  input_info <- file.info(input_path)
+  processed_manifest <- data.frame(
+    input_path = input_path, input_size = as.numeric(input_info$size),
+    input_mtime = as.numeric(input_info$mtime), cells = ncol(merged_obj),
+    samples = length(unique(merged_obj$orig.ident)),
+    random_seed = config$runtime$random_seed, stringsAsFactors = FALSE
+  )
+  write.csv(processed_manifest, processed_manifest_path, row.names = FALSE)
+  message("Saved processed combined object: ", processed_path)
+  quit(save = "no", status = 0L)
+}
 
-# 3. Save the Plot
-Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "Xenium_Merged_ConsensusLabel_UMAP.tif"),
-  width = 12,
-  height = 9,
-  units = "in",
-  res = 600
-)
-print(p_orig)
+if (!file.exists(processed_path)) stop("Processed combined object not found: ", processed_path)
+if (!file.exists(processed_manifest_path)) stop("Processed manifest not found: ", processed_manifest_path)
+existing_plots <- plot_paths[file.exists(plot_paths)]
+if (length(existing_plots) && !overwrite) {
+  stop("Refusing to overwrite combined plot outputs:\n- ",
+       paste(existing_plots, collapse = "\n- "), "\nUse --overwrite only after review.")
+}
+processed_manifest <- read.csv(processed_manifest_path, stringsAsFactors = FALSE)
+input_info <- file.info(input_path)
+input_is_current <- file.exists(input_path) && nrow(processed_manifest) == 1L &&
+  isTRUE(all.equal(as.numeric(processed_manifest$input_size), as.numeric(input_info$size))) &&
+  isTRUE(all.equal(as.numeric(processed_manifest$input_mtime), as.numeric(input_info$mtime)))
+if (!input_is_current) stop("Combined merge changed after processing. Rerun --process-only.")
+
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+merged_obj <- readRDS(processed_path)
+if (ncol(merged_obj) != processed_manifest$cells[[1]]) stop("Processed object cell count does not match its manifest.")
+required_reductions <- c("umap.unintegrated", "umap.harmony")
+if (!all(required_reductions %in% Reductions(merged_obj))) {
+  stop("Processed object lacks reduction(s): ", paste(setdiff(required_reductions, Reductions(merged_obj)), collapse = ", "))
+}
+set.seed(config$runtime$random_seed)
+
+p_pre <- DimPlot(merged_obj, reduction = "umap.unintegrated", group.by = "orig.ident", raster = TRUE) +
+  ggtitle("Pre-Harmony (PCA UMAP)")
+p_post <- DimPlot(merged_obj, reduction = "umap.harmony", group.by = "orig.ident", raster = TRUE) +
+  ggtitle("Post-Harmony (Harmony UMAP)")
+Cairo::CairoTIFF(plot_paths[[1]], width = 16, height = 7, units = "in", res = 600)
+print(p_pre + p_post)
 grDevices::dev.off()
 
-# Filter markers to only those present in the Xenium assay
+  observed_consensus <- unique(as.character(merged_obj$consensus_label))
+  unexpected_consensus <- setdiff(observed_consensus, celltype_order)
+  if (length(unexpected_consensus)) {
+    stop("Processed object has consensus labels absent from celltype_order: ",
+         paste(unexpected_consensus, collapse = ", "))
+  }
+  consensus_levels <- intersect(celltype_order, observed_consensus)
+validate_palette(setdiff(consensus_levels, "Unknown"))
+p_consensus <- DimPlot(
+  merged_obj, reduction = "umap.harmony", group.by = "consensus_label",
+  label = TRUE, label.size = 4, label.box = TRUE, raster = TRUE,
+  pt.size = 0.5, alpha = 0.8, cols = cluster_colors[consensus_levels]
+) + ggtitle("Xenium Merged UMAP: Consensus Labels") + theme_classic()
+Cairo::CairoTIFF(plot_paths[[2]], width = 12, height = 9, units = "in", res = 600)
+print(p_consensus)
+grDevices::dev.off()
+
 existing_markers <- lapply(markers, function(x) intersect(x, rownames(merged_obj)))
-
-# existing_markers <- c("OTX2", "EOMES", "RELN", "FOXP2", "PAX2", "TNC",
-#                      "OLIG1", "FOXC1", "CLDN5", "P2RY12")
-
-Idents(merged_obj) <- factor(merged_obj$consensus_label, levels = rev(celltype_order))
-
-p5 <- DotPlot(merged_obj, features = existing_markers, assay = "Xenium") + 
-  RotatedAxis() +
-  scale_color_gradient(low = "lightgrey", high = "red") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5)) +
+existing_markers <- existing_markers[lengths(existing_markers) > 0L]
+Idents(merged_obj) <- factor(merged_obj$consensus_label, levels = rev(consensus_levels))
+p_dot <- DotPlot(merged_obj, features = existing_markers, assay = "Xenium") +
+  RotatedAxis() + scale_color_gradient(low = "lightgrey", high = "red") +
   ggtitle("Xenium Merged Marker Expression (LogNorm)")
-
-Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "XenAld_Merged_consensus_label_DotPlot_markers.tif"),
-  width = 14,
-  height = 6,
-  units = "in",
-  res = 600
-)
-print(p5)
+Cairo::CairoTIFF(plot_paths[[3]], width = 14, height = 6, units = "in", res = 600)
+print(p_dot)
 grDevices::dev.off()
-ggplot2::ggsave(file.path(plot_dir, "XenAld_Merged_consensus_label_DotPlot_markers.pdf"), p5,
-                device = grDevices::cairo_pdf, width = 14, height = 6)
+ggsave(plot_paths[[4]], p_dot, device = grDevices::cairo_pdf, width = 14, height = 6)
 
-
-# 1. Define the Purkinje Cell clusters and your markers of interest
 pc_clusters <- c("Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs")
-
-# Replace these with your actual gene names
-pc_specific_markers <- c("FOXP1", "ITPR1","COL5A1", 
-                         "VSTM2L", "NDNF", "EBF2",
-                         "CALB1","TRPC3", "NEFL", "ETV1",
-                         "PCDH10", "EBF1", "BCL11A", "RORB", "EN1")
-
-# 2. Subset the object
-# We use consensus_label because that is where your labels are stored
+pc_markers <- c("FOXP1", "ITPR1", "COL5A1", "VSTM2L", "NDNF", "EBF2", "CALB1",
+                "TRPC3", "NEFL", "ETV1", "PCDH10", "EBF1", "BCL11A", "RORB", "EN1")
 pc_subset <- subset(merged_obj, subset = VZ_subcluster %in% pc_clusters)
-
-# 3. Clean up the factor levels
-# This ensures the DotPlot only shows these 4 clusters in a specific order
 pc_subset$VZ_subcluster <- factor(pc_subset$VZ_subcluster, levels = rev(pc_clusters))
 Idents(pc_subset) <- "VZ_subcluster"
-
-# 4. Filter markers for availability in the Xenium panel
-# Just in case some markers in your list aren't in the specific Xenium assay
-existing_pc_markers <- intersect(pc_specific_markers, rownames(pc_subset))
-
-# 5. Generate the DotPlot
-p_pc_dots <- DotPlot(
-  pc_subset, 
-  features = existing_pc_markers, 
-  assay = "Xenium",
-  cols = c("lightgrey", "red"), # Using blue for a distinct look, or keep "red"
-  dot.scale = 8
-) + 
-  RotatedAxis() +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    axis.title.x = element_blank(),
-    axis.title.y = element_blank()
-  ) +
-  ggtitle("Purkinje Cell Lineage Marker Expression")
-
-# 6. Save the plot
-Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "XenAld_Purkinje_Specific_DotPlot.tif"),
-  width = 8,
-  height = 5,
-  units = "in",
-  res = 600
-)
-print(p_pc_dots)
+existing_pc_markers <- intersect(pc_markers, rownames(pc_subset))
+if (!length(existing_pc_markers)) stop("No Purkinje markers are present in the Xenium assay.")
+p_pc <- DotPlot(pc_subset, features = existing_pc_markers, assay = "Xenium",
+                cols = c("lightgrey", "red"), dot.scale = 8) +
+  RotatedAxis() + ggtitle("Purkinje Cell Lineage Marker Expression")
+Cairo::CairoTIFF(plot_paths[[5]], width = 8, height = 5, units = "in", res = 600)
+print(p_pc)
 grDevices::dev.off()
-ggplot2::ggsave(file.path(plot_dir, "XenAld_Purkinje_Specific_DotPlot.pdf"), p_pc_dots,
-                device = grDevices::cairo_pdf, width = 8, height = 5)
+ggsave(plot_paths[[6]], p_pc, device = grDevices::cairo_pdf, width = 8, height = 5)
 
-# ----------------------------------------------------------------                
-# 6. GENERATE TOP 5 MARKERS HEATMAP
-# ----------------------------------------------------------------
-# 1. Identify Markers (if not already in environment from earlier)
-# We use a lower max.cells.per.ident to speed up the heatmap calculation
-message("Finding top 5 markers for heatmap...")
+Idents(merged_obj) <- factor(merged_obj$consensus_label, levels = consensus_levels)
 heatmap_markers <- FindAllMarkers(
-  merged_obj,
-  only.pos = TRUE,
-  min.pct = 0.25,
-  logfc.threshold = 0.25,
-  max.cells.per.ident = 500 # Faster for visualization purposes
+  merged_obj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25,
+  max.cells.per.ident = 500, random.seed = config$runtime$random_seed
 )
-
-# 2. Extract top 5 per cluster
-top5_markers <- heatmap_markers %>%
-  group_by(cluster) %>%
-  slice_max(n = 5, order_by = avg_log2FC) %>%
-  pull(gene) %>%
-  unique()
-
-top5_markers <- rev(top5_markers)
-
-# 3. Scale the data for the specific markers only 
-# (Necessary for DoHeatmap to show relative expression)
-# Just run the plot on a temporary scaled version:
-temp_obj <- ScaleData(merged_obj, features = top5_markers, verbose = FALSE)
-
-# ----------------------------------------------------------------
-# 3.5 RE-ORDER FACTORS (The Fix)
-# ----------------------------------------------------------------
-# Ensure the metadata column used for grouping is a factor with your specific order
-celltype_order <- c(
-  "RL", "UBC", "Granule",
-  "VZ", "Purkinje", "GABA", "Glia", "OPC", "Meninges",
-  "Endothelial", "Immune"
-)
-
-# Apply the factor levels to the temporary object
-temp_obj$consensus_label <- factor(
-  temp_obj$consensus_label, 
-  levels = celltype_order
-)
-
-# 4. Create Heatmap
-# We downsample the plot to 100 cells per group so the labels are readable
-# 1. Prepare the plot without the default lines
-p4 <- DoHeatmap(
-  subset(temp_obj, downsample = 100), 
-  features = top5_markers,
-  group.by = "consensus_label",
-  group.colors = cluster_colors,
-  size = 4,           
-  angle = 45,         
-  draw.lines = TRUE,
-  raster = FALSE
-) + 
-  scale_fill_viridis_c(option = "viridis", name = "Z-Score", na.value = "white") +
-  guides(color = "none") +
-  theme(
-    axis.text.y = element_text(size = 6, face = "italic"),
-    plot.title = element_text(hjust = 0.5, face = "bold")
-  ) +
+top_markers <- heatmap_markers %>% group_by(cluster) %>%
+  slice_max(n = 5, order_by = avg_log2FC, with_ties = FALSE) %>% pull(gene) %>% unique()
+temp_obj <- ScaleData(merged_obj, features = top_markers, verbose = FALSE)
+p_heatmap <- DoHeatmap(
+  subset(temp_obj, downsample = 100), features = rev(top_markers),
+  group.by = "consensus_label", group.colors = cluster_colors,
+  size = 4, angle = 45, draw.lines = TRUE, raster = FALSE
+) + scale_fill_viridis_c(option = "viridis", name = "Z-Score", na.value = "white") +
   ggtitle("Top 5 Markers per Cluster")
-
-# 4. SAVE AS PDF
-ggplot2::ggsave(
-  file.path(plot_dir, paste0("XenAld_Merged_Cluster_Top5_Heatmap.pdf")), 
-  p4, width = 14, height = 12, device = grDevices::cairo_pdf, useDingbats = FALSE
-)
-
-# 5. Save the Heatmap
-Cairo::CairoTIFF(
-  filename = file.path(plot_dir, paste0("XenAld_Merged_Cluster_Top5_Heatmap.tif")),
-  width = 14,
-  height = 12,
-  units = "in",
-  res = 600
-)
-print(p4)
+Cairo::CairoTIFF(plot_paths[[7]], width = 14, height = 12, units = "in", res = 600)
+print(p_heatmap)
 grDevices::dev.off()
+ggsave(plot_paths[[8]], p_heatmap, device = grDevices::cairo_pdf, width = 14, height = 12)
 
-
-# ==============================================================================
-#  EXPRESSION VALIDATION
-# ==============================================================================
-
-# 1. Set Ident to your broad cluster labels
-Idents(merged_obj) <- "consensus_label"
-
-# 2. Define the genes of interest
-kit_genes <- c("APP", "TNFRSF21", "CADM3", "CADM4", "NECTIN3", "CNTN2", "L1CAM", "CXCL12","CXCR4", "EFNB2", "EPHA4", "GJA1", "NCAM1",
-               "L1CAM", "NRXN2", "CLSTN1", "ADGRL1", "DAG1", "LRRTM1", "RELN", "VLDLR", "CD99", "NTF3", "NTRK2")
-
-# 3. Create the Violin Plot
-# We use stack = TRUE and flip = TRUE to make a nice comparison of the two genes
-p_kit_vln <- VlnPlot(
-  merged_obj, 
-  features = kit_genes, 
-  pt.size = 0,           # Set to 0 to avoid overplotting dots in Xenium data
-  ncol = 3, 
-  cols = cluster_colors, # Uses your pre-defined palette
-  idents = c("Granule", "Purkinje", "Glia",  "GABA", "OPC", "UBC") # Focus on the key players from your heatmap
-) & theme(
-  plot.title = element_text(face = "bold", size = 14),
-  axis.title.x = element_blank()
+kit_genes <- unique(c("APP", "TNFRSF21", "CADM3", "CADM4", "NECTIN3", "CNTN2", "L1CAM",
+                      "CXCL12", "CXCR4", "EFNB2", "EPHA4", "GJA1", "NCAM1", "NRXN2",
+                      "CLSTN1", "ADGRL1", "DAG1", "LRRTM1", "RELN", "VLDLR", "CD99", "NTF3", "NTRK2"))
+kit_genes <- intersect(kit_genes, rownames(merged_obj))
+kit_idents <- intersect(c("Granule", "Purkinje", "Glia", "GABA", "OPC", "UBC"), levels(Idents(merged_obj)))
+if (!length(kit_genes) || !length(kit_idents)) stop("Signaling-gene violin inputs are absent.")
+p_vln <- VlnPlot(
+  merged_obj, features = kit_genes, pt.size = 0, ncol = 3,
+  cols = cluster_colors[kit_idents], idents = kit_idents
 )
-
-# 4. Save the plot
-Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "XenAld_Signaling_Genes_dual_VlnPlot.tif"),
-  width = 20,
-  height = 20,
-  units = "in",
-  res = 600
-)
-print(p_kit_vln)
+Cairo::CairoTIFF(plot_paths[[9]], width = 20, height = 20, units = "in", res = 600)
+print(p_vln)
 grDevices::dev.off()
-ggplot2::ggsave(file.path(plot_dir, "XenAld_Signaling_Genes_dual_VlnPlot.pdf"), p_kit_vln,
-                device = grDevices::cairo_pdf, width = 20, height = 20)
+ggsave(plot_paths[[10]], p_vln, device = grDevices::cairo_pdf, width = 20, height = 20)
+
+message("Saved combined plots without rerunning integration.")
