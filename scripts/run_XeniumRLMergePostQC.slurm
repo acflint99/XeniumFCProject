@@ -6,6 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --partition=short
+#SBATCH --constraint=intel
 
 module purge
 module load rc-base
