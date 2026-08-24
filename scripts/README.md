@@ -237,7 +237,7 @@ The VZ branch generally follows this order:
 4. `Xenium_VZ_Merge_QC_res1.5.R` – merged-cluster QC summaries and cell flags.
 5. `Xenium_VZ_Merge_postQC_Processing_res1.5.R` – removes failed cells and recomputes integration and reductions.
 6. `Xenium_VZ_Analysis_res1.5.R` – VZ subcluster annotation and marker analysis.
-7. `Xenium_VZ_Mapping_res1.5.R` – maps refined VZ labels back to individual samples.
+7. `Xenium_VZ_Mapping_res1.5.R` – maps refined VZ labels back to all 34 configured samples.
 8. `Xenium_VZ_SamplePlots_res1.5.R` and `XeniumVZSamplePlots_Loop_res1.5.R` – per-sample spatial reports.
 9. `Xenium_VZ_CountPlot_res1.5.R` – VZ cell/subcluster counts.
 
@@ -268,6 +268,19 @@ Processing writes the stable object
 scripts consume that name. Existing processing RDS or UMAP outputs require an
 explicit `--overwrite` rerun after review.
 
+Before mapping refined labels back to the whole-tissue objects, inspect all
+expected inputs and outputs without loading Seurat objects:
+
+```bash
+Rscript scripts/Xenium_VZ_Mapping_res1.5.R --dry-run
+```
+
+The mapping stage requires exactly one input for every sample in
+`config/samples.csv`, rejects unexpected RDS files in its input directory, and
+refuses to replace existing outputs unless given `--overwrite`. It verifies
+that every cell in the master VZ object maps exactly once and writes
+`Xenium_VZ_Mapping_manifest.csv` with per-sample cell counts and PCW.
+
 ### 7. RL analysis
 
 The RL branch mirrors the VZ branch:
@@ -278,7 +291,7 @@ The RL branch mirrors the VZ branch:
 4. `Xenium_RL_Merge_QC_res1.5.R`
 5. `Xenium_RL_Merge_postQC_Processing_res1.5.R`
 6. `Xenium_RL_Analysis_res1.5.R`
-7. `Xenium_RL_Mapping_res1.5.R`
+7. `Xenium_RL_Mapping_res1.5.R` – maps refined RL labels back to all 34 configured samples.
 8. `Xenium_RL_SamplePlots_res1.5.R` and `Xenium_RL_SamplePlots_Loop_res1.5.R`
 9. `Xenium_RL_CountPlot_res1.5.R`
 
@@ -303,6 +316,17 @@ Inspect processing readiness with:
 ```bash
 Rscript scripts/Xenium_RL_Merge_Processing_res1.5.R --dry-run
 ```
+
+Inspect the complete RL mapping inputs and protected outputs with:
+
+```bash
+Rscript scripts/Xenium_RL_Mapping_res1.5.R --dry-run
+```
+
+The RL mapping stage applies the same completeness, unexpected-file,
+overwrite, barcode-matching, and manifest checks as the VZ mapping stage. It
+also requires the VZ subcluster metadata inherited from the preceding branch
+and writes `Xenium_RL_Mapping_manifest.csv`.
 
 The stable processed object is
 `outputs/XenAld_RL_Res1.5_RDS/Xenium_RL_Res1.5.rds`; RL QC and post-QC

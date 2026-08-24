@@ -1,76 +1,163 @@
-# Clear the environment
+#!/usr/bin/env Rscript
+
+# Map refined RL identities back to all manifest-defined whole-tissue objects.
 rm(list = ls())
 
-# 1. INITIALIZATION & ENVIRONMENT
-source("renv/activate.R")
-library(Seurat)
-library(future)
-library(future.apply)
-library(here)
+suppressPackageStartupMessages({
+  library(here)
+  library(Seurat)
+  library(future)
+  library(future.apply)
+})
+source(here("scripts", "R", "config.R"))
 
-# 1. Setup Parallel Backend
-# Increased globals limit because we're passing a lookup table
-options(future.globals.maxSize = 200 * 1024^3) 
-plan(multisession, workers = 8) 
+config <- load_pipeline_config()
+sample_ids <- load_sample_manifest(config)$sample_id
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!args %in% valid_options)) {
+  stop("Usage: Rscript scripts/Xenium_RL_Mapping_res1.5.R [--dry-run|--overwrite]")
+}
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
-# 2. Define Paths and "Master Key"
-input_dir  <- here("outputs", "Xenium_AldingerABT_VZsub_RL_QC_Res1.5_RDS")
-output_dir <- here("outputs", "Xenium_AldingerABT_VZ&RLsubclusters_QC_Res1.5_RDS")
-if(!dir.exists(output_dir)) dir.create(output_dir)
+output_root <- here(config$project$outputs_dir)
+input_dir <- file.path(output_root, "Xenium_AldingerABT_VZsub_RL_QC_Res1.5_RDS")
+output_dir <- file.path(output_root, "Xenium_AldingerABT_VZ&RLsubclusters_QC_Res1.5_RDS")
+master_path <- file.path(
+  output_root, "XenAld_RL_Subclusters_Res1.5_RDS",
+  "Xenium_RL_Res1.5_newSubclusters_4-3-26.rds"
+)
+input_names <- paste0(sample_ids, "_Ald_VZsub_RL_QC.rds")
+input_paths <- file.path(input_dir, input_names)
+output_names <- paste0(sample_ids, "_Ald_VZ_RL_QC_Subclusters.rds")
+output_paths <- file.path(output_dir, output_names)
+manifest_path <- file.path(output_dir, "Xenium_RL_Mapping_manifest.csv")
+observed_names <- if (dir.exists(input_dir)) {
+  list.files(input_dir, pattern = "\\.rds$", full.names = FALSE)
+} else character()
+missing_names <- input_names[!file.exists(input_paths)]
+unexpected_names <- setdiff(observed_names, input_names)
 
-# FIX: Load the object from the path provided
-message("Loading master subclustered object...")
-master_obj <- readRDS(here("outputs", "XenAld_RL_Subclusters_Res1.5_RDS", "Xenium_RL_Res1.5_newSubclusters_4-3-26.rds"))
+if (dry_run) {
+  cat("Expected RL mapping inputs:", length(input_paths), "\n")
+  cat("Existing RL mapping inputs:", sum(file.exists(input_paths)), "\n")
+  cat("Unexpected top-level RDS files:", length(unexpected_names), "\n")
+  cat("Master RL object:", master_path, "\n")
+  cat("Master RL object exists:", file.exists(master_path), "\n")
+  cat("Mapping manifest:", manifest_path, "\n")
+  cat("Mapping manifest exists:", file.exists(manifest_path), "\n")
+  write.table(
+    data.frame(
+      sample_id = sample_ids, input = input_paths,
+      input_exists = file.exists(input_paths), output = output_paths,
+      output_exists = file.exists(output_paths)
+    ),
+    row.names = FALSE, quote = FALSE, sep = "\t"
+  )
+  if (length(unexpected_names)) {
+    cat("Unexpected files:\n- ", paste(unexpected_names, collapse = "\n- "), "\n")
+  }
+  quit(save = "no", status = 0L)
+}
 
-# PRE-EXTRACT LABELS
-all_new_labels <- as.character(Idents(master_obj))
-names(all_new_labels) <- colnames(master_obj)
+if (!file.exists(master_path)) stop("Master RL subcluster object not found: ", master_path)
+if (length(missing_names)) {
+  stop("Cannot map RL labels; missing files:\n- ", paste(missing_names, collapse = "\n- "))
+}
+if (length(unexpected_names)) {
+  stop("Cannot map RL labels; unexpected top-level RDS files:\n- ", paste(unexpected_names, collapse = "\n- "))
+}
+expected_outputs <- c(output_paths, manifest_path)
+existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+if (length(existing_outputs) && !overwrite) {
+  stop(
+    "Refusing to overwrite existing RL mapping outputs:\n- ",
+    paste(existing_outputs, collapse = "\n- "),
+    "\nUse --overwrite only after reviewing them."
+  )
+}
 
-# Update pattern to match your original whole objects
-sample_files <- list.files(input_dir, pattern = "_Ald_VZsub_RL_QC\\.rds$", full.names = TRUE)
+message("Loading master RL subcluster object...")
+master_obj <- readRDS(master_path)
+all_new_labels <- setNames(as.character(Idents(master_obj)), colnames(master_obj))
+if (anyNA(all_new_labels) || any(!nzchar(all_new_labels))) {
+  stop("Master RL object contains missing or blank active identities.")
+}
+if (anyDuplicated(names(all_new_labels))) stop("Master RL object contains duplicate cell names.")
 
-# 3. Run Parallel Processing
-message("Starting mapping to whole objects...")
+sample_prefixes <- paste0(sample_ids, "_")
+master_sample_index <- vapply(names(all_new_labels), function(cell_id) {
+  matches <- which(startsWith(cell_id, sample_prefixes))
+  if (length(matches) == 1L) matches else NA_integer_
+}, integer(1))
+if (anyNA(master_sample_index)) {
+  bad_cells <- names(all_new_labels)[is.na(master_sample_index)]
+  stop(
+    "Master RL cell names must match exactly one configured sample prefix. Examples: ",
+    paste(head(bad_cells, 10L), collapse = ", ")
+  )
+}
+master_cells_by_sample <- tabulate(master_sample_index, nbins = length(sample_ids))
+if (any(master_cells_by_sample == 0L)) {
+  stop(
+    "Master RL object contains no cells for configured sample(s): ",
+    paste(sample_ids[master_cells_by_sample == 0L], collapse = ", ")
+  )
+}
+rm(master_obj, master_sample_index)
+gc()
 
-updated_status <- future_lapply(sample_files, function(f) {
-  
-  # UPDATED: Strip the specific suffix to get the clean sample name
-  # This turns "SampleName_Aldinger_annotated.rds" -> "SampleName"
-  s_name <- gsub("_Ald_VZsub_RL_QC\\.rds", "", basename(f))
-  
-  # Load the WHOLE object
-  temp_obj <- readRDS(f)
-  
-  # BARCODE MATCHING
-  original_barcodes <- colnames(temp_obj)
-  integrated_style_barcodes <- paste0(s_name, "_", original_barcodes)
-  
-  # Extract labels 
-  matched_labels <- all_new_labels[integrated_style_barcodes]
-  
-  # 2. Extract and Label
-  # We use match() to ensure the order perfectly aligns with temp_obj barcodes
-  # This avoids the "length mismatch" error
-  match_idx <- match(integrated_style_barcodes, names(all_new_labels))
-  relevant_labels <- all_new_labels[match_idx]
-  names(relevant_labels) <- colnames(temp_obj) # Rename back to original style
-  
-  # 3. Safe Injection
-  temp_obj <- AddMetaData(temp_obj, metadata = relevant_labels, col.name = "RL_subcluster")
-  
-  # 4. Success Check
-  match_count <- sum(!is.na(temp_obj$RL_subcluster))
-  
-  # Save the updated whole object
-  out_path <- file.path(output_dir, paste0(s_name, "_Ald_VZ_RL_QC_Subclusters.rds"))
-  saveRDS(temp_obj, file = out_path, compress = FALSE)
-  
-  # Clean up memory for the next loop
-  rm(temp_obj, relevant_labels, match_idx)
-  gc()
-  
-  return(paste0(s_name, ": Mapped ", match_count, " RL cells."))
+workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "8")))
+if (is.na(workers) || workers < 1L) stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
+options(future.globals.maxSize = 200 * 1024^3)
+plan(multisession, workers = workers)
+on.exit(plan(sequential), add = TRUE)
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+message("Mapping refined RL labels across all configured samples with ", workers, " worker(s)...")
+
+mapping_rows <- future_lapply(seq_along(sample_ids), function(i) {
+  sample_id <- sample_ids[[i]]
+  temp_obj <- readRDS(input_paths[[i]])
+  required_metadata <- c("consensus_label", "PCW", "VZ_subcluster")
+  missing_metadata <- setdiff(required_metadata, colnames(temp_obj[[]]))
+  if (length(missing_metadata)) stop(sample_id, " lacks metadata: ", paste(missing_metadata, collapse = ", "))
+  if ("RL_subcluster" %in% colnames(temp_obj[[]])) {
+    stop(sample_id, " input already contains RL_subcluster metadata.")
+  }
+  pcw_values <- unique(as.character(temp_obj$PCW))
+  pcw_values <- pcw_values[!is.na(pcw_values) & nzchar(pcw_values)]
+  if (length(pcw_values) != 1L) stop(sample_id, " must contain exactly one nonblank PCW value.")
+
+  match_index <- match(paste0(sample_id, "_", colnames(temp_obj)), names(all_new_labels))
+  relevant_labels <- all_new_labels[match_index]
+  names(relevant_labels) <- colnames(temp_obj)
+  mapped_cells <- sum(!is.na(relevant_labels))
+  expected_cells <- master_cells_by_sample[[i]]
+  if (mapped_cells != expected_cells) {
+    stop(sample_id, ": mapped ", mapped_cells, " cells; master contains ", expected_cells, ".")
+  }
+  temp_obj <- AddMetaData(temp_obj, relevant_labels, col.name = "RL_subcluster")
+  if (sum(!is.na(temp_obj$RL_subcluster)) != expected_cells) {
+    stop(sample_id, ": RL_subcluster metadata failed post-injection validation.")
+  }
+  saveRDS(temp_obj, output_paths[[i]], compress = FALSE)
+  data.frame(
+    sample_id = sample_id, input_path = input_paths[[i]], output_path = output_paths[[i]],
+    total_cells = ncol(temp_obj), mapped_rl_cells = mapped_cells,
+    PCW = pcw_values[[1]], stringsAsFactors = FALSE
+  )
 }, future.seed = TRUE)
 
 plan(sequential)
-message("Done! Refined RL labels mapped back to whole tissue objects.")
+mapping_manifest <- do.call(rbind, mapping_rows)
+if (!identical(mapping_manifest$sample_id, sample_ids)) stop("RL mapping results are not in manifest order.")
+if (sum(mapping_manifest$mapped_rl_cells) != length(all_new_labels)) {
+  stop("Mapped RL cell total does not equal the master RL object cell count.")
+}
+write.csv(mapping_manifest, manifest_path, row.names = FALSE)
+message("Mapped every master RL identity across all configured samples.")
+message("Saved RL mapping manifest: ", manifest_path)
