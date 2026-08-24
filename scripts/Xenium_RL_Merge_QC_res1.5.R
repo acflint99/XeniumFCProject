@@ -1,170 +1,212 @@
-# Clear the environment
+#!/usr/bin/env Rscript
+
+# Review merged RL clusters, then explicitly apply the reviewed cell removal
+# decision to every manifest-defined VZ-labelled whole-tissue object.
+
 rm(list = ls())
 
-# 1. INITIALIZATION & ENVIRONMENT
-source("renv/activate.R")
-library(here)
-library(Seurat)
-library(harmony)
-library(dplyr)
-library(future)
-library(future.apply)
-library(ggplot2)
-library(patchwork)
+suppressPackageStartupMessages({
+  library(here)
+  library(Seurat)
+  library(dplyr)
+  library(future)
+  library(future.apply)
+  library(ggplot2)
+})
+source(here("scripts", "R", "config.R"))
 
-# Load your new palette and order
-source(here("scripts", "color_palette.R"))
+config <- load_pipeline_config()
+sample_ids <- load_sample_manifest(config)$sample_id
+cluster_column <- "Xenium_snn_res.0.8"
+args <- commandArgs(trailingOnly = TRUE)
 
+remove_args <- grep("^--remove-clusters=", args, value = TRUE)
+if (length(remove_args) > 1L) stop("Supply --remove-clusters only once.")
+remove_supplied <- length(remove_args) == 1L
+remove_value <- if (remove_supplied) sub("^--remove-clusters=", "", remove_args) else ""
+exact_options <- c("--qc-only", "--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% exact_options &
+                          !grepl("^--remove-clusters=", args)]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!startsWith(args, "--"))) stop("All arguments must be named options.")
+qc_only <- "--qc-only" %in% args
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
+if (qc_only && remove_supplied) stop("Choose --qc-only or --remove-clusters, not both.")
 
-# 1. PARALLELIZATION 
-plan("multisession", workers = 4) 
-options(future.globals.maxSize = 200 * 1024^3)
+clusters_to_remove <- character()
+if (remove_supplied && !identical(tolower(trimws(remove_value)), "none")) {
+  clusters_to_remove <- unique(trimws(strsplit(remove_value, ",", fixed = TRUE)[[1]]))
+  if (any(!nzchar(clusters_to_remove))) stop("--remove-clusters contains a blank cluster ID.")
+}
 
-plot_path <- here("outputs", "XenAld_RL_QC_Res1.5_Plots")
-if(!dir.exists(plot_path)) dir.create(plot_path)
+output_root <- here(config$project$outputs_dir)
+merged_path <- file.path(output_root, "XenAld_RL_Res1.5_RDS", "Xenium_RL_Res1.5.rds")
+input_dir <- file.path(output_root, "Xenium_AldingerABT_VZsubclusters_Res1.5_RDS")
+output_dir <- file.path(output_root, "Xenium_AldingerABT_VZsub_RL_QC_Res1.5_RDS")
+plot_dir <- file.path(output_root, "XenAld_RL_QC_Res1.5_Plots")
+table_dir <- file.path(output_root, "XenAld_RL_QC_Res1.5_Tables")
 
-table_path <- here("outputs", "XenAld_RL_QC_Res1.5_Tables")
-if(!dir.exists(table_path)) dir.create(table_path, recursive = TRUE)
+input_names <- paste0(sample_ids, "_Ald_VZ_QC_Subclusters.rds")
+input_paths <- file.path(input_dir, input_names)
+output_names <- paste0(sample_ids, "_Ald_VZsub_RL_QC.rds")
+output_paths <- file.path(output_dir, output_names)
+summary_path <- file.path(table_dir, "XenAld_RL_RawSubcluster_QC_Summary.csv")
+marker_path <- file.path(table_dir, "RL_RawSubcluster_top10_Markers_Res0.8.csv")
+review_path <- file.path(table_dir, "XenAld_RL_QC_review_manifest.csv")
+pdf_path <- file.path(plot_dir, "XenAld_RL_RawSubcluster_QC_Violins.pdf")
+removal_path <- file.path(table_dir, "XenAld_RL_QC_removal_manifest.csv")
+qc_outputs <- c(summary_path, marker_path, review_path, pdf_path)
+removal_outputs <- c(output_paths, removal_path)
 
-merged_path <- here("outputs", "XenAld_RL_Res1.5_RDS", "Xenium_RL_Res1.5.rds")
+observed_names <- if (dir.exists(input_dir)) {
+  list.files(input_dir, pattern = "\\.rds$", full.names = FALSE)
+} else character()
+missing_names <- input_names[!file.exists(input_paths)]
+unexpected_names <- setdiff(observed_names, input_names)
+
+if (dry_run) {
+  cat("Merged RL object:", merged_path, "\n")
+  cat("Merged RL object exists:", file.exists(merged_path), "\n")
+  cat("Expected VZ-labelled inputs:", length(input_paths), "\n")
+  cat("Existing VZ-labelled inputs:", sum(file.exists(input_paths)), "\n")
+  cat("Unexpected top-level RDS files:", length(unexpected_names), "\n")
+  cat("QC review outputs existing:", sum(file.exists(qc_outputs)), "of", length(qc_outputs), "\n")
+  cat("Filtered sample outputs existing:", sum(file.exists(output_paths)), "of", length(output_paths), "\n")
+  cat("Requested mode:", if (qc_only) "QC review" else if (remove_supplied) "apply removal" else "inspection only", "\n")
+  if (remove_supplied) {
+    cat("Clusters to remove:", if (length(clusters_to_remove)) paste(clusters_to_remove, collapse = ", ") else "none", "\n")
+  }
+  write.table(
+    data.frame(sample_id = sample_ids, input_exists = file.exists(input_paths),
+               filtered_output_exists = file.exists(output_paths)),
+    row.names = FALSE, quote = FALSE, sep = "\t"
+  )
+  if (length(unexpected_names)) cat("Unexpected files:\n- ", paste(unexpected_names, collapse = "\n- "), "\n")
+  quit(save = "no", status = 0L)
+}
+
+if (!qc_only && !remove_supplied) {
+  stop(
+    "Choose a QC stage explicitly:\n",
+    "- --qc-only to create evidence for review\n",
+    "- --remove-clusters=7,8 after review\n",
+    "- --remove-clusters=none after review when no cells should be removed"
+  )
+}
+if (!file.exists(merged_path)) stop("Merged RL object not found: ", merged_path)
+
+if (qc_only) {
+  existing_qc <- qc_outputs[file.exists(qc_outputs)]
+  if (length(existing_qc) && !overwrite) {
+    stop("Refusing to overwrite existing RL QC review outputs:\n- ",
+         paste(existing_qc, collapse = "\n- "), "\nUse --overwrite only after review.")
+  }
+  dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
+  obj <- readRDS(merged_path)
+  if (!cluster_column %in% colnames(obj[[]])) stop("Merged RL object lacks ", cluster_column, ".")
+  if (ncol(obj) == 0L) stop("Merged RL object contains zero cells.")
+  obj <- JoinLayers(obj)
+  Idents(obj) <- cluster_column
+  set.seed(config$runtime$random_seed)
+
+  qc_stats <- obj@meta.data %>%
+    group_by(.data[[cluster_column]]) %>%
+    summarise(cell_count = n(), median_counts = median(nCount_Xenium),
+              mean_counts = mean(nCount_Xenium),
+              median_features = median(nFeature_Xenium), .groups = "drop")
+  write.csv(qc_stats, summary_path, row.names = FALSE)
+
+  grDevices::cairo_pdf(pdf_path, width = 12, height = 8)
+  for (feature in c("nCount_Xenium", "nFeature_Xenium")) {
+    print(
+      VlnPlot(obj, features = feature, group.by = cluster_column, pt.size = 0) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+        ylab(feature) + ggtitle(paste("Xenium RL Subcluster QC -", feature))
+    )
+  }
+  grDevices::dev.off()
+
+  all_markers <- FindAllMarkers(
+    obj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25,
+    test.use = "wilcox", max.cells.per.ident = 1000, random.seed = config$runtime$random_seed
+  )
+  top_markers <- all_markers %>% group_by(cluster) %>%
+    slice_max(n = 10, order_by = avg_log2FC, with_ties = FALSE)
+  write.csv(top_markers, marker_path, row.names = FALSE)
+
+  merged_info <- file.info(merged_path)
+  review_manifest <- data.frame(
+    merged_path = merged_path, merged_size = as.numeric(merged_info$size),
+    merged_mtime = as.numeric(merged_info$mtime), cells = ncol(obj),
+    cluster_column = cluster_column,
+    clusters = paste(levels(Idents(obj)), collapse = "|"),
+    random_seed = config$runtime$random_seed, stringsAsFactors = FALSE
+  )
+  write.csv(review_manifest, review_path, row.names = FALSE)
+  message("RL QC review complete. Inspect the PDF, summary, and marker table before removal.")
+  quit(save = "no", status = 0L)
+}
+
+if (length(missing_names)) stop("Cannot apply RL QC; missing files:\n- ", paste(missing_names, collapse = "\n- "))
+if (length(unexpected_names)) {
+  stop("Cannot apply RL QC; unexpected top-level RDS files:\n- ", paste(unexpected_names, collapse = "\n- "))
+}
+missing_review <- qc_outputs[!file.exists(qc_outputs)]
+if (length(missing_review)) {
+  stop("Run --qc-only and review its outputs first. Missing:\n- ", paste(missing_review, collapse = "\n- "))
+}
+existing_removal <- removal_outputs[file.exists(removal_outputs)]
+if (length(existing_removal) && !overwrite) {
+  stop("Refusing to overwrite existing RL QC-filtered outputs:\n- ",
+       paste(existing_removal, collapse = "\n- "), "\nUse --overwrite only after review.")
+}
+
 obj <- readRDS(merged_path)
+if (!cluster_column %in% colnames(obj[[]])) stop("Merged RL object lacks ", cluster_column, ".")
+review <- read.csv(review_path, stringsAsFactors = FALSE)
+merged_info <- file.info(merged_path)
+review_is_current <- nrow(review) == 1L &&
+  isTRUE(all.equal(as.numeric(review$merged_size), as.numeric(merged_info$size))) &&
+  isTRUE(all.equal(as.numeric(review$merged_mtime), as.numeric(merged_info$mtime))) &&
+  identical(as.integer(review$cells), as.integer(ncol(obj)))
+if (!review_is_current) stop("RL merged object changed after QC review. Rerun --qc-only before removal.")
+available_clusters <- unique(as.character(obj[[cluster_column, drop = TRUE]]))
+unknown_clusters <- setdiff(clusters_to_remove, available_clusters)
+if (length(unknown_clusters)) stop("Requested RL cluster(s) do not exist: ", paste(unknown_clusters, collapse = ", "))
+cells_to_remove <- if (length(clusters_to_remove)) {
+  colnames(obj)[as.character(obj[[cluster_column, drop = TRUE]]) %in% clusters_to_remove]
+} else character()
 
-# This merges the 15 separate sample layers into one unified matrix
-obj <- JoinLayers(obj)
+workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "4")))
+if (is.na(workers) || workers < 1L) stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
+options(future.globals.maxSize = 200 * 1024^3)
+plan(multisession, workers = workers)
+on.exit(plan(sequential), add = TRUE)
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-# 2. SET THE IDENTITY
-# Ensure we are looking at the resolution you liked best (e.g., 0.3)
-Idents(obj) <- "Xenium_snn_res.0.8"
-
-# # Export Merged Cluster QC Statistics
-# raw_merged_qc_stats <- obj@meta.data %>%
-#   group_by(Xenium_snn_res.0.8) %>%
-#   summarise(
-#     cell_count = n(),
-#     median_counts = median(nCount_Xenium),
-#     mean_counts = mean(nCount_Xenium),
-#     median_features = median(nFeature_Xenium),
-#     .groups = 'drop'
-#   )
-# 
-# write.csv(raw_merged_qc_stats, 
-#           file.path(table_path, "XenAld_RL_RawSubcluster_QC_Summary.csv"), 
-#           row.names = FALSE)
-# 
-# # QC Violin Plot
-# # 1. Define the QC features you want to plot
-# qc_features <- c("nCount_Xenium", "nFeature_Xenium")
-# 
-# # 3. Open the PDF device
-# pdf_path <- file.path(plot_path, "XenAld_RL_RawSubcluster_QC_Violins.pdf")
-# pdf(pdf_path, width = 12, height = 8)
-# 
-# # 4. Loop through features and print each to a new page
-# for (feat in qc_features) {
-#   message("Plotting: ", feat)
-#   
-#   p5 <- VlnPlot(
-#     obj, 
-#     features = feat, 
-#     group.by = "Xenium_snn_res.0.8",
-#     pt.size = 0      # Remove points for speed and smaller file size
-#   ) + 
-#     theme(
-#       axis.text.x = element_text(angle = 45, hjust = 1),
-#       axis.title.y = element_text(size = 12, face = "bold"), # Explicitly style Y
-#       legend.position = "none"
-#     ) +
-#     ylab(feat) +
-#     ggtitle(paste("Xenium RL Subcluster QC-", feat))
-#   
-#   # Printing the plot inside the loop sends it to the PDF device
-#   print(p5)
-# }
-# 
-# # 5. Close the device to finalize the file
-# dev.off()
-# 
-# message("Individual QC plots saved to: ", pdf_path)
-# 
-# 
-# 
-# # 3. RUN FINDALLMARKERS (The Optimized Way)
-# message(Sys.time(), ": Starting Marker Identification...")
-# 
-# all_markers <- FindAllMarkers(
-#   obj,
-#   only.pos = TRUE,          # Only look for upregulated genes (standard for cell types)
-#   min.pct = 0.25,           # Gene must be in 25% of the cluster
-#   logfc.threshold = 0.25,   # Minimum 1.28x fold change
-#   test.use = "wilcox",      # Standard fast test
-# 
-#   # --- THE SPEED TRICK ---
-#   # Downsampling to 1000 cells per cluster gives 99% the same results
-#   # but runs 5x faster on massive Xenium datasets.
-#   max.cells.per.ident = 1000
-# )
-# 
-# 
-# # 4. FILTER & SAVE TOP 10
-# top10_markers <- all_markers %>%
-#   group_by(cluster) %>%
-#   slice_max(n = 10, order_by = avg_log2FC)
-# 
-# write.csv(top10_markers,
-#           here("outputs", "XenAld_RL_Res1.5_Tables", "RL_RawSubcluster_top10_Markers_Res0.8.csv"),
-#           row.names = FALSE)
-# 
-# message("Marker analysis complete! Results saved to CSV.")
-
-
-# 2. Define Paths and "Master Key"
-input_dir  <- here("outputs", "Xenium_AldingerABT_VZsubclusters_Res1.5_RDS")
-output_dir <- here("outputs", "Xenium_AldingerABT_VZsub_RL_QC_Res1.5_RDS")
-if(!dir.exists(output_dir)) dir.create(output_dir)
-
-# Update pattern to match your original whole objects
-sample_files <- list.files(input_dir, pattern = "_Ald_VZ_QC_Subclusters\\.rds$", full.names = TRUE)
-
-# Identify barcodes in Cluster 7 from the integrated 'obj'
-# We use names() because these barcodes include the 'SampleName_' prefix
-cells_to_remove <- colnames(obj)[obj$Xenium_snn_res.0.8 == "7"]
-
-# 3. Run Parallel Processing (Modified to remove Cluster 7)
-message("Starting filtering of Cluster 7 from whole objects...")
-
-updated_status <- future_lapply(sample_files, function(f) {
-
-  # Strip suffix to get sample name
-  s_name <- gsub("_Ald_VZ_QC_Subclusters\\.rds", "", basename(f))
-
-  # Load the WHOLE object
-  temp_obj <- readRDS(f)
-
-  # Convert local barcodes to integrated-style barcodes for matching
-  # (e.g., "ATGC..." -> "SampleName_ATGC...")
-  integrated_style_barcodes <- paste0(s_name, "_", colnames(temp_obj))
-
-  # Identify which cells in this specific file are part of the 'cells_to_remove' list
-  cells_is_cluster_7 <- integrated_style_barcodes %in% cells_to_remove
-
-  # SUBSET: Keep only cells that are NOT in cluster 7
-  # The '!' operator negates the logical vector
-  temp_obj <- subset(temp_obj, cells = colnames(temp_obj)[!cells_is_cluster_7])
-
-  # 4. Success Check
-  removed_count <- sum(cells_is_cluster_7)
-  remaining_count <- ncol(temp_obj)
-
-  # Save the cleaned whole object
-  out_path <- file.path(output_dir, paste0(s_name, "_Ald_VZsub_RL_QC.rds"))
-  saveRDS(temp_obj, file = out_path, compress = FALSE)
-
-  # Clean up memory
-  rm(temp_obj, integrated_style_barcodes, cells_is_cluster_7)
-  gc()
-
-  return(paste0(s_name, ": Removed ", removed_count, " cells. Remaining: ", remaining_count))
+rows <- future_lapply(seq_along(sample_ids), function(i) {
+  sample_id <- sample_ids[[i]]
+  temp_obj <- readRDS(input_paths[[i]])
+  required_metadata <- c("consensus_label", "PCW", "VZ_subcluster")
+  missing_metadata <- setdiff(required_metadata, colnames(temp_obj[[]]))
+  if (length(missing_metadata)) stop(sample_id, " lacks metadata: ", paste(missing_metadata, collapse = ", "))
+  integrated_barcodes <- paste0(sample_id, "_", colnames(temp_obj))
+  remove_cells <- integrated_barcodes %in% cells_to_remove
+  removed <- sum(remove_cells)
+  temp_obj <- subset(temp_obj, cells = colnames(temp_obj)[!remove_cells])
+  saveRDS(temp_obj, output_paths[[i]], compress = FALSE)
+  data.frame(sample_id = sample_id, input_cells = length(remove_cells),
+             removed_cells = removed, remaining_cells = ncol(temp_obj),
+             clusters_removed = if (length(clusters_to_remove)) paste(clusters_to_remove, collapse = "|") else "none",
+             stringsAsFactors = FALSE)
 }, future.seed = TRUE)
-
 plan(sequential)
-message("Done! Cluster 7 cells removed from all tissue objects.")
+removal_manifest <- do.call(rbind, rows)
+if (sum(removal_manifest$removed_cells) != length(cells_to_remove)) {
+  stop("RL removal count across individual objects does not match the merged object.")
+}
+write.csv(removal_manifest, removal_path, row.names = FALSE)
+message("Applied reviewed RL removal decision to all ", length(sample_ids), " samples.")

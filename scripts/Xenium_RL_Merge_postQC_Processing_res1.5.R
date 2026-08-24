@@ -13,6 +13,10 @@ library(patchwork)
 
 # Load your new palette and order
 source(here("scripts", "color_palette.R"))
+source(here("scripts", "R", "config.R"))
+
+config <- load_pipeline_config()
+sample_ids <- load_sample_manifest(config)$sample_id
 
 check_mem <- function(step_label) {
   # gc() triggers garbage collection and returns a memory report
@@ -33,16 +37,47 @@ table_path <- here("outputs", "XenAld_RL_postQC_Res1.5_Tables")
 if(!dir.exists(table_path)) dir.create(table_path, recursive = TRUE)
 
 merged_path <- here("outputs", "XenAld_RL_Res1.5_RDS", "Xenium_RL_Res1.5.rds")
+removal_path <- here("outputs", "XenAld_RL_QC_Res1.5_Tables", "XenAld_RL_QC_removal_manifest.csv")
+review_path <- here("outputs", "XenAld_RL_QC_Res1.5_Tables", "XenAld_RL_QC_review_manifest.csv")
+if (!file.exists(removal_path)) stop("Reviewed RL removal manifest not found: ", removal_path)
+if (!file.exists(review_path)) stop("RL QC review manifest not found: ", review_path)
+removal_manifest <- read.csv(removal_path, stringsAsFactors = FALSE)
+if (nrow(removal_manifest) != length(sample_ids) ||
+    !setequal(removal_manifest$sample_id, sample_ids)) {
+  stop("RL removal manifest must contain exactly the configured 34 samples.")
+}
+removal_decisions <- unique(as.character(removal_manifest$clusters_removed))
+if (length(removal_decisions) != 1L) stop("RL removal manifest contains inconsistent decisions.")
+clusters_to_remove <- if (identical(removal_decisions, "none")) {
+  character()
+} else strsplit(removal_decisions, "|", fixed = TRUE)[[1]]
 obj <- readRDS(merged_path)
 
-# This merges the 15 separate sample layers into one unified matrix
+review <- read.csv(review_path, stringsAsFactors = FALSE)
+merged_info <- file.info(merged_path)
+review_is_current <- nrow(review) == 1L &&
+  isTRUE(all.equal(as.numeric(review$merged_size), as.numeric(merged_info$size))) &&
+  isTRUE(all.equal(as.numeric(review$merged_mtime), as.numeric(merged_info$mtime))) &&
+  identical(as.integer(review$cells), as.integer(ncol(obj)))
+if (!review_is_current) stop("RL merged object changed after QC review. Repeat the QC decision stage.")
+
+# Join the manifest-defined sample layers into one unified matrix.
 obj <- JoinLayers(obj)
 
 # 2. SET THE IDENTITY
 Idents(obj) <- "Xenium_snn_res.0.8" #check change resolution
 
-# This removes low QC cells from the 'obj' variable entirely for the rest of the script
-obj <- subset(obj, idents = "7", invert = TRUE) #check/change identity to remove
+# Apply the explicit decision recorded after QC review.
+cells_before_qc <- ncol(obj)
+if (length(clusters_to_remove)) {
+  unknown_clusters <- setdiff(clusters_to_remove, levels(Idents(obj)))
+  if (length(unknown_clusters)) stop("Reviewed RL cluster(s) are absent: ", paste(unknown_clusters, collapse = ", "))
+  obj <- subset(obj, idents = clusters_to_remove, invert = TRUE)
+}
+removed_cells <- cells_before_qc - ncol(obj)
+if (removed_cells != sum(removal_manifest$removed_cells)) {
+  stop("Merged RL removal count does not match the reviewed per-sample removal manifest.")
+}
 
 # 1. Re-run PCA on the subset
 obj <- RunPCA(obj, verbose = FALSE, reduction.name = "pca_clean", npcs = 50)

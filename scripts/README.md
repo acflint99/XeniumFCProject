@@ -268,6 +268,21 @@ Processing writes the stable object
 scripts consume that name. Existing processing RDS or UMAP outputs require an
 explicit `--overwrite` rerun after review.
 
+VZ QC is an explicit review gate. First inspect readiness, then generate the
+QC summary, combined violin PDF, marker table, and review manifest:
+
+```bash
+Rscript scripts/Xenium_VZ_Merge_QC_res1.5.R --dry-run
+Rscript scripts/Xenium_VZ_Merge_QC_res1.5.R --qc-only
+```
+
+After reviewing those outputs, record the decision explicitly. For example,
+remove clusters 7 and 8 with `--remove-clusters=7,8`, or preserve every cell
+with `--remove-clusters=none`. The script validates all 34 whole-tissue inputs,
+protects existing outputs, and records per-sample removal counts. Post-QC
+processing reads that manifest and cannot independently choose a different
+cluster.
+
 Before mapping refined labels back to the whole-tissue objects, inspect all
 expected inputs and outputs without loading Seurat objects:
 
@@ -310,6 +325,17 @@ The stable merged output is `Merged/Xenium_Merged_RLSubsets.rds`, accompanied
 by the corresponding input/cell-count/PCW manifest. Both merge scripts refuse
 partial input sets, unexpected top-level RDS files, and accidental output
 replacement.
+
+RL QC uses the same explicit review gate:
+
+```bash
+Rscript scripts/Xenium_RL_Merge_QC_res1.5.R --dry-run
+Rscript scripts/Xenium_RL_Merge_QC_res1.5.R --qc-only
+```
+
+After reviewing the RL evidence, use `--remove-clusters=<IDs>` or
+`--remove-clusters=none`. The recorded decision is applied consistently to all
+34 individual objects and the merged post-QC object.
 
 Inspect processing readiness with:
 
