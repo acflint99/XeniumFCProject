@@ -233,7 +233,7 @@ The VZ branch generally follows this order:
 
 1. `Xenium_VZ_Subset_res1.5.R` – extracts configured consensus identities per sample.
 2. `Xenium_VZ_Merge_res1.5.R` – verifies and incrementally merges all 34 sample subsets after removing spatial overhead.
-3. `Xenium_VZ_Merge_Processing_res1.5.R` – normalization, PCA, Harmony integration, UMAP, and clustering.
+3. `Xenium_VZ_Merge_Processing_res1.5.R` – validates the complete merge, then runs normalization, PCA, Harmony integration, UMAP, and clustering.
 4. `Xenium_VZ_Merge_QC_res1.5.R` – merged-cluster QC summaries and cell flags.
 5. `Xenium_VZ_Merge_postQC_Processing_res1.5.R` – removes failed cells and recomputes integration and reductions.
 6. `Xenium_VZ_Analysis_res1.5.R` – VZ subcluster annotation and marker analysis.
@@ -257,13 +257,24 @@ The merge requires exactly the 34 manifest-defined subset files and writes the
 stable output `Merged/Xenium_Merged_VZSubsets.rds` plus a CSV manifest with
 each sample's input path, cell count, and PCW.
 
+After that merge exists, inspect processing readiness without loading it:
+
+```bash
+Rscript scripts/Xenium_VZ_Merge_Processing_res1.5.R --dry-run
+```
+
+Processing writes the stable object
+`outputs/XenAld_VZ_Res1.5_RDS/Xenium_VZ_Res1.5.rds`. The QC and post-QC
+scripts consume that name. Existing processing RDS or UMAP outputs require an
+explicit `--overwrite` rerun after review.
+
 ### 7. RL analysis
 
 The RL branch mirrors the VZ branch:
 
 1. `Xenium_RL_Subset_res1.5.R` – extracts configured consensus identities per sample.
 2. `Xenium_RL_Merge_res1.5.R` – verifies and incrementally merges all 34 sample subsets.
-3. `Xenium_RL_Merge_Processing_res1.5.R`
+3. `Xenium_RL_Merge_Processing_res1.5.R` – validates the complete merge before processing.
 4. `Xenium_RL_Merge_QC_res1.5.R`
 5. `Xenium_RL_Merge_postQC_Processing_res1.5.R`
 6. `Xenium_RL_Analysis_res1.5.R`
@@ -286,6 +297,16 @@ The stable merged output is `Merged/Xenium_Merged_RLSubsets.rds`, accompanied
 by the corresponding input/cell-count/PCW manifest. Both merge scripts refuse
 partial input sets, unexpected top-level RDS files, and accidental output
 replacement.
+
+Inspect processing readiness with:
+
+```bash
+Rscript scripts/Xenium_RL_Merge_Processing_res1.5.R --dry-run
+```
+
+The stable processed object is
+`outputs/XenAld_RL_Res1.5_RDS/Xenium_RL_Res1.5.rds`; RL QC and post-QC
+processing now consume that path.
 
 ### 8. Combined VZ/RL objects
 

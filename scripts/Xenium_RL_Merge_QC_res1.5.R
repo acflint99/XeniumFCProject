@@ -26,7 +26,7 @@ if(!dir.exists(plot_path)) dir.create(plot_path)
 table_path <- here("outputs", "XenAld_RL_QC_Res1.5_Tables")
 if(!dir.exists(table_path)) dir.create(table_path, recursive = TRUE)
 
-merged_path <- here("outputs", "XenAld_RL_Res1.5_RDS", "Xenium_RL_Res1.5_33026.rds")
+merged_path <- here("outputs", "XenAld_RL_Res1.5_RDS", "Xenium_RL_Res1.5.rds")
 obj <- readRDS(merged_path)
 
 # This merges the 15 separate sample layers into one unified matrix
