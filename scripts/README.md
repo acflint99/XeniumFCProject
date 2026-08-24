@@ -232,7 +232,7 @@ plots are TIFF-only; the marker DotPlot is saved as both TIFF and Cairo PDF.
 The VZ branch generally follows this order:
 
 1. `Xenium_VZ_Subset_res1.5.R` – extracts configured consensus identities per sample.
-2. `Xenium_VZ_Merge_res1.5.R` – merges sample subsets after removing unnecessary spatial overhead.
+2. `Xenium_VZ_Merge_res1.5.R` – verifies and incrementally merges all 34 sample subsets after removing spatial overhead.
 3. `Xenium_VZ_Merge_Processing_res1.5.R` – normalization, PCA, Harmony integration, UMAP, and clustering.
 4. `Xenium_VZ_Merge_QC_res1.5.R` – merged-cluster QC summaries and cell flags.
 5. `Xenium_VZ_Merge_postQC_Processing_res1.5.R` – removes failed cells and recomputes integration and reductions.
@@ -247,12 +247,22 @@ per-sample extraction with `run_XeniumVZSubset_res1.5.slurm`. Submit
 post-QC merged processing with `run_XeniumVZMergePostQC.slurm`.
 `run_VZSamplePlots.slurm` launches the plotting stage.
 
+Before merging, inspect completeness without loading any Seurat objects:
+
+```bash
+Rscript scripts/Xenium_VZ_Merge_res1.5.R --dry-run
+```
+
+The merge requires exactly the 34 manifest-defined subset files and writes the
+stable output `Merged/Xenium_Merged_VZSubsets.rds` plus a CSV manifest with
+each sample's input path, cell count, and PCW.
+
 ### 7. RL analysis
 
 The RL branch mirrors the VZ branch:
 
 1. `Xenium_RL_Subset_res1.5.R` – extracts configured consensus identities per sample.
-2. `Xenium_RL_Merge_res1.5.R`
+2. `Xenium_RL_Merge_res1.5.R` – verifies and incrementally merges all 34 sample subsets.
 3. `Xenium_RL_Merge_Processing_res1.5.R`
 4. `Xenium_RL_Merge_QC_res1.5.R`
 5. `Xenium_RL_Merge_postQC_Processing_res1.5.R`
@@ -265,6 +275,17 @@ The RL driver also reads all 34 samples from `config/samples.csv` and supports
 the same inspection and overwrite protections. `run_XeniumRLSubset_res1.5.slurm`
 submits RL extraction, and
 `run_XeniumRLMergePostQC.slurm` submits post-QC merged processing.
+
+Inspect RL merge readiness with:
+
+```bash
+Rscript scripts/Xenium_RL_Merge_res1.5.R --dry-run
+```
+
+The stable merged output is `Merged/Xenium_Merged_RLSubsets.rds`, accompanied
+by the corresponding input/cell-count/PCW manifest. Both merge scripts refuse
+partial input sets, unexpected top-level RDS files, and accidental output
+replacement.
 
 ### 8. Combined VZ/RL objects
 

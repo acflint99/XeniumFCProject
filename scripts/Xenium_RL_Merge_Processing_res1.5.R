@@ -36,7 +36,7 @@ if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = TRUE)
 if (!dir.exists(rds_dir))  dir.create(rds_dir, recursive = TRUE)
 
 # 3. LOAD DATA
-merged_path <- here("outputs", "XenAld_RL_Subsets_Res1.5_RDS", "Merged", "Xenium_Merged_RLSubsets_33026.rds") #modify with correct object
+merged_path <- here("outputs", "XenAld_RL_Subsets_Res1.5_RDS", "Merged", "Xenium_Merged_RLSubsets.rds")
 obj <- readRDS(merged_path)
 check_mem("DATA LOADED")
 
