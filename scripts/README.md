@@ -336,7 +336,7 @@ processing now consume that path.
 
 The refined regional labels are combined and analyzed with:
 
-- `Xenium_Combine_Subclusters.R` – combines refined labels in individual samples;
+- `Xenium_Combine_Subclusters.R` – combines refined labels in all 34 configured individual samples;
 - `Xenium_CombSubclusters_Clean&Merge.R` – cleans and merges per-sample objects;
 - `Xenium_CombSubclusters_Process&Plot.R` – processes and visualizes the combined object;
 - `Xenium_VZRL_Subclusters_Spatial_Merge.R` – memory-conscious spatial merge;
@@ -344,6 +344,18 @@ The refined regional labels are combined and analyzed with:
 - `Xenium_VZ&RL_CountPlot_res1.5.R` – combined lineage count plots.
 
 `run_VZRL_Subcluster_Merge.slurm` submits the merge stage.
+
+Before creating the combined per-sample RDS files, spatial TIFFs, and count
+tables, inspect input completeness and existing outputs with:
+
+```bash
+Rscript scripts/Xenium_Combine_Subclusters.R --dry-run
+```
+
+This stage reads sample IDs from `config/samples.csv`, requires all 34 mapped
+inputs, and refuses to replace any existing output unless given `--overwrite`.
+Combined identities use VZ subclusters first, RL subclusters second, and the
+broad consensus label for all remaining cells.
 
 ### 9. Spatial and trajectory analyses
 

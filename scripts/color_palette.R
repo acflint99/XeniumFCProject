@@ -67,7 +67,7 @@ vz_markers <- list(
 # 1. Define the subcluster order (shared across scripts)
 vz_subcluster_order <- c(
   "VZPs", "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs",
-  "GABA Progenitors", "Golgi Cells", "MLIs", "iCN", 
+  "GABA Progenitors", "Golgi Cells", "MLIs", "iCN",
   "RG Progenitors", "BG", "Astrocytes/Ependyma",
   "OPCs", "Cycling Cells", "eCN", "GCPs"
 )
@@ -154,13 +154,11 @@ subcluster_palette <- subcluster_palette[!duplicated(names(subcluster_palette))]
 
 master_subcluster_order <- c(
   "VZPs", "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs",
-  "GABA Progenitors", "Golgi Cells", "MLIs", "iCN", 
+  "GABA Progenitors", "Golgi Cells", "MLIs", "iCN",
   "RG Progenitors", "BG", "Astrocytes/Ependyma", "Ependymal Cells", "OPCs",
   "RL VZ", "RL SVZ",
   "Intermediate Progenitors", "Immature UBCs", "Mature UBCs", "eCN",
   "Prolif GCPs", "Maturing GCPs", "GCPs",
   "Differentiating GCs", "Migrating GCs", "Mature GCs",
-  "Cycling Cells", "Meninges",  "Endothelial", "Immune"
+  "Cycling Cells", "Meninges",  "Endothelial", "Immune", "Unknown"
 )
-
-
