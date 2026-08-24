@@ -1,83 +1,118 @@
-library(Seurat)
-library(here)
-library(dplyr)
-library(future)
+#!/usr/bin/env Rscript
 
-# 1. Memory and Parallelization Setup
+# Memory-conscious spatial merge of all 34 manifest-defined combined objects.
+
+rm(list = ls())
+
+suppressPackageStartupMessages({
+  library(here)
+  library(Seurat)
+  library(future)
+})
+source(here("scripts", "R", "config.R"))
+
+config <- load_pipeline_config()
+sample_ids <- load_sample_manifest(config)$sample_id
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!args %in% valid_options)) {
+  stop("Usage: Rscript scripts/Xenium_VZRL_Subclusters_Spatial_Merge.R [--dry-run|--overwrite]")
+}
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
+
+output_root <- here(config$project$outputs_dir)
+input_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS")
+output_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS")
+input_names <- paste0(sample_ids, "_Ald_VZ_RL_QC_Subclusters.rds")
+input_paths <- file.path(input_dir, input_names)
+merged_path <- file.path(output_dir, "XenAld_VZRL_spatial_merged.rds")
+manifest_path <- file.path(output_dir, "XenAld_VZRL_spatial_merged_manifest.csv")
+
+observed_names <- if (dir.exists(input_dir)) {
+  list.files(input_dir, pattern = "\\.rds$", full.names = FALSE)
+} else character()
+missing_names <- input_names[!file.exists(input_paths)]
+unexpected_names <- setdiff(observed_names, input_names)
+
+if (dry_run) {
+  cat("Expected spatial-merge inputs:", length(input_paths), "\n")
+  cat("Existing spatial-merge inputs:", sum(file.exists(input_paths)), "\n")
+  cat("Unexpected top-level RDS files:", length(unexpected_names), "\n")
+  cat("Spatial merged output:", merged_path, "\n")
+  cat("Spatial merged output exists:", file.exists(merged_path), "\n")
+  cat("Spatial merge manifest exists:", file.exists(manifest_path), "\n")
+  write.table(data.frame(sample_id = sample_ids, input_exists = file.exists(input_paths)),
+              row.names = FALSE, quote = FALSE, sep = "\t")
+  if (length(unexpected_names)) cat("Unexpected files:\n- ", paste(unexpected_names, collapse = "\n- "), "\n")
+  quit(save = "no", status = 0L)
+}
+
+if (length(missing_names)) {
+  stop("Cannot spatially merge; missing files:\n- ", paste(missing_names, collapse = "\n- "))
+}
+if (length(unexpected_names)) {
+  stop("Cannot spatially merge; unexpected RDS files:\n- ", paste(unexpected_names, collapse = "\n- "))
+}
+existing_outputs <- c(merged_path, manifest_path)[file.exists(c(merged_path, manifest_path))]
+if (length(existing_outputs) && !overwrite) {
+  stop("Refusing to overwrite spatial merge outputs:\n- ",
+       paste(existing_outputs, collapse = "\n- "), "\nUse --overwrite only after review.")
+}
+
 options(future.globals.maxSize = Inf)
-plan("sequential")
+plan(sequential)
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+merge_manifest <- data.frame(
+  sample_id = sample_ids, input_path = input_paths,
+  cells = integer(length(sample_ids)), images = integer(length(sample_ids)),
+  PCW = character(length(sample_ids)), stringsAsFactors = FALSE
+)
+merged_obj <- NULL
 
-# 2. Path Setup
-out_dir <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS")
-if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+for (i in seq_along(sample_ids)) {
+  sample_id <- sample_ids[[i]]
+  message("Reading spatial object ", i, " of ", length(sample_ids), ": ", sample_id)
+  obj <- readRDS(input_paths[[i]])
+  required_metadata <- c("comb_subcluster", "consensus_label", "VZ_subcluster", "RL_subcluster", "PCW")
+  missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
+  if (length(missing_metadata)) stop(sample_id, " lacks metadata: ", paste(missing_metadata, collapse = ", "))
+  if (ncol(obj) == 0L) stop(sample_id, " contains zero cells.")
+  if (!length(Images(obj))) stop(sample_id, " has no spatial image/FOV data.")
+  pcw_values <- unique(as.character(obj$PCW))
+  pcw_values <- pcw_values[!is.na(pcw_values) & nzchar(pcw_values)]
+  if (length(pcw_values) != 1L) stop(sample_id, " must contain exactly one nonblank PCW value.")
 
-input_dir <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS")
-files <- list.files(input_dir, pattern = "\\.rds$", full.names = TRUE)
+  retained_layers <- intersect(c("counts", "data"), Layers(obj[["Xenium"]]))
+  if (!"counts" %in% retained_layers) stop(sample_id, " Xenium assay lacks a counts layer.")
+  obj <- DietSeurat(obj, assays = "Xenium", layers = retained_layers,
+                    dimreducs = NULL, graphs = NULL)
+  obj$sample_id <- sample_id
+  obj$orig.ident <- sample_id
+  obj <- RenameCells(obj, add.cell.id = sample_id)
+  merge_manifest$cells[[i]] <- ncol(obj)
+  merge_manifest$images[[i]] <- length(Images(obj))
+  merge_manifest$PCW[[i]] <- pcw_values[[1]]
 
-# --- 3. Create and Fill obj_list with PRE-MERGE RENAMING ---
-obj_list <- list()
-
-for (i in 1:length(files)) {
-  f_name <- basename(files[i])
-  message("Reading (", i, "/", length(files), "): ", f_name)
-  
-  tmp <- readRDS(files[i])
-  
-  # Slim down the object using Seurat v5 layers syntax
-  tmp <- DietSeurat(tmp, layers = c("counts", "data"), dimreducs = NULL, graphs = NULL)
-  
-  # Set Sample ID
-  sample_id <- gsub("_Ald_VZ_RL_QC_Subclusters\\.rds$", "", f_name)
-  tmp$sample_id <- sample_id
-  
-  # --- THE FIX: Pre-Merge Renaming ---
-  # Force the cell names to be globally unique right now. 
-  # This perfectly syncs the RNA metadata AND the spatial FOV image.
-  clean_names <- paste0(sample_id, "_", colnames(tmp))
-  tmp <- RenameCells(tmp, new.names = clean_names)
-  
-  obj_list[[sample_id]] <- tmp
-  rm(tmp)
-  gc()
-}
-# ------------------------------------------
-
-# 4. Consolidated destructive merge
-message("Starting destructive chain merge...")
-
-# Initialize with the first object and REMOVE it from the list immediately
-merged_obj <- obj_list[[1]]
-obj_list[[1]] <- NULL 
-gc()
-
-# Loop through the rest of the list
-for (j in 1:length(obj_list)) {
-  sample_name <- names(obj_list)[1]
-  message("Merging: ", sample_name, " (Remaining in list: ", length(obj_list), ")")
-  
-  # --- THE FIX: Remove add.cell.ids ---
-  # Because we already renamed them, we let Seurat merge them natively
-  merged_obj <- merge(merged_obj, y = obj_list[[1]]) 
-  
-  # Delete the item we just merged and free RAM
-  obj_list[[1]] <- NULL
+  if (is.null(merged_obj)) {
+    merged_obj <- obj
+  } else {
+    merged_obj <- merge(merged_obj, obj, project = "Xenium_VZRL_Spatial")
+  }
+  rm(obj)
   gc()
 }
 
-message("Merge complete. Final cell count: ", ncol(merged_obj))
-
-# Optional Verification: Check that Seurat didn't add any extra underscores
-message("Verification Check (First 5 cells):")
-print(head(colnames(merged_obj), 5))
-
-# 5. Save
-save_path <- file.path(out_dir, "XenAld_VZ_RL_QC_Subclusters_Spatial_Merged_4-22-26.rds")
-message("Saving to: ", save_path)
-
-saveRDS(merged_obj, save_path, compress = FALSE)
-
-# Final Cleanup
-rm(obj_list)
-gc()
-
-message("Done! Process complete.")
+if (anyDuplicated(colnames(merged_obj))) stop("Spatial merged object contains duplicate cell names.")
+if (ncol(merged_obj) != sum(merge_manifest$cells)) {
+  stop("Spatial merged cell count does not equal the per-sample manifest total.")
+}
+if (!setequal(unique(as.character(merged_obj$sample_id)), sample_ids)) {
+  stop("Spatial merged object does not contain exactly the configured sample IDs.")
+}
+saveRDS(merged_obj, merged_path, compress = FALSE)
+write.csv(merge_manifest, manifest_path, row.names = FALSE)
+message("Saved complete spatial merge: ", merged_path)

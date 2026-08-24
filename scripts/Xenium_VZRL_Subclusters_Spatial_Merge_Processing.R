@@ -1,201 +1,184 @@
-# Clear the environment
-rm(list = ls())
+#!/usr/bin/env Rscript
 
+# Sketch-based Harmony integration of the validated 34-sample spatial merge.
+
+rm(list = ls())
 options(bitmapType = "cairo")
 
-library(Seurat)
-library(here)
-library(dplyr)
-library(ggplot2)
-library(future)
-
+suppressPackageStartupMessages({
+  library(here)
+  library(Seurat)
+  library(dplyr)
+  library(ggplot2)
+  library(future)
+})
+source(here("scripts", "R", "config.R"))
 source(here("scripts", "color_palette.R"))
 
-# --- 1. Parallelization Setup ---
-# Using 8 cores with a high memory limit for workers
-plan("multisession", workers = 8)
-options(future.globals.maxSize = 100 * 1024^3) 
+config <- load_pipeline_config()
+sample_ids <- load_sample_manifest(config)$sample_id
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!args %in% valid_options)) {
+  stop("Usage: Rscript scripts/Xenium_VZRL_Subclusters_Spatial_Merge_Processing.R [--dry-run|--overwrite]")
+}
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
-# Ensure output directory exists
-plot_dir <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_Plots")
-if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = TRUE)
+output_root <- here(config$project$outputs_dir)
+rds_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS")
+plot_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_Plots")
+input_path <- file.path(rds_dir, "XenAld_VZRL_spatial_merged.rds")
+input_manifest_path <- file.path(rds_dir, "XenAld_VZRL_spatial_merged_manifest.csv")
+output_path <- file.path(rds_dir, "XenAld_VZRL_spatial_integrated.rds")
+output_manifest_path <- file.path(rds_dir, "XenAld_VZRL_spatial_integrated_manifest.csv")
+plot_paths <- file.path(
+  plot_dir,
+  c(
+    "XenAld_VZRL_Spatial_Integrated_SampleID_UMAP.tif",
+    "XenAld_VZRL_Spatial_Integrated_BroadClusters_UMAP.tif",
+    "XenAld_VZRL_Spatial_Integrated_Subclusters_UMAP.tif"
+  )
+)
+expected_outputs <- c(output_path, output_manifest_path, plot_paths)
 
-# --- 2. Load the CLEAN Merged Object ---
-message("Loading the cleanly merged object...")
-merged_path <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS", "XenAld_VZ_RL_QC_Subclusters_Spatial_Merged_4-22-26.rds")
-obj <- readRDS(merged_path)
+if (dry_run) {
+  cat("Spatial merged input:", input_path, "\n")
+  cat("Spatial merged input exists:", file.exists(input_path), "\n")
+  cat("Spatial merge manifest exists:", file.exists(input_manifest_path), "\n")
+  write.table(data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
+              row.names = FALSE, quote = FALSE, sep = "\t")
+  quit(save = "no", status = 0L)
+}
 
-# Ensure the full object is "joined" before starting to prevent layer fragmentation
+if (!file.exists(input_path)) stop("Spatial merged input not found: ", input_path)
+if (!file.exists(input_manifest_path)) stop("Spatial merge manifest not found: ", input_manifest_path)
+existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+if (length(existing_outputs) && !overwrite) {
+  stop("Refusing to overwrite spatial integration outputs:\n- ",
+       paste(existing_outputs, collapse = "\n- "), "\nUse --overwrite only after review.")
+}
+
+input_manifest <- read.csv(input_manifest_path, stringsAsFactors = FALSE)
+if (nrow(input_manifest) != length(sample_ids) ||
+    !setequal(input_manifest$sample_id, sample_ids)) {
+  stop("Spatial merge manifest must contain exactly the configured 34 samples.")
+}
+
+workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "8")))
+if (is.na(workers) || workers < 1L) stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
+options(future.globals.maxSize = 100 * 1024^3)
+plan(multisession, workers = workers)
+on.exit(plan(sequential), add = TRUE)
+set.seed(config$runtime$random_seed)
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+
+message("Loading validated spatial merge...")
+obj <- readRDS(input_path)
+required_metadata <- c("sample_id", "orig.ident", "consensus_label", "comb_subcluster", "PCW")
+missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
+if (length(missing_metadata)) stop("Spatial merge lacks metadata: ", paste(missing_metadata, collapse = ", "))
+if (ncol(obj) != sum(input_manifest$cells)) stop("Spatial merge cell count does not match its manifest.")
+if (!setequal(unique(as.character(obj$sample_id)), sample_ids)) {
+  stop("Spatial merge does not contain exactly the configured sample IDs.")
+}
+
 obj[["Xenium"]] <- JoinLayers(obj[["Xenium"]])
-
-# --- 3. Correct Pre-Processing Order (Full Object) ---
-message("Normalizing and Finding Variable Features (Full Object)...")
+DefaultAssay(obj) <- "Xenium"
 obj <- NormalizeData(obj)
 obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000)
 obj <- ScaleData(obj)
-obj <- RunPCA(obj, npcs = 30)
+obj <- RunPCA(obj, npcs = 30, seed.use = config$runtime$random_seed)
 
-# --- 4. Sketching 100k Cells ---
-message("Sketching 100k cells...")
+sketch_size <- min(100000L, ncol(obj))
+message("Sketching ", sketch_size, " cells...")
 obj <- SketchData(
-  object = obj,
-  ncells = 100000, 
-  method = "LeverageScore",
+  object = obj, ncells = sketch_size, method = "LeverageScore",
   sketched.assay = "sketch"
 )
-
-# --- 5. Reconstruct Clean Sketch Assay ---
 DefaultAssay(obj) <- "Xenium"
 sketch_cells <- colnames(obj[["sketch"]])
-
-# Extract raw counts safely using Seurat v5 accessor
-sketch_counts_matrix <- LayerData(obj, assay = "Xenium", layer = "counts")[, sketch_cells]
-
-# Create a fresh Assay object to wipe the fragmented layer history
-new_sketch_assay <- CreateAssay5Object(counts = sketch_counts_matrix)
-obj[["sketch"]] <- new_sketch_assay
-
-# --- 6. Pre-process the Clean Sketch ---
+sketch_counts <- LayerData(obj, assay = "Xenium", layer = "counts")[, sketch_cells, drop = FALSE]
+obj[["sketch"]] <- CreateAssay5Object(counts = sketch_counts)
 DefaultAssay(obj) <- "sketch"
-
-# Explicitly grab sample IDs just for sketched cells to ensure perfect splitting
 sketch_sample_ids <- obj@meta.data[sketch_cells, "sample_id"]
-
-# Split by sample (should work perfectly on the clean assay)
+if (anyNA(sketch_sample_ids)) stop("Sketched cells contain missing sample IDs.")
 obj[["sketch"]] <- split(obj[["sketch"]], f = sketch_sample_ids)
 
-message("Re-processing clean sketch for Harmony...")
-n_features_to_use <- min(2000, nrow(obj[["sketch"]]))
-
-# Enforce correct normalization -> variable features -> scale order
+n_features <- min(2000L, nrow(obj[["sketch"]]))
 obj <- NormalizeData(obj)
-obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = n_features_to_use)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = n_features)
 obj <- ScaleData(obj)
-obj <- RunPCA(obj, npcs = 30, verbose = FALSE)
-
-
-# --- 7. Harmony Integration ---
-message("Running Harmony Integration...")
+obj <- RunPCA(obj, npcs = 30, verbose = FALSE, seed.use = config$runtime$random_seed)
 obj <- IntegrateLayers(
-  object = obj,
-  method = HarmonyIntegration,
-  orig.reduction = "pca",
-  new.reduction = "integrated.harmony",
-  group.by = "sample_id", 
-  verbose = TRUE
+  object = obj, method = HarmonyIntegration, orig.reduction = "pca",
+  new.reduction = "integrated.harmony", group.by = "sample_id", verbose = TRUE
 )
 
-
-# --- 8. Project to Full Dataset ---
-message("Projecting integration and UMAP to full dataset...")
 obj[["sketch"]] <- JoinLayers(obj[["sketch"]])
-
-# Project the Harmony dimensions
 obj <- ProjectIntegration(
-  object = obj,
-  sketched.assay = "sketch",
-  assay = "Xenium",
+  object = obj, sketched.assay = "sketch", assay = "Xenium",
   reduction = "integrated.harmony"
 )
-
-# --- FIX: Add return.model = TRUE so ProjectData can use it ---
-obj <- RunUMAP(obj, reduction = "integrated.harmony", dims = 1:30, reduction.name = "umap.harmony", return.model = TRUE)
-
-# Project the UMAP coordinates to the remaining unsketched cells
-obj <- ProjectData(
-  object = obj,
-  sketched.assay = "sketch",
-  assay = "Xenium",
-  sketched.reduction = "integrated.harmony", 
-  full.reduction = "integrated.harmony",     
-  dims = 1:30                                
+obj <- RunUMAP(
+  obj, reduction = "integrated.harmony", dims = 1:30,
+  reduction.name = "umap.harmony", return.model = TRUE,
+  seed.use = config$runtime$random_seed
 )
-
-
-# --- FIX: Reset Default Assay back to the full dataset for plotting ---
+obj <- ProjectData(
+  object = obj, sketched.assay = "sketch", assay = "Xenium",
+  sketched.reduction = "integrated.harmony",
+  full.reduction = "integrated.harmony", dims = 1:30
+)
 DefaultAssay(obj) <- "Xenium"
 
+observed_consensus <- unique(as.character(obj$consensus_label))
+unexpected_consensus <- setdiff(observed_consensus, celltype_order)
+if (length(unexpected_consensus)) stop("Unexpected consensus labels: ", paste(unexpected_consensus, collapse = ", "))
+consensus_levels <- intersect(celltype_order, observed_consensus)
+obj$consensus_label <- factor(obj$consensus_label, levels = consensus_levels)
+observed_subclusters <- unique(as.character(obj$comb_subcluster))
+unexpected_subclusters <- setdiff(observed_subclusters, master_subcluster_order)
+if (length(unexpected_subclusters)) stop("Unexpected combined subclusters: ", paste(unexpected_subclusters, collapse = ", "))
+subcluster_levels <- intersect(master_subcluster_order, observed_subclusters)
+obj$comb_subcluster <- factor(obj$comb_subcluster, levels = subcluster_levels)
 
-# --- 9. Visualization ---
-message("Generating Plots...")
-
-# Enforce cluster ordering safely
-if (exists("celltype_order") && "consensus_label" %in% colnames(obj@meta.data)) {
-  obj$consensus_label <- factor(
-    obj$consensus_label, 
-    levels = intersect(celltype_order, unique(obj$consensus_label))
-  )
-}
-
-if (exists("master_subcluster_order") && "comb_subcluster" %in% colnames(obj@meta.data)) {
-  obj$comb_subcluster <- factor(
-    obj$comb_subcluster, 
-    levels = intersect(master_subcluster_order, unique(obj$comb_subcluster))
-  )
-}
-
-# Generate the Plots
-p1 <- DimPlot(obj, reduction = "umap.harmony", group.by = "sample_id", raster = TRUE) + 
+p_sample <- DimPlot(obj, reduction = "umap.harmony", group.by = "sample_id", raster = TRUE) +
   ggtitle("Integrated by Sample")
-Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "XenAld_VZ_RL_Subclusters_Spatial_Merged_SampleID_UMAP.tif"),
-  width = 14,
-  height = 14,
-  units = "in",
-  res = 600
-)
-print(p1)
+Cairo::CairoTIFF(plot_paths[[1]], width = 14, height = 14, units = "in", res = 600)
+print(p_sample)
 grDevices::dev.off()
 
-if ("consensus_label" %in% colnames(obj@meta.data) && exists("cluster_colors")) {
-  p2 <- DimPlot(obj, reduction = "umap.harmony", group.by = "consensus_label", label = TRUE, raster = TRUE) + 
-    scale_color_manual(values = cluster_colors) + 
-    ggtitle("Integrated: Broad Clusters")
-  Cairo::CairoTIFF(
-    filename = file.path(plot_dir, "XenAld_VZ_RL_Subclusters_Spatial_Merged_BroadClusters_UMAPs2.tif"),
-    width = 14,
-    height = 14,
-    units = "in",
-    res = 600
-  )
-  print(p2)
-  grDevices::dev.off()
-}
+p_broad <- DimPlot(
+  obj, reduction = "umap.harmony", group.by = "consensus_label",
+  label = TRUE, raster = TRUE, cols = cluster_colors[consensus_levels]
+) + ggtitle("Integrated: Broad Clusters")
+Cairo::CairoTIFF(plot_paths[[2]], width = 14, height = 14, units = "in", res = 600)
+print(p_broad)
+grDevices::dev.off()
 
-if ("comb_subcluster" %in% colnames(obj@meta.data) && exists("subcluster_palette")) {
-  p3 <- DimPlot(obj, 
-                reduction = "umap.harmony", 
-                group.by = "comb_subcluster", 
-                label = TRUE, 
-                label.size = 3.5,      
-                repel = TRUE,          
-                label.box = TRUE,      
-                raster = TRUE, 
-                alpha = 0.6,
-                cols = subcluster_palette) + 
-    ggtitle("Integrated: Subclusters") +
-    theme(
-      legend.text = element_text(size = 9), 
-      legend.key.size = unit(0.5, "cm")     
-    ) +
-    guides(color = guide_legend(ncol = 1, override.aes = list(size = 5)))
-  Cairo::CairoTIFF(
-    filename = file.path(plot_dir, "XenAld_VZ_RL_Subclusters_Spatial_Merged_Subclusters_UMAP2.tif"),
-    width = 14,
-    height = 14,
-    units = "in",
-    res = 600
-  )
-  print(p3)
-  grDevices::dev.off()
-}
+p_subcluster <- DimPlot(
+  obj, reduction = "umap.harmony", group.by = "comb_subcluster",
+  label = TRUE, label.size = 3.5, repel = TRUE, label.box = TRUE,
+  raster = TRUE, alpha = 0.6, cols = subcluster_palette[subcluster_levels]
+) + ggtitle("Integrated: Subclusters") +
+  theme(legend.text = element_text(size = 9), legend.key.size = grid::unit(0.5, "cm")) +
+  guides(color = guide_legend(ncol = 1, override.aes = list(size = 5)))
+Cairo::CairoTIFF(plot_paths[[3]], width = 14, height = 14, units = "in", res = 600)
+print(p_subcluster)
+grDevices::dev.off()
 
-# --- 10. Save ---
-save_path <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS", "XenAld_VZ_RL_QC_Subclusters_Spatial_Merged_Integrated2_4-23-26.rds")
-message("Saving final integrated object to: ", save_path)
-
-# Return to sequential plan for safer disk writing
-plan("sequential")
-saveRDS(obj, save_path, compress = FALSE)
-
-message("Done! Ready for Trajectory Analysis.")
+plan(sequential)
+saveRDS(obj, output_path, compress = FALSE)
+input_info <- file.info(input_path)
+output_manifest <- data.frame(
+  input_path = input_path, input_size = as.numeric(input_info$size),
+  input_mtime = as.numeric(input_info$mtime), cells = ncol(obj),
+  samples = length(unique(obj$sample_id)), sketch_cells = sketch_size,
+  random_seed = config$runtime$random_seed, stringsAsFactors = FALSE
+)
+write.csv(output_manifest, output_manifest_path, row.names = FALSE)
+message("Saved integrated spatial object: ", output_path)

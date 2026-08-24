@@ -15,7 +15,7 @@ ad <- import("anndata")
 message("Python environment loaded for AnnData export.")
 
 # --- 2. Load the Clean Integrated Object ---
-merged_path <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS", "XenAld_VZ_RL_QC_Subclusters_Spatial_Merged_Integrated2_4-23-26.rds")
+merged_path <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS", "XenAld_VZRL_spatial_integrated.rds")
 message("Loading full integrated object...")
 obj <- readRDS(merged_path)
 

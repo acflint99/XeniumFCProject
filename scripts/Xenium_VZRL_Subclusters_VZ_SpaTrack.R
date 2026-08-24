@@ -27,7 +27,7 @@ message("Python environment successfully loaded from: ", env_python)
 source(here("scripts", "color_palette.R"))
 
 # Pointing to the clean, integrated object you just built!
-merged_path <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS", "XenAld_VZ_RL_QC_Subclusters_Spatial_Merged_Integrated2_4-23-26.rds")
+merged_path <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS", "XenAld_VZRL_spatial_integrated.rds")
 obj <- readRDS(merged_path)
 
 target_clusters <- c(

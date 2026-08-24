@@ -385,7 +385,21 @@ The refined regional labels are combined and analyzed with:
 - `Xenium_VZRL_Subclusters_Spatial_Merge_Processing.R` – Seurat v5 sketch/integration workflow on the merged data;
 - `Xenium_VZ&RL_CountPlot_res1.5.R` – combined lineage count plots.
 
-`run_VZRL_Subcluster_Merge.slurm` submits the merge stage.
+The spatial branch has a separate validated merge because it preserves the
+FOV/image data removed from the smaller non-spatial merge. Inspect both stages
+before submission:
+
+```bash
+Rscript scripts/Xenium_VZRL_Subclusters_Spatial_Merge.R --dry-run
+Rscript scripts/Xenium_VZRL_Subclusters_Spatial_Merge_Processing.R --dry-run
+```
+
+The merge requires all 34 manifest inputs and writes
+`XenAld_VZRL_spatial_merged.rds` plus a cell/image-count manifest. Sketch-based
+Harmony processing writes `XenAld_VZRL_spatial_integrated.rds`; this stable name
+is also used by the h5ad export and SpaTrack scripts. UMAPs are TIFF-only.
+Submit these stages with `run_XeniumVZRLSpatialMerge.slurm` and then
+`run_XeniumVZRLSpatialProcess.slurm`.
 
 Before creating the combined per-sample RDS files, spatial TIFFs, and count
 tables, inspect input completeness and existing outputs with:
