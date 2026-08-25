@@ -169,7 +169,7 @@ Processed objects are saved as `outputs/Xenium_Res1.5_RDS/<sample>_CB_QC_cluster
 
 ### 5. Reference-based annotation
 
-`AnchorBasedTransfer_RPCA_res1.5.R` is the primary label-transfer implementation. It:
+`xenium_annotate_01_label_transfer_rpca.R` is the primary label-transfer implementation. It:
 
 - balances the reference by downsampling to at most 1,000 cells per reference identity;
 - finds genes shared by the reference and Xenium object;
@@ -182,17 +182,17 @@ The reference and sample are selected explicitly from the command line. The
 sample task ID maps to all 34 rows in `config/samples.csv`:
 
 ```bash
-Rscript scripts/AnchorBasedTransfer_RPCA_res1.5.R --list
-Rscript scripts/AnchorBasedTransfer_RPCA_res1.5.R --dry-run Aldinger 1
+Rscript scripts/xenium_annotate_01_label_transfer_rpca.R --list
+Rscript scripts/xenium_annotate_01_label_transfer_rpca.R --dry-run Aldinger 1
 ```
 
-`run_ABT_res1.5.slurm` submits a 34-task array, capped at two concurrent jobs. To
+`run_xenium_annotate_01_transfer.slurm` submits a 34-task array, capped at two concurrent jobs. To
 submit all three reference analyses:
 
 ```bash
-sbatch --job-name=Xen_ABT_Aldinger --export=ALL,REFERENCE=Aldinger scripts/run_ABT_res1.5.slurm
-sbatch --job-name=Xen_ABT_Sepp --export=ALL,REFERENCE=Sepp scripts/run_ABT_res1.5.slurm
-sbatch --job-name=Xen_ABT_Science --export=ALL,REFERENCE=Science scripts/run_ABT_res1.5.slurm
+sbatch --job-name=Xen_ABT_Aldinger --export=ALL,REFERENCE=Aldinger scripts/run_xenium_annotate_01_transfer.slurm
+sbatch --job-name=Xen_ABT_Sepp --export=ALL,REFERENCE=Sepp scripts/run_xenium_annotate_01_transfer.slurm
+sbatch --job-name=Xen_ABT_Science --export=ALL,REFERENCE=Science scripts/run_xenium_annotate_01_transfer.slurm
 ```
 
 The driver refuses to replace any existing annotation output unless called
@@ -201,12 +201,12 @@ with `--overwrite`, or submitted with `ABT_OVERWRITE=true` after review.
 Related scripts:
 
 - `XeniumABT_seq.R` – sequential annotation driver;
-- `Xenium_ABT_res1.5_comp.R` – merges the three reference comparisons and calculates one cluster-level `consensus_label`;
-- `Xenium_ABT_ConsensusLabels.R` – adds consensus labels and PCW metadata to individual objects, makes consensus labels the active identities, and writes consensus UMAP, spatial, and marker DotPlot figures;
-- `run_XeniumConsensusLabels.slurm` – submits all 34 consensus-label tasks, capped at three concurrent jobs;
-- `Xenium_ABT_GlobalPlot.R` – additional consensus spatial maps;
-- `Xenium_ABT_PropGraph.R` – attaches sample metadata and plots consensus cell-type proportions;
-- `Xenium_ABT_GlobalPlot_postQC.R` – consensus maps after regional refinement/QC.
+- `xenium_annotate_02_build_consensus.R` – merges the three reference comparisons and calculates one cluster-level `consensus_label`;
+- `xenium_annotate_03_apply_consensus.R` – adds consensus labels and PCW metadata to individual objects, makes consensus labels the active identities, and writes consensus UMAP, spatial, and marker DotPlot figures;
+- `run_xenium_annotate_03_apply_consensus.slurm` – submits all 34 consensus-label tasks, capped at three concurrent jobs;
+- `xenium_annotate_03b_plot_spatial.R` – additional consensus spatial maps;
+- `xenium_annotate_03c_plot_proportions.R` – attaches sample metadata and plots consensus cell-type proportions;
+- `xenium_vz_rl_01b_plot_spatial.R` – consensus maps after regional refinement/QC.
 
 The consensus calculation ignores missing and `Unknown` labels and selects the
 most frequent label across Aldinger, Sepp, and Science majority/weighted
@@ -215,8 +215,8 @@ labels remain in the object; `consensus_label` is added without overwriting
 them. Inspect the task mapping and one task before running:
 
 ```bash
-Rscript scripts/Xenium_ABT_ConsensusLabels.R --list
-Rscript scripts/Xenium_ABT_ConsensusLabels.R --dry-run 1
+Rscript scripts/xenium_annotate_03_apply_consensus.R --list
+Rscript scripts/xenium_annotate_03_apply_consensus.R --dry-run 1
 ```
 
 Consensus objects are written to
@@ -233,7 +233,7 @@ without rewriting the RDS or spatial plots, submit with
 
 ```bash
 sbatch --array=1-34%3 --export=ALL,CONSENSUS_DOTPLOT_ONLY=true \
-  scripts/run_XeniumConsensusLabels.slurm
+  scripts/run_xenium_annotate_03_apply_consensus.slurm
 ```
 
 ### 6. VZ analysis
@@ -387,48 +387,48 @@ processing now consume that path.
 
 The refined regional labels are combined and analyzed with:
 
-- `Xenium_Combine_Subclusters.R` – combines refined labels in all 34 configured individual samples;
-- `Xenium_CombSubclusters_Clean&Merge.R` – cleans and merges per-sample objects;
-- `Xenium_CombSubclusters_Process&Plot.R` – processes and visualizes the combined object;
-- `Xenium_VZRL_Subclusters_Spatial_Merge.R` – memory-conscious spatial merge;
-- `Xenium_VZRL_Subclusters_Spatial_Merge_Processing.R` – Seurat v5 sketch/integration workflow on the merged data;
-- `Xenium_VZ&RL_CountPlot_res1.5.R` – combined lineage count plots.
+- `xenium_vz_rl_01_combine_labels.R` – combines refined labels in all 34 configured individual samples;
+- `xenium_vz_rl_02_merge_samples.R` – cleans and merges per-sample objects;
+- `xenium_vz_rl_03_process_and_plot.R` – processes and visualizes the combined object;
+- `xenium_vz_rl_spatial_01_merge.R` – memory-conscious spatial merge;
+- `xenium_vz_rl_spatial_02_integrate.R` – Seurat v5 sketch/integration workflow on the merged data;
+- `xenium_vz_rl_03b_plot_cluster_counts.R` – combined lineage count plots.
 
 The spatial branch has a separate validated merge because it preserves the
 FOV/image data removed from the smaller non-spatial merge. Inspect both stages
 before submission:
 
 ```bash
-Rscript scripts/Xenium_VZRL_Subclusters_Spatial_Merge.R --dry-run
-Rscript scripts/Xenium_VZRL_Subclusters_Spatial_Merge_Processing.R --dry-run
+Rscript scripts/xenium_vz_rl_spatial_01_merge.R --dry-run
+Rscript scripts/xenium_vz_rl_spatial_02_integrate.R --dry-run
 ```
 
 The merge requires all 34 manifest inputs and writes
 `XenAld_VZRL_spatial_merged.rds` plus a cell/image-count manifest. Sketch-based
 Harmony processing writes `XenAld_VZRL_spatial_integrated.rds`; this stable name
 is also used by the h5ad export and SpaTrack scripts. UMAPs are TIFF-only.
-Submit these stages with `run_XeniumVZRLSpatialMerge.slurm` and then
-`run_XeniumVZRLSpatialProcess.slurm`.
+Submit these stages with `run_xenium_vz_rl_spatial_01_merge.slurm` and then
+`run_xenium_vz_rl_spatial_02_integrate.slurm`.
 
 Before creating the combined per-sample RDS files, spatial TIFFs, and count
 tables, inspect input completeness and existing outputs with:
 
 ```bash
-Rscript scripts/Xenium_Combine_Subclusters.R --dry-run
+Rscript scripts/xenium_vz_rl_01_combine_labels.R --dry-run
 ```
 
 This stage reads sample IDs from `config/samples.csv`, requires all 34 mapped
 inputs, and refuses to replace any existing output unless given `--overwrite`.
 Combined identities use VZ subclusters first, RL subclusters second, and the
 broad consensus label for all remaining cells.
-Submit it with `run_XeniumCombineSubclusters.slurm`.
+Submit it with `run_xenium_vz_rl_01_combine_labels.slurm`.
 
 The subsequent clean/merge stage also requires all 34 inputs and removes
 spatial images, scale data, and control assays before merging. Because its
 filename contains `&`, quote it in the shell:
 
 ```bash
-Rscript 'scripts/Xenium_CombSubclusters_Clean&Merge.R' --dry-run
+Rscript 'scripts/xenium_vz_rl_02_merge_samples.R' --dry-run
 ```
 
 It writes the stable merged object `XenAld_VZRL_clean_merge.rds` and a
@@ -436,17 +436,17 @@ per-sample cell-count/PCW manifest. Combined integration and plotting are
 separate operations:
 
 ```bash
-Rscript 'scripts/Xenium_CombSubclusters_Process&Plot.R' --dry-run
-Rscript 'scripts/Xenium_CombSubclusters_Process&Plot.R' --process-only
-Rscript 'scripts/Xenium_CombSubclusters_Process&Plot.R' --plots-only
+Rscript 'scripts/xenium_vz_rl_03_process_and_plot.R' --dry-run
+Rscript 'scripts/xenium_vz_rl_03_process_and_plot.R' --process-only
+Rscript 'scripts/xenium_vz_rl_03_process_and_plot.R' --plots-only
 ```
 
 The stable processed object is `XenAld_VZRL_clean_merge_processed.rds`.
 Plot-only runs verify that the input merge has not changed, and they never
 repeat normalization, PCA, Harmony, or UMAP. UMAP outputs remain TIFF-only;
 DotPlots, the marker heatmap, and violin plots are saved as TIFF and Cairo PDF.
-The corresponding launchers are `run_XeniumCombinedCleanMerge.slurm`,
-`run_XeniumCombinedProcess.slurm`, and `run_XeniumCombinedPlots.slurm`.
+The corresponding launchers are `run_xenium_vz_rl_02_merge_samples.slurm`,
+`run_xenium_vz_rl_03_process.slurm`, and `run_xenium_vz_rl_03_plots_only.slurm`.
 
 ### 9. Spatial and trajectory analyses
 
@@ -476,15 +476,15 @@ These scripts require configured Python/Conda environments and currently contain
 #### Other downstream analyses
 
 - `Xenium_GeneExpGradient_Analysis.R` – spatial expression gradients across selected lineages or regions.
-- `Xenium_ABT_PropGraph.R` – proportions by sample metadata such as post-conception week.
-- `XenAld_VZ_Compare.R` and `XenSepp_VZ_Compare.R` – average-expression correlations between Xenium VZ clusters and reference VZ clusters.
+- `xenium_annotate_03c_plot_proportions.R` – proportions by sample metadata such as post-conception week.
+- `xenium_vz_compare_aldinger.R` and `xenium_vz_compare_sepp.R` – average-expression correlations between Xenium VZ clusters and reference VZ clusters.
 
 ### 10. Cross-study reference comparisons
 
-- `CrossStudyClusterCorr.R` computes pseudobulk cluster-expression correlations across Aldinger, Sepp, and Science.
-- `CrossStudyClusterMarkerComp.R` compares cluster marker programs and produces heatmaps.
-- `CrossStudyModuleScoreTransfer.R` transfers dataset-specific marker modules among references.
-- `run_MarkerComp.slurm` submits the marker comparison.
+- `cross_study_cluster_correlations.R` computes pseudobulk cluster-expression correlations across Aldinger, Sepp, and Science.
+- `cross_study_cluster_marker_comparison.R` compares cluster marker programs and produces heatmaps.
+- `cross_study_module_scores.R` transfers dataset-specific marker modules among references.
+- `run_cross_study_cluster_marker_comparison.slurm` submits the marker comparison.
 
 ## Software requirements
 

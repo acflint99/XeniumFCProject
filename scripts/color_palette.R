@@ -45,6 +45,7 @@ markers <- list(
   "RL" = c("MKI67", "LTBP1", "OTX2"),
   "UBC" = c("EOMES"),
   "Granule" = c("ATOH1", "PAX6", "NEUROD1", "RELN"),
+  "VZ" = c("PRDM13", "ASCL1"),
   "Purkinje" = c("FOXP2", "CALB1", "DAB1"),
   "GABA" = c("PAX2", "GAD1", "GAD2"),
   "Glia" = c("SOX9", "TNC"),
