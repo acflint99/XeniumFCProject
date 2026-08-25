@@ -33,7 +33,7 @@ if (identical(args, "--list")) {
   quit(save = "no", status = 0L)
 }
 
-valid_options <- c("--dry-run", "--overwrite")
+valid_options <- c("--dry-run", "--overwrite", "--dotplot-only")
 unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
 if (length(unknown_options) > 0L) {
   stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
@@ -41,11 +41,18 @@ if (length(unknown_options) > 0L) {
 
 dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
+dotplot_only <- "--dotplot-only" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
+if (dotplot_only && overwrite) {
+  stop("--dotplot-only already authorizes replacing the DotPlot files; do not combine it with --overwrite.")
+}
 
 task_args <- args[!args %in% valid_options]
 if (length(task_args) > 1L) {
-  stop("Usage: Rscript scripts/Xenium_ABT_ConsensusLabels.R [--dry-run|--overwrite] [TASK_ID]")
+  stop(
+    "Usage: Rscript scripts/Xenium_ABT_ConsensusLabels.R ",
+    "[--dry-run|--overwrite|--dotplot-only] [TASK_ID]"
+  )
 }
 
 task_value <- if (length(task_args) == 1L) {
@@ -86,6 +93,76 @@ dotplot_paths <- file.path(
   paste0(sample_name, "_Consensus_Marker_DotPlot", c(".tif", ".pdf"))
 )
 expected_outputs <- c(output_path, plot_paths, dotplot_paths)
+
+save_consensus_dotplot <- function(obj, sample_name, dotplot_paths) {
+  if (!"consensus_label" %in% colnames(obj[[]])) {
+    stop("Consensus object lacks the 'consensus_label' metadata column: ", sample_name)
+  }
+
+  consensus_values <- as.character(obj$consensus_label)
+  if (anyNA(consensus_values) || any(!nzchar(consensus_values))) {
+    stop("Consensus object contains blank or missing consensus labels: ", sample_name)
+  }
+  consensus_levels <- if (is.factor(obj$consensus_label)) {
+    levels(obj$consensus_label)
+  } else {
+    unique(consensus_values)
+  }
+  consensus_levels <- consensus_levels[consensus_levels %in% unique(consensus_values)]
+  obj$consensus_label <- factor(consensus_values, levels = consensus_levels)
+  Idents(obj) <- "consensus_label"
+
+  existing_markers <- lapply(markers, function(features) intersect(features, rownames(obj)))
+  existing_markers <- existing_markers[lengths(existing_markers) > 0L]
+  if (!length(existing_markers)) {
+    stop("None of the configured broad-cell markers are present in ", sample_name, ".")
+  }
+
+  p_dot <- DotPlot(
+    obj,
+    features = existing_markers,
+    assay = "Xenium",
+    cols = c("lightgrey", "red")
+  ) +
+    scale_y_discrete(limits = rev(consensus_levels)) +
+    RotatedAxis() +
+    ggtitle(paste(sample_name, "Consensus marker expression"))
+
+  Cairo::CairoTIFF(dotplot_paths[[1]], width = 10, height = 6, units = "in", res = 600)
+  print(p_dot)
+  grDevices::dev.off()
+  ggplot2::ggsave(
+    filename = dotplot_paths[[2]],
+    plot = p_dot,
+    device = grDevices::cairo_pdf,
+    width = 10,
+    height = 6,
+    units = "in"
+  )
+}
+
+if (dotplot_only) {
+  if (dry_run) {
+    cat("Task:", task_id, "of", nrow(samples), "\n")
+    cat("Biological sample:", sample_name, "\n")
+    cat("Consensus input:", output_path, "\n")
+    cat("Consensus input exists:", file.exists(output_path), "\n")
+    write.table(
+      data.frame(output = dotplot_paths, exists = file.exists(dotplot_paths)),
+      row.names = FALSE,
+      quote = FALSE,
+      sep = "\t"
+    )
+    quit(save = "no", status = 0L)
+  }
+
+  if (!file.exists(output_path)) stop("Consensus object not found: ", output_path)
+  dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+  obj <- readRDS(output_path)
+  save_consensus_dotplot(obj, sample_name, dotplot_paths)
+  message("Regenerated consensus DotPlots for ", sample_name, ".")
+  quit(save = "no", status = 0L)
+}
 
 if (!file.exists(metadata_path)) stop("Sample metadata not found: ", metadata_path)
 sample_map <- readxl::read_excel(metadata_path)
@@ -247,30 +324,7 @@ Cairo::CairoTIFF(
 print(p_facet)
 grDevices::dev.off()
 
-existing_markers <- lapply(markers, function(features) intersect(features, rownames(obj)))
-existing_markers <- existing_markers[lengths(existing_markers) > 0L]
-if (!length(existing_markers)) {
-  stop("None of the configured broad-cell markers are present in ", sample_name, ".")
-}
-p_dot <- DotPlot(
-  obj,
-  features = existing_markers,
-  assay = "Xenium",
-  cols = c("lightgrey", "red")
-) +
-  RotatedAxis() +
-  ggtitle(paste(sample_name, "Consensus marker expression"))
-Cairo::CairoTIFF(dotplot_paths[[1]], width = 10, height = 6, units = "in", res = 600)
-print(p_dot)
-grDevices::dev.off()
-ggplot2::ggsave(
-  filename = dotplot_paths[[2]],
-  plot = p_dot,
-  device = grDevices::cairo_pdf,
-  width = 10,
-  height = 6,
-  units = "in"
-)
+save_consensus_dotplot(obj, sample_name, dotplot_paths)
 
 saveRDS(obj, output_path, compress = FALSE)
 message(

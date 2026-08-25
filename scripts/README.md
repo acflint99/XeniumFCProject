@@ -90,7 +90,7 @@ Rscript scripts/validate_config.R --check-files
 
 ### 1. Xenium gene panel
 
-`XeniumGenePanel.R` extracts target genes from a Xenium panel JSON file. The resulting gene list is used to restrict the reference datasets to genes measurable by Xenium.
+`xenium_extract_gene_panel.R` extracts target genes from a Xenium panel JSON file. The resulting gene list is used to restrict the reference datasets to genes measurable by Xenium.
 
 ### 2. Reference preparation
 
@@ -98,21 +98,21 @@ The reference workflows harmonize cell-type labels, prepare Seurat objects, rest
 
 | Reference | Initial preparation | Xenium-panel subset | Additional analysis |
 |---|---|---|---|
-| Aldinger | `AldingerPreProcess.R`, `AldingerPreProcess2.R` | `AldingerGenePanelSubset.R` | `AldingerGenePanelSubset_Plots.R`, `Aldinger_VZ_Subset.R` |
-| Sepp | `SeppPreProcess_v2.R` | `SeppGenePanelSubset.R` | `Sepp_VZ_Subset.R` |
-| Science | `SciencePreProcess.R` | `ScienceGenePanelSubset.R` | — |
+| Aldinger | `aldinger_01_update_seurat_object.R`, `aldinger_02_standardize_cell_types.R` | `aldinger_03_subset_gene_panel.R` | `aldinger_03b_plot_summary.R`, `aldinger_04_subset_vz.R` |
+| Sepp | `sepp_01_standardize_cell_types.R` | `sepp_02_subset_gene_panel.R` | `sepp_03_subset_vz.R` |
+| Science | `science_01_standardize_cell_types.R` | `science_02_subset_gene_panel.R` | — |
 
 The corresponding `run_*GenePanelSubset.slurm` files submit the panel-subsetting jobs.
 
 ### 3. Xenium import, cerebellum cropping, and QC
 
-`XeniumPreProcess.R` is the main orchestration script. It sources:
+`xenium_preprocess_selected_samples.R` is the main orchestration script. It sources:
 
-1. `XeniumCropCerebellum.R`
-2. `XeniumQC.R`
-3. `XeniumNormCluster_res1.5.R`
+1. `xenium_preprocess_01_crop_cerebellum.R`
+2. `xenium_preprocess_02_qc_cells.R`
+3. `xenium_preprocess_03_normalize_cluster.R`
 
-`XeniumCropCerebellum.R`:
+`xenium_preprocess_01_crop_cerebellum.R`:
 
 - loads a sample with `Seurat::LoadXenium()`;
 - retains cells listed in `cerebellum_cells_stats.csv`;
@@ -120,12 +120,13 @@ The corresponding `run_*GenePanelSubset.slurm` files submit the panel-subsetting
 - saves a cropped spatial feature plot; and
 - writes `<sample>_CB.rds` to `outputs/XeniumRDS/`.
 
-For combined-slide data, `XeniumCropCerebellum.R` accepts the shared input
+For combined-slide data, `xenium_preprocess_01_crop_cerebellum.R` accepts the shared input
 directory and sample-specific cell-stat CSV separately. The manifest-driven
-`XeniumPreProcess_split_slides.R` driver uses this interface automatically.
-`XeniumCropCerebellum_duo.R` remains as the earlier manual version.
+`xenium_preprocess_split_slides.R` driver uses this interface automatically.
+The earlier hard-coded combined-slide crop and driver scripts are archived in
+`scripts/OLD/`.
 
-`XeniumQC.R` calculates:
+`xenium_preprocess_02_qc_cells.R` calculates:
 
 - `nCount_Xenium`;
 - `nFeature_Xenium`;
@@ -145,16 +146,15 @@ QC thresholds are stored in `object@misc$QC_thresholds`. Reports are written to 
 
 There are separate driver variants for different resource strategies:
 
-- `XeniumPreProcess.R` – configurable primary driver;
-- `XeniumPreProcess_parallel.R` – multisample parallel processing;
+- `xenium_preprocess_selected_samples.R` – configurable primary driver;
+- `xenium_preprocess_selected_samples_parallel.R` – multisample parallel processing;
 - `XeniumPreProcess_seq.R` – one-sample sequential processing;
-- `XeniumPreProcess_seq_duo.R` – earlier manual combined-slide driver; and
-- `XeniumPreProcess_split_slides.R` – manifest-driven Slurm-array driver for
+- `xenium_preprocess_split_slides.R` – manifest-driven Slurm-array driver for
   all manually separated biological samples.
 
 ### 4. Initial normalization and clustering
 
-`XeniumNormCluster_res1.5.R` defines `process_xenium_clusters()`. It performs:
+`xenium_preprocess_03_normalize_cluster.R` defines `process_xenium_clusters()`. It performs:
 
 - log normalization using the median transcript count as the scale factor;
 - 2,000 variable features;
@@ -226,32 +226,41 @@ given `--overwrite` or submitted with `CONSENSUS_OVERWRITE=true`. PCW is read
 from `metadata/samples_meta.xlsx` during this stage, so downstream objects
 inherit it without a second full-size PCW RDS copy. Consensus UMAP and spatial
 plots are TIFF-only; the marker DotPlot is saved as both TIFF and Cairo PDF.
+The DotPlot displays the consensus identities in reverse y-axis order. To
+regenerate only the DotPlot files for existing validated consensus objects,
+without rewriting the RDS or spatial plots, submit with
+`CONSENSUS_DOTPLOT_ONLY=true`:
+
+```bash
+sbatch --array=1-34%3 --export=ALL,CONSENSUS_DOTPLOT_ONLY=true \
+  scripts/run_XeniumConsensusLabels.slurm
+```
 
 ### 6. VZ analysis
 
 The VZ branch generally follows this order:
 
-1. `Xenium_VZ_Subset_res1.5.R` – extracts configured consensus identities per sample.
-2. `Xenium_VZ_Merge_res1.5.R` – verifies and incrementally merges all 34 sample subsets after removing spatial overhead.
-3. `Xenium_VZ_Merge_Processing_res1.5.R` – validates the complete merge, then runs normalization, PCA, Harmony integration, UMAP, and clustering.
-4. `Xenium_VZ_Merge_QC_res1.5.R` – merged-cluster QC summaries and cell flags.
-5. `Xenium_VZ_Merge_postQC_Processing_res1.5.R` – removes failed cells and recomputes integration and reductions.
-6. `Xenium_VZ_Analysis_res1.5.R` – VZ subcluster annotation and marker analysis.
-7. `Xenium_VZ_Mapping_res1.5.R` – maps refined VZ labels back to all 34 configured samples.
-8. `Xenium_VZ_SamplePlots_res1.5.R` and `XeniumVZSamplePlots_Loop_res1.5.R` – manifest-defined per-sample spatial reports.
-9. `Xenium_VZ_CountPlot_res1.5.R` – VZ cell/subcluster counts.
+1. `xenium_vz_01_subset_samples.R` – extracts configured consensus identities per sample.
+2. `xenium_vz_02_merge_samples.R` – verifies and incrementally merges all 34 sample subsets after removing spatial overhead.
+3. `xenium_vz_03_integrate.R` – validates the complete merge, then runs normalization, PCA, Harmony integration, UMAP, and clustering.
+4. `xenium_vz_04_review_qc.R` – merged-cluster QC summaries and cell flags.
+5. `xenium_vz_05_reintegrate_post_qc.R` – removes failed cells and recomputes integration and reductions.
+6. `xenium_vz_06_annotate_subclusters.R` – VZ subcluster annotation and marker analysis.
+7. `xenium_vz_07_map_to_samples.R` – maps refined VZ labels back to all 34 configured samples.
+8. `xenium_vz_plot_sample.R` and `xenium_vz_08_plot_samples.R` – manifest-defined per-sample spatial reports.
+9. `xenium_vz_09_plot_counts.R` – VZ cell/subcluster counts.
 
 The VZ driver reads all 34 samples from `config/samples.csv` and supports
 `--list`, `--dry-run`, and protected `--overwrite` operation. Submit
-per-sample extraction with `run_XeniumVZSubset_res1.5.slurm`. Submit
-post-QC merged processing with `run_XeniumVZMergePostQC.slurm`.
-`run_XeniumVZMapping.slurm` maps the refined identities, and
-`run_XeniumVZSamplePlots.slurm` launches 34 protected plotting tasks.
+per-sample extraction with `run_xenium_vz_01_subset.slurm`. Submit
+post-QC merged processing with `run_xenium_vz_05_reintegrate_post_qc.slurm`.
+`run_xenium_vz_07_map_to_samples.slurm` maps the refined identities, and
+`run_xenium_vz_08_plot_samples.slurm` launches 34 protected plotting tasks.
 
 Before merging, inspect completeness without loading any Seurat objects:
 
 ```bash
-Rscript scripts/Xenium_VZ_Merge_res1.5.R --dry-run
+Rscript scripts/xenium_vz_02_merge_samples.R --dry-run
 ```
 
 The merge requires exactly the 34 manifest-defined subset files and writes the
@@ -261,7 +270,7 @@ each sample's input path, cell count, and PCW.
 After that merge exists, inspect processing readiness without loading it:
 
 ```bash
-Rscript scripts/Xenium_VZ_Merge_Processing_res1.5.R --dry-run
+Rscript scripts/xenium_vz_03_integrate.R --dry-run
 ```
 
 Processing writes the stable object
@@ -273,8 +282,8 @@ VZ QC is an explicit review gate. First inspect readiness, then generate the
 QC summary, combined violin PDF, marker table, and review manifest:
 
 ```bash
-Rscript scripts/Xenium_VZ_Merge_QC_res1.5.R --dry-run
-Rscript scripts/Xenium_VZ_Merge_QC_res1.5.R --qc-only
+Rscript scripts/xenium_vz_04_review_qc.R --dry-run
+Rscript scripts/xenium_vz_04_review_qc.R --qc-only
 ```
 
 After reviewing those outputs, record the decision explicitly. For example,
@@ -288,7 +297,7 @@ Before mapping refined labels back to the whole-tissue objects, inspect all
 expected inputs and outputs without loading Seurat objects:
 
 ```bash
-Rscript scripts/Xenium_VZ_Mapping_res1.5.R --dry-run
+Rscript scripts/xenium_vz_07_map_to_samples.R --dry-run
 ```
 
 The mapping stage requires exactly one input for every sample in
@@ -300,33 +309,33 @@ that every cell in the master VZ object maps exactly once and writes
 Inspect the VZ plotting task map and one sample without creating plots:
 
 ```bash
-Rscript scripts/XeniumVZSamplePlots_Loop_res1.5.R --list
-Rscript scripts/XeniumVZSamplePlots_Loop_res1.5.R --dry-run 1
+Rscript scripts/xenium_vz_08_plot_samples.R --list
+Rscript scripts/xenium_vz_08_plot_samples.R --dry-run 1
 ```
 
 ### 7. RL analysis
 
 The RL branch mirrors the VZ branch:
 
-1. `Xenium_RL_Subset_res1.5.R` – extracts configured consensus identities per sample.
-2. `Xenium_RL_Merge_res1.5.R` – verifies and incrementally merges all 34 sample subsets.
-3. `Xenium_RL_Merge_Processing_res1.5.R` – validates the complete merge before processing.
-4. `Xenium_RL_Merge_QC_res1.5.R`
-5. `Xenium_RL_Merge_postQC_Processing_res1.5.R`
-6. `Xenium_RL_Analysis_res1.5.R`
-7. `Xenium_RL_Mapping_res1.5.R` – maps refined RL labels back to all 34 configured samples.
-8. `Xenium_RL_SamplePlots_res1.5.R` and `Xenium_RL_SamplePlots_Loop_res1.5.R` – manifest-defined per-sample reports.
-9. `Xenium_RL_CountPlot_res1.5.R`
+1. `xenium_rl_01_subset_samples.R` – extracts configured consensus identities per sample.
+2. `xenium_rl_02_merge_samples.R` – verifies and incrementally merges all 34 sample subsets.
+3. `xenium_rl_03_integrate.R` – validates the complete merge before processing.
+4. `xenium_rl_04_review_qc.R`
+5. `xenium_rl_05_reintegrate_post_qc.R`
+6. `xenium_rl_06_annotate_subclusters.R`
+7. `xenium_rl_07_map_to_samples.R` – maps refined RL labels back to all 34 configured samples.
+8. `xenium_rl_plot_sample.R` and `xenium_rl_08_plot_samples.R` – manifest-defined per-sample reports.
+9. `xenium_rl_09_plot_counts.R`
 
 The RL driver also reads all 34 samples from `config/samples.csv` and supports
-the same inspection and overwrite protections. `run_XeniumRLSubset_res1.5.slurm`
+the same inspection and overwrite protections. `run_xenium_rl_01_subset.slurm`
 submits RL extraction, and
-`run_XeniumRLMergePostQC.slurm` submits post-QC merged processing.
+`run_xenium_rl_05_reintegrate_post_qc.slurm` submits post-QC merged processing.
 
 Inspect RL merge readiness with:
 
 ```bash
-Rscript scripts/Xenium_RL_Merge_res1.5.R --dry-run
+Rscript scripts/xenium_rl_02_merge_samples.R --dry-run
 ```
 
 The stable merged output is `Merged/Xenium_Merged_RLSubsets.rds`, accompanied
@@ -337,8 +346,8 @@ replacement.
 RL QC uses the same explicit review gate:
 
 ```bash
-Rscript scripts/Xenium_RL_Merge_QC_res1.5.R --dry-run
-Rscript scripts/Xenium_RL_Merge_QC_res1.5.R --qc-only
+Rscript scripts/xenium_rl_04_review_qc.R --dry-run
+Rscript scripts/xenium_rl_04_review_qc.R --qc-only
 ```
 
 After reviewing the RL evidence, use `--remove-clusters=<IDs>` or
@@ -348,13 +357,13 @@ After reviewing the RL evidence, use `--remove-clusters=<IDs>` or
 Inspect processing readiness with:
 
 ```bash
-Rscript scripts/Xenium_RL_Merge_Processing_res1.5.R --dry-run
+Rscript scripts/xenium_rl_03_integrate.R --dry-run
 ```
 
 Inspect the complete RL mapping inputs and protected outputs with:
 
 ```bash
-Rscript scripts/Xenium_RL_Mapping_res1.5.R --dry-run
+Rscript scripts/xenium_rl_07_map_to_samples.R --dry-run
 ```
 
 The RL mapping stage applies the same completeness, unexpected-file,
@@ -362,12 +371,12 @@ overwrite, barcode-matching, and manifest checks as the VZ mapping stage. It
 also requires the VZ subcluster metadata inherited from the preceding branch
 and writes `Xenium_RL_Mapping_manifest.csv`.
 
-Use `run_XeniumRLMapping.slurm` for mapping and
-`run_XeniumRLSamplePlots.slurm` for the 34-task plotting array. Inspect one
+Use `run_xenium_rl_07_map_to_samples.slurm` for mapping and
+`run_xenium_rl_08_plot_samples.slurm` for the 34-task plotting array. Inspect one
 plotting task first with:
 
 ```bash
-Rscript scripts/Xenium_RL_SamplePlots_Loop_res1.5.R --dry-run 1
+Rscript scripts/xenium_rl_08_plot_samples.R --dry-run 1
 ```
 
 The stable processed object is
@@ -513,26 +522,26 @@ Rscript scripts/XeniumPreProcess_seq.R
 For a script that consumes a one-based task ID:
 
 ```bash
-Rscript scripts/Xenium_VZ_Subset_res1.5.R 1
+Rscript scripts/xenium_vz_01_subset_samples.R 1
 ```
 
 On the configured cluster, submit the matching launcher:
 
 ```bash
-sbatch scripts/run_XeniumVZSubset_res1.5.slurm
+sbatch scripts/run_xenium_vz_01_subset.slurm
 ```
 
 To inspect the split-slide task mapping and dry-run one task:
 
 ```bash
-Rscript scripts/XeniumPreProcess_split_slides.R --list
-Rscript scripts/XeniumPreProcess_split_slides.R --dry-run 1
+Rscript scripts/xenium_preprocess_split_slides.R --list
+Rscript scripts/xenium_preprocess_split_slides.R --dry-run 1
 ```
 
 To submit all tasks after reviewing the dry runs:
 
 ```bash
-sbatch scripts/run_XeniumPreProcess_split_slides.slurm
+sbatch scripts/run_xenium_preprocess_split_slides.slurm
 ```
 
 The launcher submits 15 tasks and runs at most three concurrently. Each task
@@ -576,7 +585,7 @@ Many intermediate filenames contain manually assigned dates. Downstream scripts 
 - Some legacy scripts still select samples by commenting entries in or out.
   Consensus labelling and VZ/RL subsetting instead use `config/samples.csv`.
 - VZ and RL post-QC merged processing use the matching
-  `run_XeniumVZMergePostQC.slurm` and `run_XeniumRLMergePostQC.slurm`
+  `run_xenium_vz_05_reintegrate_post_qc.slurm` and `run_xenium_rl_05_reintegrate_post_qc.slurm`
   launchers.
 - Large objects can require 64–500 GB RAM depending on the stage. Do not copy the largest objects across too many `future` workers.
 - Random seeds are set in major Seurat stages, but manual cluster renaming and dated file selection remain part of the workflow.

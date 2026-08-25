@@ -19,6 +19,9 @@ driver_options=()
 if [[ "${CONSENSUS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
+if [[ "${CONSENSUS_DOTPLOT_ONLY:-false}" == "true" ]]; then
+  driver_options+=(--dotplot-only)
+fi
 
 Rscript scripts/Xenium_ABT_ConsensusLabels.R \
   "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"
