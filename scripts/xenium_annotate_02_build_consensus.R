@@ -2,19 +2,22 @@
 
 # Merge Xenium cluster-label comparison tables from the Aldinger, Sepp, and
 # Science reference runs.  Run from the project root, for example:
-#   Rscript outputs/merge_xenium_comparison_tables.R
+#   Rscript scripts/xenium_annotate_02_build_consensus.R
 # Or supply the directory that contains the three reference table directories:
-#   Rscript outputs/merge_xenium_comparison_tables.R /path/to/outputs
+#   Rscript scripts/xenium_annotate_02_build_consensus.R /path/to/outputs
 
 args <- commandArgs(trailingOnly = TRUE)
 output_root <- if (length(args) >= 1) args[[1]] else "outputs"
 
 references <- c("Aldinger", "Sepp", "Science")
 table_dirs <- setNames(
-  file.path(output_root, paste0("Xenium_", references, "ABT_Res1.5_Tables")),
+  file.path(
+    output_root, "xenium", "annotation", "01_label_transfer",
+    tolower(references), "tables"
+  ),
   references
 )
-merged_dir <- file.path(output_root, "Xenium_Comp_ABT_Res1.5_Tables")
+merged_dir <- file.path(output_root, "xenium", "annotation", "02_consensus", "tables")
 
 missing_dirs <- table_dirs[!dir.exists(table_dirs)]
 if (length(missing_dirs) > 0) {
@@ -108,7 +111,7 @@ for (sample_name in sample_names) {
 ###Check if any samples had consensus label = Unknown
 library(dplyr)
 
-merged_dir <- "outputs/Xenium_Comp_ABT_Res1.5_Tables"
+merged_dir <- file.path(output_root, "xenium", "annotation", "02_consensus", "tables")
 
 unknown_consensus <- list.files(
   merged_dir,

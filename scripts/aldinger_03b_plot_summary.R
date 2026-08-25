@@ -13,6 +13,10 @@ library(future) # New: for parallelization
 
 source(here("scripts", "color_palette.R")) # Adjust path as necessary
 
+plot_dir <- here("outputs", "references", "aldinger", "plots")
+rds_dir <- here("outputs", "references", "aldinger", "rds")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+
 # --- HPC OPTIMIZATION SETUP ---
 # With 440GB RAM, we can be aggressive. 
 # Using 12-16 workers is the "sweet spot" to avoid overhead while maximizing speed.
@@ -22,7 +26,7 @@ plan("sequential")
 options(future.globals.maxSize = 50 * 1024^3) 
 
 # --- Load the FC dataset ---
-AldingerSubset_newUMAP <- readRDS(here("outputs", "SingleCellRDS", "Aldinger_newClusters_newUMAPv2_5k.rds"))
+AldingerSubset_newUMAP <- readRDS(file.path(rds_dir, "Aldinger_newClusters_newUMAPv2_5k.rds"))
 
 
 # Lock the cell type order based on your master palette
@@ -38,7 +42,7 @@ validate_palette(unique(AldingerSubset_newUMAP$clusters_refined))
 p2 <- DimPlot(AldingerSubset_newUMAP, reduction = "umap", group.by = "clusters_refined", cols = cluster_colors)
 p2
 Cairo::CairoTIFF(
-  filename = here("outputs", "SingleCellPlots", "AldingerUMAP_newClusters_5k_newUMAP50v2.tif"),
+  filename = file.path(plot_dir, "AldingerUMAP_newClusters_5k_newUMAP50v2.tif"),
   width = 7,
   height = 6,
   units = "in",
@@ -72,7 +76,7 @@ p3 <- DotPlot(
 
 p3
 Cairo::CairoTIFF(
-  filename = here("outputs", "SingleCellPlots", "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.tif"),
+  filename = file.path(plot_dir, "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.tif"),
   width = 14,
   height = 6,
   units = "in",
@@ -81,7 +85,7 @@ Cairo::CairoTIFF(
 print(p3)
 grDevices::dev.off()
 ggplot2::ggsave(
-  filename = here("outputs", "SingleCellPlots", "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.pdf"),
+  filename = file.path(plot_dir, "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.pdf"),
   plot = p3, device = grDevices::cairo_pdf, width = 14, height = 6
 )
 
@@ -117,7 +121,7 @@ p4 <- ggplot(prop_data, aes(x = age, y = percent, fill = clusters_refined)) +
 # Show and Save
 p4
 Cairo::CairoTIFF(
-  filename = here("outputs", "SingleCellPlots", "AldingerBarPlot_newClusters_5k_newUMAP50v2_rmPCW16PCW21_prop.tif"),
+  filename = file.path(plot_dir, "AldingerBarPlot_newClusters_5k_newUMAP50v2_rmPCW16PCW21_prop.tif"),
   width = 8,
   height = 6,
   units = "in",
@@ -126,6 +130,6 @@ Cairo::CairoTIFF(
 print(p4)
 grDevices::dev.off()
 ggplot2::ggsave(
-  filename = here("outputs", "SingleCellPlots", "AldingerBarPlot_newClusters_5k_newUMAP50v2_rmPCW16PCW21_prop.pdf"),
+  filename = file.path(plot_dir, "AldingerBarPlot_newClusters_5k_newUMAP50v2_rmPCW16PCW21_prop.pdf"),
   plot = p4, device = grDevices::cairo_pdf, width = 8, height = 6
 )

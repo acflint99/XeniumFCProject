@@ -43,10 +43,10 @@ qc_xenium <- function(xenium_obj, sample_name) {
   # -------------------------------
   # 3. Prepare outputs folder and PDF
   # -------------------------------
-  qc_plot_dir <- here("outputs", "XeniumQCPlots")
+  qc_plot_dir <- here("outputs", "xenium", "preprocess", "02_qc", "reports")
   dir.create(qc_plot_dir, recursive = TRUE, showWarnings = FALSE)
   
-  pdf_file <- here("outputs", "XeniumQCPlots", paste0(sample_name, "_QCplots.pdf"))
+  pdf_file <- file.path(qc_plot_dir, paste0(sample_name, "_QCplots.pdf"))
   pdf(pdf_file, width = 10, height = 7)
   
   # -------------------------------
@@ -219,7 +219,7 @@ qc_xenium <- function(xenium_obj, sample_name) {
   # -------------------------------
   # 12. Export thresholds & cell counts to .txt
   # -------------------------------
-  txt_file <- here("outputs", "XeniumQCPlots", paste0(sample_name, "_QC_thresholds.txt"))
+  txt_file <- file.path(qc_plot_dir, paste0(sample_name, "_QC_thresholds.txt"))
   
   threshold_text <- c(
     paste0("QC Report for ", sample_name, ":"),
@@ -243,10 +243,10 @@ qc_xenium <- function(xenium_obj, sample_name) {
   # -------------------------------
   # 13. Save QC'd object
   # -------------------------------
-  rds_out_dir <- here("outputs", "XeniumRDS")
+  rds_out_dir <- here("outputs", "xenium", "preprocess", "02_qc", "rds")
   dir.create(rds_out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  output_file <- here("outputs", "XeniumRDS", paste0(sample_name, "_CB_QC.rds"))
+  output_file <- file.path(rds_out_dir, paste0(sample_name, "_CB_QC.rds"))
   saveRDS(xenium_obj, file = output_file, compress = FALSE)
   
   cat("QC complete for sample:", sample_name, "\n")

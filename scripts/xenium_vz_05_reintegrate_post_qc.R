@@ -30,12 +30,12 @@ check_mem <- function(step_label) {
 plan(multisession, workers = 7) 
 options(future.globals.maxSize = 200 * 1024^3)
 
-plot_path <- here("outputs", "XenAld_VZ_postQC_Res1.5_Plots")
-if(!dir.exists(plot_path)) dir.create(plot_path)
+plot_path <- here("outputs", "xenium", "vz", "05_post_qc", "plots")
+if(!dir.exists(plot_path)) dir.create(plot_path, recursive = TRUE)
 
-merged_path <- here("outputs", "XenAld_VZ_Res1.5_RDS", "Xenium_VZ_Res1.5.rds")
-removal_path <- here("outputs", "XenAld_VZ_QC_Res1.5_Tables", "XenAld_VZ_QC_removal_manifest.csv")
-review_path <- here("outputs", "XenAld_VZ_QC_Res1.5_Tables", "XenAld_VZ_QC_review_manifest.csv")
+merged_path <- here("outputs", "xenium", "vz", "03_integrated", "rds", "Xenium_VZ_Res1.5.rds")
+removal_path <- here("outputs", "xenium", "vz", "04_qc", "tables", "XenAld_VZ_QC_removal_manifest.csv")
+review_path <- here("outputs", "xenium", "vz", "04_qc", "tables", "XenAld_VZ_QC_review_manifest.csv")
 if (!file.exists(removal_path)) stop("Reviewed VZ removal manifest not found: ", removal_path)
 if (!file.exists(review_path)) stop("VZ QC review manifest not found: ", review_path)
 removal_manifest <- read.csv(removal_path, stringsAsFactors = FALSE)
@@ -164,7 +164,7 @@ for(res in res_list) {
   gc()
 }
 
-output_path <- here("outputs", "XenAld_VZ_postQC_Res1.5_RDS")
+output_path <- here("outputs", "xenium", "vz", "05_post_qc", "rds")
 if(!dir.exists(output_path)) dir.create(output_path, recursive = TRUE)
 
 saveRDS(obj, file.path(output_path, "Xenium_VZ_postQC_Res1.5_4-2-26.rds"), compress = FALSE)

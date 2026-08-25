@@ -44,11 +44,13 @@ if (remove_supplied && !identical(tolower(trimws(remove_value)), "none")) {
 }
 
 output_root <- here(config$project$outputs_dir)
-merged_path <- file.path(output_root, "XenAld_VZ_Res1.5_RDS", "Xenium_VZ_Res1.5.rds")
-input_dir <- file.path(output_root, "Xenium_ConsensusABT_Res1.5_RDS")
-output_dir <- file.path(output_root, "Xenium_AldingerABT_VZ_QC_Res1.5_RDS")
-plot_dir <- file.path(output_root, "XenAld_VZ_QC_Res1.5_Plots")
-table_dir <- file.path(output_root, "XenAld_VZ_QC_Res1.5_Tables")
+merged_path <- file.path(output_root, "xenium", "vz", "03_integrated", "rds", "Xenium_VZ_Res1.5.rds")
+input_dir <- file.path(
+  output_root, "xenium", "annotation", "03_consensus_labels", "rds"
+)
+output_dir <- file.path(output_root, "xenium", "vz", "04_qc", "rds")
+plot_dir <- file.path(output_root, "xenium", "vz", "04_qc", "plots")
+table_dir <- file.path(output_root, "xenium", "vz", "04_qc", "tables")
 
 input_names <- paste0(sample_ids, "_Consensus_annotated.rds")
 input_paths <- file.path(input_dir, input_names)

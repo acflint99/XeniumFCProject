@@ -26,13 +26,13 @@ check_mem <- function(step_label) {
 plan("multisession", workers = 8) 
 options(future.globals.maxSize = 200 * 1024^3)
 
-plot_path <- here("outputs", "XenAld_VZ_Subclusters_Res1.5_Plots")
-if(!dir.exists(plot_path)) dir.create(plot_path)
+plot_path <- here("outputs", "xenium", "vz", "06_subclusters", "plots")
+if(!dir.exists(plot_path)) dir.create(plot_path, recursive = TRUE)
 
-table_path <- here("outputs", "XenAld_VZ_Subclusters_Res1.5_Tables")
+table_path <- here("outputs", "xenium", "vz", "06_subclusters", "tables")
 if(!dir.exists(table_path)) dir.create(table_path, recursive = TRUE)
 
-merged_path <- here("outputs", "XenAld_VZ_postQC_Res1.5_RDS", "Xenium_VZ_postQC_Res1.5_4-2-26.rds")
+merged_path <- here("outputs", "xenium", "vz", "05_post_qc", "rds", "Xenium_VZ_postQC_Res1.5_4-2-26.rds")
 obj <- readRDS(merged_path)
 
 # 2. SET THE IDENTITY
@@ -106,7 +106,7 @@ obj <- RenameIdents(obj, new_labels)
 # Final metadata assignment
 obj$VZ_subcluster <- Idents(obj)
 
-output_path <- here("outputs", "XenAld_VZ_Subclusters_Res1.5_RDS")
+output_path <- here("outputs", "xenium", "vz", "06_subclusters", "rds")
 if(!dir.exists(output_path)) dir.create(output_path, recursive = TRUE)
 saveRDS(obj, file.path(output_path, "Xenium_VZ_Res1.5_newSubclusters_4-3-26.rds"), compress = FALSE)
 

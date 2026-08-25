@@ -7,6 +7,10 @@ library(dplyr)
 library(patchwork)
 library(data.table)
 library(ggplot2)
+library(here)
+
+reference_rds_dir <- here("outputs", "references", "aldinger", "rds")
+dir.create(reference_rds_dir, recursive = TRUE, showWarnings = FALSE)
 
 
 #Update Seurat object & save to new .rds----
@@ -80,5 +84,4 @@ Idents(obj_subset) <- obj_subset$figure_clusters
 # 6️⃣ Plot UMAP
 DimPlot(obj_subset, reduction = "umap", group.by = "figure_clusters")
 
-saveRDS(obj_subset, "/data/user/acflint/FC_published/AldingerFC/Aldinger_seurat_updated.rds")
-
+saveRDS(obj_subset, file.path(reference_rds_dir, "Aldinger_seurat_updated.rds"))

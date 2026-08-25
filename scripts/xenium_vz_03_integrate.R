@@ -19,14 +19,14 @@ dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
-plot_dir <- here(config$project$outputs_dir, "XenAld_VZ_Res1.5_Plots")
-rds_dir <- here(config$project$outputs_dir, "XenAld_VZ_Res1.5_RDS")
+plot_dir <- here(config$project$outputs_dir, "xenium", "vz", "03_integrated", "plots")
+rds_dir <- here(config$project$outputs_dir, "xenium", "vz", "03_integrated", "rds")
 merged_path <- here(
-  config$project$outputs_dir, "XenAld_VZ_Subsets_Res1.5_RDS", "Merged",
+  config$project$outputs_dir, "xenium", "vz", "02_merged", "rds",
   "Xenium_Merged_VZSubsets.rds"
 )
 merge_manifest_path <- here(
-  config$project$outputs_dir, "XenAld_VZ_Subsets_Res1.5_RDS", "Merged",
+  config$project$outputs_dir, "xenium", "vz", "02_merged", "tables",
   "Xenium_Merged_VZSubsets_manifest.csv"
 )
 res_list <- c(0.5, 0.8, 1)

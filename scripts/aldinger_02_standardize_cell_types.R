@@ -17,14 +17,14 @@ library(Cairo)
 source(here("scripts", "color_palette.R"))
 
 # Define output directories
-plot_path <- here("outputs", "AldingerPlots")
-RDS_path <- here("outputs", "AldingerRDS")
+plot_path <- here("outputs", "references", "aldinger", "plots")
+RDS_path <- here("outputs", "references", "aldinger", "rds")
 
 # Ensure directories exist before saving any files
 if (!dir.exists(plot_path)) dir.create(plot_path, recursive = TRUE)
 if (!dir.exists(RDS_path)) dir.create(RDS_path, recursive = TRUE)
 
-Aldinger <- readRDS("/data/user/acflint/FC_published/AldingerFC/Aldinger_seurat_updated.rds")
+Aldinger <- readRDS(file.path(RDS_path, "Aldinger_seurat_updated.rds"))
 
 Aldinger[["RNA"]]@scale.data <- matrix()
 

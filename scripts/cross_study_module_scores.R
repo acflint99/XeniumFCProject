@@ -8,10 +8,14 @@ library(tibble)
 library(patchwork)
 library(ggplot2)
 library(pheatmap)
+library(here)
 
-Aldinger <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Aldinger_newClusters_newUMAPv2_5k.rds")
-Sepp <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Sepp_FC_newClusters_newUMAPv2_5k.rds")
-Science <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Science_newClusters_5k_UMAPv2.rds")
+source(here("scripts", "R", "config.R"))
+config <- load_pipeline_config()
+
+Aldinger <- readRDS(here(config$inputs$references$aldinger))
+Sepp <- readRDS(here(config$inputs$references$sepp))
+Science <- readRDS(here(config$inputs$references$science))
 
 
 # set active identities----
@@ -127,7 +131,6 @@ pheatmap(
   cluster_rows = FALSE,
   cluster_cols = FALSE
 )
-
 
 
 

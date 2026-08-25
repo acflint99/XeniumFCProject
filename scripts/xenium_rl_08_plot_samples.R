@@ -34,10 +34,10 @@ if (is.na(task_id) || task_id < 1L || task_id > length(sample_ids)) {
 sample_id <- sample_ids[[task_id]]
 output_root <- here(config$project$outputs_dir)
 input_path <- file.path(
-  output_root, "Xenium_AldingerABT_VZ&RLsubclusters_QC_Res1.5_RDS",
+  output_root, "xenium", "rl", "07_mapped", "rds",
   paste0(sample_id, "_Ald_VZ_RL_QC_Subclusters.rds")
 )
-output_base <- file.path(output_root, "Xenium_AldingerABT_RLsubcluster_Res1.5_Results")
+output_base <- file.path(output_root, "xenium", "rl", "08_sample_reports")
 sample_dir <- file.path(output_base, sample_id)
 output_suffixes <- c(
   "_cluster_counts.csv", "_Global_Spatial2.tif", "_RL_Spatial.tif",

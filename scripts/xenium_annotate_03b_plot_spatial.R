@@ -10,9 +10,11 @@ source(here("scripts", "color_palette.R"))
 source(here("scripts", "R", "config.R"))
 
 # Define your directory and sample list
-input_dir <- here("outputs", "Xenium_ConsensusABT_Res1.5_RDS")
+input_dir <- here("outputs", "xenium", "annotation", "03_consensus_labels", "rds")
 
-output_dir <- here("outputs", "Xenium_ConsensusABT_Res1.5_GlobalPlots")
+output_dir <- here(
+  "outputs", "xenium", "annotation", "03_consensus_labels", "plots", "spatial"
+)
 
 # Create output directory if it doesn't exist
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)

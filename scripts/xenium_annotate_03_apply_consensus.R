@@ -69,17 +69,21 @@ sample_name <- samples$sample_id[[task_id]]
 output_root <- here(config$project$outputs_dir)
 input_path <- file.path(
   output_root,
-  "Xenium_AldingerABT_Res1.5_RDS",
+  "xenium", "annotation", "01_label_transfer", "aldinger", "rds",
   paste0(sample_name, "_Aldinger_annotated.rds")
 )
 comparison_path <- file.path(
   output_root,
-  "Xenium_Comp_ABT_Res1.5_Tables",
+  "xenium", "annotation", "02_consensus", "tables",
   paste0(sample_name, "_comparison_merged.csv")
 )
 metadata_path <- resolve_config_path(config$manifests$sample_metadata, config)
-output_dir <- file.path(output_root, "Xenium_ConsensusABT_Res1.5_RDS")
-plot_dir <- file.path(output_root, "Xenium_ConsensusABT_Res1.5_Plots")
+output_dir <- file.path(
+  output_root, "xenium", "annotation", "03_consensus_labels", "rds"
+)
+plot_dir <- file.path(
+  output_root, "xenium", "annotation", "03_consensus_labels", "plots", "samples"
+)
 output_path <- file.path(output_dir, paste0(sample_name, "_Consensus_annotated.rds"))
 plot_paths <- file.path(
   plot_dir,

@@ -102,11 +102,19 @@ The reference workflows harmonize cell-type labels, prepare Seurat objects, rest
 | Sepp | `sepp_01_standardize_cell_types.R` | `sepp_02_subset_gene_panel.R` | `sepp_03_subset_vz.R` |
 | Science | `science_01_standardize_cell_types.R` | `science_02_subset_gene_panel.R` | — |
 
-The corresponding `run_*GenePanelSubset.slurm` files submit the panel-subsetting jobs.
+The corresponding `run_*_subset_gene_panel.slurm` files submit the panel-subsetting jobs.
+
+Reference objects and figures use study-specific directories beneath
+`outputs/references/`: `aldinger/`, `sepp/`, and `science/` each contain
+`rds/` and `plots/`, while reference-specific VZ objects use `vz/rds/` and
+`vz/plots/`. Cross-study figures are written to
+`outputs/references/cross_study/plots/`. The updated Aldinger object created by
+`aldinger_01_update_seurat_object.R` is stored with the other Aldinger project
+outputs; the published source object under `/data/` remains unchanged.
 
 ### 3. Xenium import, cerebellum cropping, and QC
 
-`xenium_preprocess_selected_samples.R` is the main orchestration script. It sources:
+The two manifest-driven preprocessing drivers source the same ordered steps:
 
 1. `xenium_preprocess_01_crop_cerebellum.R`
 2. `xenium_preprocess_02_qc_cells.R`
@@ -118,7 +126,8 @@ The corresponding `run_*GenePanelSubset.slurm` files submit the panel-subsetting
 - retains cells listed in `cerebellum_cells_stats.csv`;
 - adds cell-area metadata;
 - saves a cropped spatial feature plot; and
-- writes `<sample>_CB.rds` to `outputs/XeniumRDS/`.
+- writes `<sample>_CB.rds` to
+  `outputs/xenium/preprocess/01_cropped/rds/`.
 
 For combined-slide data, `xenium_preprocess_01_crop_cerebellum.R` accepts the shared input
 directory and sample-specific cell-stat CSV separately. The manifest-driven
@@ -142,15 +151,20 @@ The default filters are:
 | cell area | 15 | 99th percentile |
 | control percentage | — | 5% |
 
-QC thresholds are stored in `object@misc$QC_thresholds`. Reports are written to `outputs/XeniumQCPlots/`.
+QC thresholds are stored in `object@misc$QC_thresholds`. Reports are written
+to `outputs/xenium/preprocess/02_qc/reports/`, and QC-filtered objects are
+written to `outputs/xenium/preprocess/02_qc/rds/`.
 
-There are separate driver variants for different resource strategies:
+There are two active manifest-driven drivers based on input layout:
 
-- `xenium_preprocess_selected_samples.R` – configurable primary driver;
-- `xenium_preprocess_selected_samples_parallel.R` – multisample parallel processing;
-- `XeniumPreProcess_seq.R` – one-sample sequential processing;
-- `xenium_preprocess_split_slides.R` – manifest-driven Slurm-array driver for
-  all manually separated biological samples.
+- `xenium_preprocess_single_slides.R` – 19 biological samples from slides
+  containing one sample; and
+- `xenium_preprocess_split_slides.R` – 15 manually separated biological
+  samples from six multi-sample slides.
+
+Both drivers support `--list`, path-only `--dry-run`, protected `--overwrite`,
+and one sample per Slurm array task. Their task maps come directly from
+`config/samples.csv`.
 
 ### 4. Initial normalization and clustering
 
@@ -163,9 +177,9 @@ There are separate driver variants for different resource strategies:
 - Louvain clustering (`algorithm = 1`) at resolution 1.5; and
 - UMAP, global spatial, and faceted spatial cluster plots.
 
-Processed objects are saved as `outputs/Xenium_Res1.5_RDS/<sample>_CB_QC_cluster.rds`.
-
-`SaveRawClusterPlots.R` regenerates raw cluster plots for a selected object.
+Processed objects are saved as
+`outputs/xenium/preprocess/03_clustered/rds/<sample>_CB_QC_cluster.rds`, with
+plots in `outputs/xenium/preprocess/03_clustered/plots/`.
 
 ### 5. Reference-based annotation
 
@@ -197,10 +211,12 @@ sbatch --job-name=Xen_ABT_Science --export=ALL,REFERENCE=Science scripts/run_xen
 
 The driver refuses to replace any existing annotation output unless called
 with `--overwrite`, or submitted with `ABT_OVERWRITE=true` after review.
+For each reference, RDS objects, plots, and tables are written beneath
+`outputs/xenium/annotation/01_label_transfer/<reference>/`. Combined voting
+tables are written to `outputs/xenium/annotation/02_consensus/tables/`.
 
 Related scripts:
 
-- `XeniumABT_seq.R` – sequential annotation driver;
 - `xenium_annotate_02_build_consensus.R` – merges the three reference comparisons and calculates one cluster-level `consensus_label`;
 - `xenium_annotate_03_apply_consensus.R` – adds consensus labels and PCW metadata to individual objects, makes consensus labels the active identities, and writes consensus UMAP, spatial, and marker DotPlot figures;
 - `run_xenium_annotate_03_apply_consensus.slurm` – submits all 34 consensus-label tasks, capped at three concurrent jobs;
@@ -220,7 +236,7 @@ Rscript scripts/xenium_annotate_03_apply_consensus.R --dry-run 1
 ```
 
 Consensus objects are written to
-`outputs/Xenium_ConsensusABT_Res1.5_RDS/<sample>_Consensus_annotated.rds`.
+`outputs/xenium/annotation/03_consensus_labels/rds/<sample>_Consensus_annotated.rds`.
 The driver refuses to overwrite existing objects or plots unless explicitly
 given `--overwrite` or submitted with `CONSENSUS_OVERWRITE=true`. PCW is read
 from `metadata/samples_meta.xlsx` during this stage, so downstream objects
@@ -257,15 +273,22 @@ post-QC merged processing with `run_xenium_vz_05_reintegrate_post_qc.slurm`.
 `run_xenium_vz_07_map_to_samples.slurm` maps the refined identities, and
 `run_xenium_vz_08_plot_samples.slurm` launches 34 protected plotting tasks.
 
+VZ outputs follow the script order under `outputs/xenium/vz/`:
+`01_subsets`, `02_merged`, `03_integrated`, `04_qc`, `05_post_qc`,
+`06_subclusters`, `07_mapped`, `08_sample_reports`, and
+`09_cluster_counts`. Artifact types such as `rds`, `plots`, and `tables` are
+separated within each stage.
+
 Before merging, inspect completeness without loading any Seurat objects:
 
 ```bash
 Rscript scripts/xenium_vz_02_merge_samples.R --dry-run
 ```
 
-The merge requires exactly the 34 manifest-defined subset files and writes the
-stable output `Merged/Xenium_Merged_VZSubsets.rds` plus a CSV manifest with
-each sample's input path, cell count, and PCW.
+The merge requires exactly the 34 manifest-defined subset files and writes
+`outputs/xenium/vz/02_merged/rds/Xenium_Merged_VZSubsets.rds` plus a CSV
+manifest under `02_merged/tables/` with each sample's input path, cell count,
+and PCW.
 
 After that merge exists, inspect processing readiness without loading it:
 
@@ -274,9 +297,9 @@ Rscript scripts/xenium_vz_03_integrate.R --dry-run
 ```
 
 Processing writes the stable object
-`outputs/XenAld_VZ_Res1.5_RDS/Xenium_VZ_Res1.5.rds`. The QC and post-QC
-scripts consume that name. Existing processing RDS or UMAP outputs require an
-explicit `--overwrite` rerun after review.
+`outputs/xenium/vz/03_integrated/rds/Xenium_VZ_Res1.5.rds`. The QC and
+post-QC scripts consume that name. Existing processing RDS or UMAP outputs
+require an explicit `--overwrite` rerun after review.
 
 VZ QC is an explicit review gate. First inspect readiness, then generate the
 QC summary, combined violin PDF, marker table, and review manifest:
@@ -332,16 +355,21 @@ the same inspection and overwrite protections. `run_xenium_rl_01_subset.slurm`
 submits RL extraction, and
 `run_xenium_rl_05_reintegrate_post_qc.slurm` submits post-QC merged processing.
 
+RL outputs mirror the same numbered layout under `outputs/xenium/rl/`, from
+`01_subsets` through `09_cluster_counts`. This makes corresponding VZ and RL
+stages directly comparable without changing any output filenames.
+
 Inspect RL merge readiness with:
 
 ```bash
 Rscript scripts/xenium_rl_02_merge_samples.R --dry-run
 ```
 
-The stable merged output is `Merged/Xenium_Merged_RLSubsets.rds`, accompanied
-by the corresponding input/cell-count/PCW manifest. Both merge scripts refuse
-partial input sets, unexpected top-level RDS files, and accidental output
-replacement.
+The stable merged output is
+`outputs/xenium/rl/02_merged/rds/Xenium_Merged_RLSubsets.rds`, accompanied by
+the corresponding input/cell-count/PCW manifest under `02_merged/tables/`.
+Both merge scripts refuse partial input sets, unexpected top-level RDS files,
+and accidental output replacement.
 
 RL QC uses the same explicit review gate:
 
@@ -380,8 +408,8 @@ Rscript scripts/xenium_rl_08_plot_samples.R --dry-run 1
 ```
 
 The stable processed object is
-`outputs/XenAld_RL_Res1.5_RDS/Xenium_RL_Res1.5.rds`; RL QC and post-QC
-processing now consume that path.
+`outputs/xenium/rl/03_integrated/rds/Xenium_RL_Res1.5.rds`; RL QC and post-QC
+processing consume that path.
 
 ### 8. Combined VZ/RL objects
 
@@ -394,6 +422,13 @@ The refined regional labels are combined and analyzed with:
 - `xenium_vz_rl_spatial_02_integrate.R` – Seurat v5 sketch/integration workflow on the merged data;
 - `xenium_vz_rl_03b_plot_cluster_counts.R` – combined lineage count plots.
 
+Combined outputs are organized under `outputs/xenium/vz_rl/`:
+
+- `01_combined_labels/` contains all 34 labelled sample objects, per-sample spatial plots, and count tables;
+- `02_merged/` contains the cleaned sample objects, merged RDS, and merge manifest;
+- `03_processed/` contains the integrated object, provenance manifest, summary plots, and cluster-count plots;
+- `spatial/01_merged/` and `spatial/02_integrated/` contain the spatial-preserving branch.
+
 The spatial branch has a separate validated merge because it preserves the
 FOV/image data removed from the smaller non-spatial merge. Inspect both stages
 before submission:
@@ -404,9 +439,11 @@ Rscript scripts/xenium_vz_rl_spatial_02_integrate.R --dry-run
 ```
 
 The merge requires all 34 manifest inputs and writes
-`XenAld_VZRL_spatial_merged.rds` plus a cell/image-count manifest. Sketch-based
-Harmony processing writes `XenAld_VZRL_spatial_integrated.rds`; this stable name
-is also used by the h5ad export and SpaTrack scripts. UMAPs are TIFF-only.
+`spatial/01_merged/rds/XenAld_VZRL_spatial_merged.rds` plus a cell/image-count
+manifest under `spatial/01_merged/tables/`. Sketch-based Harmony processing
+writes `spatial/02_integrated/rds/XenAld_VZRL_spatial_integrated.rds`. UMAPs
+are TIFF-only. Giotto, h5ad export, and SpaTrack scripts remain outside the
+current scope and still require path review before they are reactivated.
 Submit these stages with `run_xenium_vz_rl_spatial_01_merge.slurm` and then
 `run_xenium_vz_rl_spatial_02_integrate.slurm`.
 
@@ -424,24 +461,25 @@ broad consensus label for all remaining cells.
 Submit it with `run_xenium_vz_rl_01_combine_labels.slurm`.
 
 The subsequent clean/merge stage also requires all 34 inputs and removes
-spatial images, scale data, and control assays before merging. Because its
-filename contains `&`, quote it in the shell:
+spatial images, scale data, and control assays before merging:
 
 ```bash
-Rscript 'scripts/xenium_vz_rl_02_merge_samples.R' --dry-run
+Rscript scripts/xenium_vz_rl_02_merge_samples.R --dry-run
 ```
 
-It writes the stable merged object `XenAld_VZRL_clean_merge.rds` and a
-per-sample cell-count/PCW manifest. Combined integration and plotting are
+It writes the stable merged object
+`02_merged/rds/XenAld_VZRL_clean_merge.rds` and a per-sample cell-count/PCW
+manifest under `02_merged/tables/`. Combined integration and plotting are
 separate operations:
 
 ```bash
-Rscript 'scripts/xenium_vz_rl_03_process_and_plot.R' --dry-run
-Rscript 'scripts/xenium_vz_rl_03_process_and_plot.R' --process-only
-Rscript 'scripts/xenium_vz_rl_03_process_and_plot.R' --plots-only
+Rscript scripts/xenium_vz_rl_03_process_and_plot.R --dry-run
+Rscript scripts/xenium_vz_rl_03_process_and_plot.R --process-only
+Rscript scripts/xenium_vz_rl_03_process_and_plot.R --plots-only
 ```
 
-The stable processed object is `XenAld_VZRL_clean_merge_processed.rds`.
+The stable processed object is
+`03_processed/rds/XenAld_VZRL_clean_merge_processed.rds`.
 Plot-only runs verify that the input merge has not changed, and they never
 repeat normalization, PCA, Harmony, or UMAP. UMAP outputs remain TIFF-only;
 DotPlots, the marker heatmap, and violin plots are saved as TIFF and Cairo PDF.
@@ -516,7 +554,7 @@ Run R scripts from the **project root**, not from `scripts/`, so `here()` resolv
 
 ```bash
 cd /path/to/XeniumFCProject
-Rscript scripts/XeniumPreProcess_seq.R
+Rscript scripts/xenium_preprocess_single_slides.R --list
 ```
 
 For a script that consumes a one-based task ID:
@@ -531,9 +569,11 @@ On the configured cluster, submit the matching launcher:
 sbatch scripts/run_xenium_vz_01_subset.slurm
 ```
 
-To inspect the split-slide task mapping and dry-run one task:
+To inspect both preprocessing task maps and dry-run one task from each:
 
 ```bash
+Rscript scripts/xenium_preprocess_single_slides.R --list
+Rscript scripts/xenium_preprocess_single_slides.R --dry-run 1
 Rscript scripts/xenium_preprocess_split_slides.R --list
 Rscript scripts/xenium_preprocess_split_slides.R --dry-run 1
 ```
@@ -541,15 +581,16 @@ Rscript scripts/xenium_preprocess_split_slides.R --dry-run 1
 To submit all tasks after reviewing the dry runs:
 
 ```bash
+sbatch scripts/run_xenium_preprocess_single_slides.slurm
 sbatch scripts/run_xenium_preprocess_split_slides.slurm
 ```
 
-The launcher submits 15 tasks and runs at most three concurrently. Each task
-processes one biological sample using its shared slide directory and unique
-cell-stat CSV from `config/samples.csv`. The driver stops if any expected
-output already exists. An intentional rerun requires the explicit
-`--overwrite` option, or `SPLIT_PREPROCESS_OVERWRITE=true` when submitting the
-launcher. The launcher requests Intel nodes because the project's native R
+The single-slide launcher submits 19 tasks and the split-slide launcher submits
+15; each runs at most three tasks concurrently. Every task resolves its input
+directory and cell-stat CSV from `config/samples.csv`. The drivers stop if any
+expected output already exists. An intentional rerun requires `--overwrite`,
+`SINGLE_PREPROCESS_OVERWRITE=true`, or `SPLIT_PREPROCESS_OVERWRITE=true`, as
+appropriate. Both launchers request Intel nodes because the project's native R
 packages are compiled with Broadwell flags; loading `yaml` on the AMD nodes
 tested here causes an illegal-instruction failure.
 
@@ -582,8 +623,9 @@ Many intermediate filenames contain manually assigned dates. Downstream scripts 
 ## Reproducibility notes and known caveats
 
 - Several scripts contain absolute paths under `/home/acflint`, `/data/user/acflint`, or `~/R/Projects/XeniumFCProject`. Replace these when running elsewhere.
-- Some legacy scripts still select samples by commenting entries in or out.
-  Consensus labelling and VZ/RL subsetting instead use `config/samples.csv`.
+- General preprocessing, consensus labelling, and VZ/RL stages use
+  `config/samples.csv`; a few targeted plotting analyses still define selected
+  scientific cohorts explicitly.
 - VZ and RL post-QC merged processing use the matching
   `run_xenium_vz_05_reintegrate_post_qc.slurm` and `run_xenium_rl_05_reintegrate_post_qc.slurm`
   launchers.
@@ -591,7 +633,9 @@ Many intermediate filenames contain manually assigned dates. Downstream scripts 
 - Random seeds are set in major Seurat stages, but manual cluster renaming and dated file selection remain part of the workflow.
 - The ignored `OLD/` directory contains superseded or experimental versions
   and is not part of the active workflow. This includes
-  `AnchorBasedTransfer_RCTD_res1.5.R`, `SeppPreProcess.R`, and the broken
+  `AnchorBasedTransfer_RCTD_res1.5.R`, `XeniumABT_seq.R`, `SeppPreProcess.R`,
+  `SaveRawClusterPlots.R`, `XeniumPreProcess_seq.R`, the two former
+  `xenium_preprocess_selected_samples*.R` drivers, and the broken
   `run_NormCluster1.5.sh` launcher.
 
 ## Recommended maintenance

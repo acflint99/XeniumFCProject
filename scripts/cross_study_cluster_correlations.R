@@ -10,10 +10,17 @@ library(pheatmap)
 library(ComplexHeatmap)
 library(circlize)
 library(grid)
+library(here)
 
-Aldinger <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Aldinger_newClusters_newUMAPv2_5k.rds")
-Sepp <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Sepp_FC_newClusters_newUMAPv2_5k.rds")
-Science <- readRDS("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellRDS/Science_newClusters_5k_UMAPv2.rds")
+source(here("scripts", "R", "config.R"))
+config <- load_pipeline_config()
+
+Aldinger <- readRDS(here(config$inputs$references$aldinger))
+Sepp <- readRDS(here(config$inputs$references$sepp))
+Science <- readRDS(here(config$inputs$references$science))
+
+plot_dir <- here("outputs", "references", "cross_study", "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 
 
 ############################################################
@@ -203,7 +210,7 @@ ht21 <- Heatmap(
 # -----------------------------
 # Export all three heatmaps to a multi-page PDF
 # -----------------------------
-pdf("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/PairwiseClusterCorrelationHeatmaps.pdf",
+pdf(file.path(plot_dir, "PairwiseClusterCorrelationHeatmaps.pdf"),
     width = 7, height = 6)
 
 draw(ht13,

@@ -8,14 +8,14 @@ library(patchwork)
 library(ggplot2)
 library(here)
 
-plot_dir <- here("outputs", "Sepp_VZ_Plots")
-rds_dir  <- here("outputs", "Sepp_VZ_RDS")
+plot_dir <- here("outputs", "references", "sepp", "vz", "plots")
+rds_dir  <- here("outputs", "references", "sepp", "vz", "rds")
 
 if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = TRUE)
 if (!dir.exists(rds_dir))  dir.create(rds_dir, recursive = TRUE)
 
 
-obj <- readRDS(here("outputs", "SingleCellRDS", "Sepp_FC_newClusters_newUMAPv2_5k.rds"))
+obj <- readRDS(here("outputs", "references", "sepp", "rds", "Sepp_newClusters_newUMAPv2_5k.rds"))
 
 target_clusters <- c("Glia", "GABA", "Purkinje", "OPC") 
 
@@ -66,5 +66,4 @@ grDevices::dev.off()
 
 output_path <- file.path(rds_dir, "Sepp_VZ_4126.rds")
 saveRDS(vz_obj, output_path, compress = FALSE)
-
 

@@ -36,10 +36,10 @@ if (is.na(task_id) || task_id < 1L || task_id > nrow(samples)) {
 current_sample <- samples$sample_id[[task_id]]
 output_root <- here(config$project$outputs_dir)
 input_path <- file.path(
-  output_root, "Xenium_ConsensusABT_Res1.5_RDS",
+  output_root, "xenium", "annotation", "03_consensus_labels", "rds",
   paste0(current_sample, "_Consensus_annotated.rds")
 )
-output_dir <- file.path(output_root, "XenAld_VZ_Subsets_Res1.5_RDS")
+output_dir <- file.path(output_root, "xenium", "vz", "01_subsets", "rds")
 output_path <- file.path(output_dir, paste0(current_sample, "_VZsubset.rds"))
 
 if (dry_run) {

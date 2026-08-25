@@ -31,10 +31,10 @@ overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
-input_dir <- file.path(output_root, "Xenium_AldingerABT_VZ&RLsubclusters_QC_Res1.5_RDS")
-rds_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS")
-plot_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Plots")
-table_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Tables")
+input_dir <- file.path(output_root, "xenium", "rl", "07_mapped", "rds")
+rds_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "rds")
+plot_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "plots", "combined")
+table_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "tables")
 
 input_names <- paste0(sample_ids, "_Ald_VZ_RL_QC_Subclusters.rds")
 input_paths <- file.path(input_dir, input_names)

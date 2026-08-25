@@ -46,12 +46,13 @@ if (process_only && plots_only) stop("Choose --process-only or --plots-only, not
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
-rds_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_RDS")
-plot_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_Plots")
-input_path <- file.path(rds_dir, "XenAld_VZRL_clean_merge.rds")
-input_manifest_path <- file.path(rds_dir, "XenAld_VZRL_clean_merge_manifest.csv")
+input_path <- file.path(output_root, "xenium", "vz_rl", "02_merged", "rds", "XenAld_VZRL_clean_merge.rds")
+input_manifest_path <- file.path(output_root, "xenium", "vz_rl", "02_merged", "tables", "XenAld_VZRL_clean_merge_manifest.csv")
+rds_dir <- file.path(output_root, "xenium", "vz_rl", "03_processed", "rds")
+plot_dir <- file.path(output_root, "xenium", "vz_rl", "03_processed", "plots")
+table_dir <- file.path(output_root, "xenium", "vz_rl", "03_processed", "tables")
 processed_path <- file.path(rds_dir, "XenAld_VZRL_clean_merge_processed.rds")
-processed_manifest_path <- file.path(rds_dir, "XenAld_VZRL_clean_merge_processed_manifest.csv")
+processed_manifest_path <- file.path(table_dir, "XenAld_VZRL_clean_merge_processed_manifest.csv")
 
 plot_names <- c(
   "XenAld_Batch_Comp_UMAP.tif",
@@ -91,6 +92,9 @@ if (process_only) {
     stop("Refusing to overwrite combined processed outputs:\n- ",
          paste(existing_outputs, collapse = "\n- "), "\nUse --overwrite only after review.")
   }
+
+  dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 
   input_manifest <- read.csv(input_manifest_path, stringsAsFactors = FALSE)
   if (nrow(input_manifest) != length(sample_ids) ||

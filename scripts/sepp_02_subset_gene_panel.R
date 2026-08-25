@@ -14,8 +14,8 @@ library(Cairo)
 source(here("scripts", "color_palette.R"))
 
 # Define and create output directories ----
-plot_path <- here("outputs", "SeppPlots")
-RDS_path <- here("outputs", "SeppRDS")
+plot_path <- here("outputs", "references", "sepp", "plots")
+RDS_path <- here("outputs", "references", "sepp", "rds")
 
 dir.create(plot_path, recursive = TRUE, showWarnings = FALSE)
 dir.create(RDS_path, recursive = TRUE, showWarnings = FALSE)

@@ -14,9 +14,9 @@ sample_manifest <- read.csv(
 sample_list <- sample_manifest$sample_id
 
 reference_paths <- c(
-  Aldinger = here("outputs", "AldingerRDS", "Aldinger_newClusters_newUMAPv2_5k.rds"),
-  Sepp = here("outputs", "SeppRDS", "Sepp_newClusters_newUMAPv2_5k.rds"),
-  Science = here("outputs", "ScienceRDS", "Science_newClusters_newUMAPv2_5k.rds")
+  Aldinger = here("outputs", "references", "aldinger", "rds", "Aldinger_newClusters_newUMAPv2_5k.rds"),
+  Sepp = here("outputs", "references", "sepp", "rds", "Sepp_newClusters_newUMAPv2_5k.rds"),
+  Science = here("outputs", "references", "science", "rds", "Science_newClusters_newUMAPv2_5k.rds")
 )
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -58,6 +58,7 @@ if (is.na(reference_match)) {
 }
 reference_name <- names(reference_paths)[reference_match]
 reference_path <- unname(reference_paths[[reference_name]])
+reference_key <- tolower(reference_name)
 
 task_id <- suppressWarnings(as.integer(job_args[[2]]))
 if (is.na(task_id) || task_id < 1L || task_id > length(sample_list)) {
@@ -66,12 +67,15 @@ if (is.na(task_id) || task_id < 1L || task_id > length(sample_list)) {
 
 current_sample <- sample_list[[task_id]]
 input_file <- here(
-  "outputs", "Xenium_Res1.5_RDS",
+  "outputs", "xenium", "preprocess", "03_clustered", "rds",
   paste0(current_sample, "_CB_QC_cluster.rds")
 )
-plots_dir <- here("outputs", paste0("Xenium_", reference_name, "ABT_Res1.5_Plots"))
-tables_dir <- here("outputs", paste0("Xenium_", reference_name, "ABT_Res1.5_Tables"))
-rds_dir <- here("outputs", paste0("Xenium_", reference_name, "ABT_Res1.5_RDS"))
+annotation_dir <- here(
+  "outputs", "xenium", "annotation", "01_label_transfer", reference_key
+)
+plots_dir <- file.path(annotation_dir, "plots")
+tables_dir <- file.path(annotation_dir, "tables")
+rds_dir <- file.path(annotation_dir, "rds")
 
 expected_outputs <- c(
   file.path(tables_dir, paste0(current_sample, "_", reference_name, "_majority_vs_weighted.csv")),
@@ -158,12 +162,15 @@ annotate_xenium_from_ref <- function(xenium_obj,
   source(here("scripts", "color_palette.R")) 
   
   pred_score_thresh <- 0.4
-  output_root       <- "outputs"
-  
-  plots_dir <- here(output_root, paste0("Xenium_", reference_name, "ABT_Res1.5_Plots"))
+  annotation_dir <- here(
+    "outputs", "xenium", "annotation", "01_label_transfer",
+    tolower(reference_name)
+  )
+
+  plots_dir <- file.path(annotation_dir, "plots")
   if(!dir.exists(plots_dir)) dir.create(plots_dir, recursive = TRUE)
   
-  tables_dir <- here(output_root, paste0("Xenium_", reference_name, "ABT_Res1.5_Tables"))
+  tables_dir <- file.path(annotation_dir, "tables")
   if(!dir.exists(tables_dir)) dir.create(tables_dir, recursive = TRUE)
   
   ## ----------------------------
@@ -411,7 +418,7 @@ annotate_xenium_from_ref <- function(xenium_obj,
   ## ----------------------------
   ## 6. Save & Return
   ## ----------------------------
-  output_dir <- here(output_root, paste0("Xenium_", reference_name, "ABT_Res1.5_RDS"))
+  output_dir <- file.path(annotation_dir, "rds")
   if(!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
   
   saveRDS(xenium_obj, file.path(output_dir, paste0(sample_name, "_", reference_name, "_annotated.rds")))

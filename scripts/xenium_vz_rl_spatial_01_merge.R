@@ -25,12 +25,13 @@ overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
-input_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS")
-output_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS")
+input_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "rds")
+rds_dir <- file.path(output_root, "xenium", "vz_rl", "spatial", "01_merged", "rds")
+table_dir <- file.path(output_root, "xenium", "vz_rl", "spatial", "01_merged", "tables")
 input_names <- paste0(sample_ids, "_Ald_VZ_RL_QC_Subclusters.rds")
 input_paths <- file.path(input_dir, input_names)
-merged_path <- file.path(output_dir, "XenAld_VZRL_spatial_merged.rds")
-manifest_path <- file.path(output_dir, "XenAld_VZRL_spatial_merged_manifest.csv")
+merged_path <- file.path(rds_dir, "XenAld_VZRL_spatial_merged.rds")
+manifest_path <- file.path(table_dir, "XenAld_VZRL_spatial_merged_manifest.csv")
 
 observed_names <- if (dir.exists(input_dir)) {
   list.files(input_dir, pattern = "\\.rds$", full.names = FALSE)
@@ -65,7 +66,8 @@ if (length(existing_outputs) && !overwrite) {
 
 options(future.globals.maxSize = Inf)
 plan(sequential)
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 merge_manifest <- data.frame(
   sample_id = sample_ids, input_path = input_paths,
   cells = integer(length(sample_ids)), images = integer(length(sample_ids)),

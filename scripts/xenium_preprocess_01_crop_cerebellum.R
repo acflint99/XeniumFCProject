@@ -87,7 +87,7 @@ XeniumCropCerebellum <- function(sample_name,
   }
   
   # ---- 5. Ensure output folder exists ----
-  plot_dir <- here(output_folder, "XeniumCropPlots")
+  plot_dir <- here(output_folder, "xenium", "preprocess", "01_cropped", "plots")
   if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = TRUE)
   
   # ---- 6. Generate and save plot ----
@@ -105,10 +105,10 @@ XeniumCropCerebellum <- function(sample_name,
   # -------------------------------
   # 11. Save cerebellum (CB) cropped object
   # -------------------------------
-  rds_dir <- here("outputs", "XeniumRDS")
+  rds_dir <- here(output_folder, "xenium", "preprocess", "01_cropped", "rds")
   if (!dir.exists(rds_dir)) dir.create(rds_dir, recursive = TRUE)
   
-  output_file <- here("outputs", "XeniumRDS", paste0(sample_name, "_CB.rds"))
+  output_file <- file.path(rds_dir, paste0(sample_name, "_CB.rds"))
   saveRDS(xenium_cereb, file = output_file, compress = FALSE) 
   
   message("Saved RDS file to:", output_file)

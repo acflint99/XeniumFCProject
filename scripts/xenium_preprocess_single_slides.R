@@ -86,16 +86,16 @@ if (!file.exists(sample_paths$cell_stats_path)) {
 
 output_root <- here(config$project$outputs_dir)
 expected_outputs <- c(
-  file.path(output_root, "XeniumCropPlots", paste0(sample_name, "_CB_nCount_FeatPlot.tif")),
-  file.path(output_root, "XeniumRDS", paste0(sample_name, "_CB.rds")),
-  file.path(output_root, "XeniumQCPlots", paste0(sample_name, "_QCplots.pdf")),
-  file.path(output_root, "XeniumQCPlots", paste0(sample_name, "_QC_thresholds.txt")),
-  file.path(output_root, "XeniumRDS", paste0(sample_name, "_CB_QC.rds")),
-  file.path(output_root, "Xenium_Res1.5_Plots", paste0(sample_name, "_UMAP.tif")),
-  file.path(output_root, "Xenium_Res1.5_Plots", paste0(sample_name, "_RawCluster_UMAP.tif")),
-  file.path(output_root, "Xenium_Res1.5_Plots", paste0(sample_name, "_GlobalRawClustersSpatialPlot.tif")),
-  file.path(output_root, "Xenium_Res1.5_Plots", paste0(sample_name, "_FacetRawClustersSpatialPlot.tif")),
-  file.path(output_root, "Xenium_Res1.5_RDS", paste0(sample_name, "_CB_QC_cluster.rds"))
+  file.path(output_root, "xenium", "preprocess", "01_cropped", "plots", paste0(sample_name, "_CB_nCount_FeatPlot.tif")),
+  file.path(output_root, "xenium", "preprocess", "01_cropped", "rds", paste0(sample_name, "_CB.rds")),
+  file.path(output_root, "xenium", "preprocess", "02_qc", "reports", paste0(sample_name, "_QCplots.pdf")),
+  file.path(output_root, "xenium", "preprocess", "02_qc", "reports", paste0(sample_name, "_QC_thresholds.txt")),
+  file.path(output_root, "xenium", "preprocess", "02_qc", "rds", paste0(sample_name, "_CB_QC.rds")),
+  file.path(output_root, "xenium", "preprocess", "03_clustered", "plots", paste0(sample_name, "_UMAP.tif")),
+  file.path(output_root, "xenium", "preprocess", "03_clustered", "plots", paste0(sample_name, "_RawCluster_UMAP.tif")),
+  file.path(output_root, "xenium", "preprocess", "03_clustered", "plots", paste0(sample_name, "_GlobalRawClustersSpatialPlot.tif")),
+  file.path(output_root, "xenium", "preprocess", "03_clustered", "plots", paste0(sample_name, "_FacetRawClustersSpatialPlot.tif")),
+  file.path(output_root, "xenium", "preprocess", "03_clustered", "rds", paste0(sample_name, "_CB_QC_cluster.rds"))
 )
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
 

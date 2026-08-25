@@ -14,8 +14,8 @@ library(Cairo)
 source(here("scripts", "color_palette.R"))
 
 # Define output directories
-plot_path <- here("outputs", "SciencePlots")
-RDS_path <- here("outputs", "ScienceRDS")
+plot_path <- here("outputs", "references", "science", "plots")
+RDS_path <- here("outputs", "references", "science", "rds")
 
 # Ensure directories exist before saving any files
 if (!dir.exists(plot_path)) dir.create(plot_path, recursive = TRUE)

@@ -22,6 +22,9 @@ Aldinger <- readRDS(here(config$inputs$references$aldinger))
 Sepp <- readRDS(here(config$inputs$references$sepp))
 Science <- readRDS(here(config$inputs$references$science))
 
+plot_dir <- here("outputs", "references", "cross_study", "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+
 # set active identities----
 Idents(Aldinger) <- "clusters_refined"
 Idents(Sepp) <- "clusters_refined"
@@ -288,7 +291,7 @@ htSS <- Heatmap(
 # -----------------------------
 # Export all three heatmaps to multi-page PDF
 # -----------------------------
-pdf("/home/acflint/R/Projects/XeniumFCProject/outputs/SingleCellPlots/PairwiseClusterJaccardHeatmaps.pdf",
+pdf(file.path(plot_dir, "PairwiseClusterJaccardHeatmaps.pdf"),
     width = 7, height = 6)
 
 draw(htASe, newpage = TRUE)

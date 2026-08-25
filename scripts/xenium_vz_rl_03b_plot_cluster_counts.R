@@ -11,10 +11,13 @@ library(purrr) # For easier list handling
 
 # Load your new palette and order
 source(here("scripts", "color_palette.R"))
+source(here("scripts", "R", "config.R"))
+
+config <- load_pipeline_config()
 
 # Define paths
-data_dir <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS")
-plot_out_dir <- here("outputs", "XenAld_VZ&RL_Subclusters_Res1.5_Plots")
+data_dir <- here("outputs", "xenium", "vz_rl", "01_combined_labels", "rds")
+plot_out_dir <- here("outputs", "xenium", "vz_rl", "03_processed", "plots", "cluster_counts")
 if(!dir.exists(plot_out_dir)) dir.create(plot_out_dir, recursive = TRUE)
 
 # 1. Define a named list of your cluster sets
@@ -27,9 +30,7 @@ cluster_sets <- list(
   "Other_Lineage" = c("Cycling Cells", "Meninges",  "Endothelial", "Immune")
 )
 
-target_samples <- c("FB328_1_X_G", "GZFB_12_X_G_3", "GZFB5_X_G",
-                    "GZFB_1_X_G", "FB330_1_X_G", "FB78_X_G",
-                    "GZFB4_X_G", "FB124_X_G") 
+target_samples <- load_sample_manifest(config)$sample_id
 
 # 2. Identify and Load Files
 # Get all .rds files in the directory

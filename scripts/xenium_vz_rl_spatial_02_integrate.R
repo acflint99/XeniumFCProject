@@ -29,12 +29,13 @@ overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
-rds_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS")
-plot_dir <- file.path(output_root, "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_Plots")
-input_path <- file.path(rds_dir, "XenAld_VZRL_spatial_merged.rds")
-input_manifest_path <- file.path(rds_dir, "XenAld_VZRL_spatial_merged_manifest.csv")
+input_path <- file.path(output_root, "xenium", "vz_rl", "spatial", "01_merged", "rds", "XenAld_VZRL_spatial_merged.rds")
+input_manifest_path <- file.path(output_root, "xenium", "vz_rl", "spatial", "01_merged", "tables", "XenAld_VZRL_spatial_merged_manifest.csv")
+rds_dir <- file.path(output_root, "xenium", "vz_rl", "spatial", "02_integrated", "rds")
+plot_dir <- file.path(output_root, "xenium", "vz_rl", "spatial", "02_integrated", "plots")
+table_dir <- file.path(output_root, "xenium", "vz_rl", "spatial", "02_integrated", "tables")
 output_path <- file.path(rds_dir, "XenAld_VZRL_spatial_integrated.rds")
-output_manifest_path <- file.path(rds_dir, "XenAld_VZRL_spatial_integrated_manifest.csv")
+output_manifest_path <- file.path(table_dir, "XenAld_VZRL_spatial_integrated_manifest.csv")
 plot_paths <- file.path(
   plot_dir,
   c(
@@ -75,6 +76,8 @@ plan(multisession, workers = workers)
 on.exit(plan(sequential), add = TRUE)
 set.seed(config$runtime$random_seed)
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 
 message("Loading validated spatial merge...")
 obj <- readRDS(input_path)

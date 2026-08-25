@@ -23,12 +23,13 @@ overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
-subset_dir <- file.path(output_root, "XenAld_RL_Subsets_Res1.5_RDS")
-merged_dir <- file.path(subset_dir, "Merged")
+subset_dir <- file.path(output_root, "xenium", "rl", "01_subsets", "rds")
+merged_rds_dir <- file.path(output_root, "xenium", "rl", "02_merged", "rds")
+merged_table_dir <- file.path(output_root, "xenium", "rl", "02_merged", "tables")
 subset_names <- paste0(sample_ids, "_RLsubset.rds")
 subset_paths <- file.path(subset_dir, subset_names)
-output_path <- file.path(merged_dir, "Xenium_Merged_RLSubsets.rds")
-manifest_path <- file.path(merged_dir, "Xenium_Merged_RLSubsets_manifest.csv")
+output_path <- file.path(merged_rds_dir, "Xenium_Merged_RLSubsets.rds")
+manifest_path <- file.path(merged_table_dir, "Xenium_Merged_RLSubsets_manifest.csv")
 
 observed_names <- if (dir.exists(subset_dir)) {
   list.files(subset_dir, pattern = "\\.rds$", full.names = FALSE)
@@ -121,7 +122,8 @@ if (ncol(merged_obj) != sum(merge_manifest$cells)) {
 }
 Idents(merged_obj) <- "consensus_label"
 
-dir.create(merged_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(merged_rds_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(merged_table_dir, recursive = TRUE, showWarnings = FALSE)
 saveRDS(merged_obj, output_path, compress = FALSE)
 write.csv(merge_manifest, manifest_path, row.names = FALSE)
 message("Saved complete 34-sample RL merge: ", output_path)

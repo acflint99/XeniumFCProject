@@ -42,11 +42,11 @@ if (remove_supplied && !identical(tolower(trimws(remove_value)), "none")) {
 }
 
 output_root <- here(config$project$outputs_dir)
-merged_path <- file.path(output_root, "XenAld_RL_Res1.5_RDS", "Xenium_RL_Res1.5.rds")
-input_dir <- file.path(output_root, "Xenium_AldingerABT_VZsubclusters_Res1.5_RDS")
-output_dir <- file.path(output_root, "Xenium_AldingerABT_VZsub_RL_QC_Res1.5_RDS")
-plot_dir <- file.path(output_root, "XenAld_RL_QC_Res1.5_Plots")
-table_dir <- file.path(output_root, "XenAld_RL_QC_Res1.5_Tables")
+merged_path <- file.path(output_root, "xenium", "rl", "03_integrated", "rds", "Xenium_RL_Res1.5.rds")
+input_dir <- file.path(output_root, "xenium", "vz", "07_mapped", "rds")
+output_dir <- file.path(output_root, "xenium", "rl", "04_qc", "rds")
+plot_dir <- file.path(output_root, "xenium", "rl", "04_qc", "plots")
+table_dir <- file.path(output_root, "xenium", "rl", "04_qc", "tables")
 
 input_names <- paste0(sample_ids, "_Ald_VZ_QC_Subclusters.rds")
 input_paths <- file.path(input_dir, input_names)

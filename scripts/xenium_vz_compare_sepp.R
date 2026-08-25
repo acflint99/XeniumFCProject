@@ -10,13 +10,13 @@ library(tidyr)
 library(tibble)
 library(here)
 
-xen_path <- here("outputs", "XenAld_VZ_Res1.5_RDS", "Xenium_VZ_Res1.5_newSubclusters_3-28-26.rds")
+xen_path <- here("outputs", "xenium", "vz", "06_subclusters", "rds", "Xenium_VZ_Res1.5_newSubclusters_3-28-26.rds")
 xenium_merged <- readRDS(xen_path)
 
-sn_path <- here("outputs", "Sepp_VZ_RDS", "Sepp_VZ_4126.rds")
+sn_path <- here("outputs", "references", "sepp", "vz", "rds", "Sepp_VZ_4126.rds")
 sn_obj <- readRDS(sn_path)
 
-plot_dir <- here("outputs", "XenSepp_VZ_Comp_Plots")
+plot_dir <- here("outputs", "references", "cross_study", "plots")
 if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = TRUE)
 
 

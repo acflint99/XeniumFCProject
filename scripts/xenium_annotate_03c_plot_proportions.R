@@ -16,11 +16,13 @@ source(here("scripts", "color_palette.R"))
 target_clusters <- c("RL", "UBC", "Granule", "Purkinje", "GABA") 
 
 # Create the plot directory. PCW is already stored in the consensus objects.
-plot_dir <- here("outputs", "Xenium_ConsensusABT_Res1.5_PCW_Plots")
+plot_dir <- here(
+  "outputs", "xenium", "annotation", "03_consensus_labels", "plots", "proportions"
+)
 if (!dir.exists(plot_dir)) dir.create(plot_dir)
 
 # 3. List and Process RDS Files
-data_path <- here("outputs", "Xenium_ConsensusABT_Res1.5_RDS")
+data_path <- here("outputs", "xenium", "annotation", "03_consensus_labels", "rds")
 sample_files <- list.files(
   path = data_path,
   pattern = "_Consensus_annotated\\.rds$",

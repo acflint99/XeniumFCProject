@@ -22,9 +22,9 @@ process_xenium_clusters <- function(xenium_obj, sample_name) {
   set.seed(42)
   plan("sequential")  # avoid future export issues within the parallel workers
   
-  plot_output <- here("outputs", "Xenium_Res1.5_Plots")
+  plot_output <- here("outputs", "xenium", "preprocess", "03_clustered", "plots")
   if (!dir.exists(plot_output)) dir.create(plot_output)
-  rds_output <- here("outputs", "Xenium_Res1.5_RDS")
+  rds_output <- here("outputs", "xenium", "preprocess", "03_clustered", "rds")
   if (!dir.exists(rds_output)) dir.create(rds_output)
   
   DefaultAssay(xenium_obj) <- "Xenium"

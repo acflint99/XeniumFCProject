@@ -10,8 +10,8 @@ library(here)
 library(Cairo) # Required for CairoTIFF
 
 # Define and create output directories ----
-plot_path <- here("outputs", "AldingerPlots")
-RDS_path <- here("outputs", "AldingerRDS")
+plot_path <- here("outputs", "references", "aldinger", "plots")
+RDS_path <- here("outputs", "references", "aldinger", "rds")
 
 dir.create(plot_path, recursive = TRUE, showWarnings = FALSE)
 dir.create(RDS_path, recursive = TRUE, showWarnings = FALSE)
@@ -26,7 +26,7 @@ source(here("scripts", "color_palette.R"))
 # Load and Subset the FC dataset
 # =====================================================
 # Use here() to dynamically build paths relative to the project root
-Aldinger = readRDS(here("outputs", "AldingerRDS", "Aldinger_newClusters_newUMAPv1.rds"))
+Aldinger = readRDS(file.path(RDS_path, "Aldinger_newClusters_newUMAPv1.rds"))
 xenium_genes <- readRDS(here("inputs", "xenium_5k_genes.rds"))
 
 genes_present <- intersect(xenium_genes, rownames(Aldinger))

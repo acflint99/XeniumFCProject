@@ -48,6 +48,10 @@ and RL subsetting. It is not yet the source of truth for the full pipeline.
 VZ/RL integration settings still differ among scripts and should not be
 unified without checking the intended scientific workflow.
 
+The configured v2 reference objects are stored below
+`outputs/references/<study>/rds/`. Reference plots and VZ-specific reference
+outputs use the parallel `plots/` and `vz/` directories.
+
 ## Validation
 
 From the current local `scripts/` directory, run structural validation with:

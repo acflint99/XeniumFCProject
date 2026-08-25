@@ -9,21 +9,19 @@ library(ggplot2)
 library(here)
 
 source(here("scripts", "color_palette.R"))
+source(here("scripts", "R", "config.R"))
+
+config <- load_pipeline_config()
 
 # Define your directory and sample list
-input_dir <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS")
+input_dir <- here("outputs", "xenium", "vz_rl", "01_combined_labels", "rds")
 
-output_dir <- here("outputs", "Xenium_ConsensusABT_Res1.5_postQC_GlobalPlots")
+output_dir <- here("outputs", "xenium", "vz_rl", "01_combined_labels", "plots", "consensus")
 
 # Create output directory if it doesn't exist
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-sample_list <- c(
-  "GZFB4_X_G", "FB124_X_G", "FB198_X_G", "FB328_1_X_G", 
-  "FB330_1_X_G", "FB78_X_G", "GZFB5_X_G", "GZFB_12_X_G_1", 
-  "GZFB_12_X_G_2", "GZFB_12_X_G_3", "GZFB_12_X_G_4", "GZFB_12_X_G_5", 
-  "GZFB_1_X_G", "GZFB_9_X_G_1", "GZFB_9_X_G_2", "GZFB_9_X_G_3"
-)
+sample_list <- load_sample_manifest(config)$sample_id
 
 # Loop through each sample
 for (sample_name in sample_list) {

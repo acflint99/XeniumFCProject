@@ -30,9 +30,9 @@ inputs:
   xenium_panel_json_example: "/data/user/acflint/FCXeniumProject/FB124_X_G/gene_panel.json"
   published_data_root: "/data/user/acflint/FC_published"
   references:
-    aldinger: "outputs/AldingerRDS/Aldinger_newClusters_newUMAPv2_5k.rds"
-    sepp: "outputs/SeppRDS/Sepp_newClusters_newUMAPv2_5k.rds"
-    science: "outputs/ScienceRDS/Science_newClusters_newUMAPv2_5k.rds"
+    aldinger: "outputs/references/aldinger/rds/Aldinger_newClusters_newUMAPv2_5k.rds"
+    sepp: "outputs/references/sepp/rds/Sepp_newClusters_newUMAPv2_5k.rds"
+    science: "outputs/references/science/rds/Science_newClusters_newUMAPv2_5k.rds"
 
 qc:
   mad_multiplier: 3

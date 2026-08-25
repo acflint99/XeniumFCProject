@@ -30,15 +30,15 @@ check_mem <- function(step_label) {
 plan(multisession, workers = 7)
 options(future.globals.maxSize = 200 * 1024^3)
 
-plot_path <- here("outputs", "XenAld_RL_postQC_Res1.5_Plots")
-if(!dir.exists(plot_path)) dir.create(plot_path)
+plot_path <- here("outputs", "xenium", "rl", "05_post_qc", "plots")
+if(!dir.exists(plot_path)) dir.create(plot_path, recursive = TRUE)
 
-table_path <- here("outputs", "XenAld_RL_postQC_Res1.5_Tables")
+table_path <- here("outputs", "xenium", "rl", "05_post_qc", "tables")
 if(!dir.exists(table_path)) dir.create(table_path, recursive = TRUE)
 
-merged_path <- here("outputs", "XenAld_RL_Res1.5_RDS", "Xenium_RL_Res1.5.rds")
-removal_path <- here("outputs", "XenAld_RL_QC_Res1.5_Tables", "XenAld_RL_QC_removal_manifest.csv")
-review_path <- here("outputs", "XenAld_RL_QC_Res1.5_Tables", "XenAld_RL_QC_review_manifest.csv")
+merged_path <- here("outputs", "xenium", "rl", "03_integrated", "rds", "Xenium_RL_Res1.5.rds")
+removal_path <- here("outputs", "xenium", "rl", "04_qc", "tables", "XenAld_RL_QC_removal_manifest.csv")
+review_path <- here("outputs", "xenium", "rl", "04_qc", "tables", "XenAld_RL_QC_review_manifest.csv")
 if (!file.exists(removal_path)) stop("Reviewed RL removal manifest not found: ", removal_path)
 if (!file.exists(review_path)) stop("RL QC review manifest not found: ", review_path)
 removal_manifest <- read.csv(removal_path, stringsAsFactors = FALSE)
@@ -167,7 +167,7 @@ for(res in res_list) {
   gc()
 }
 
-output_path <- here("outputs", "XenAld_RL_postQC_Res1.5_RDS")
+output_path <- here("outputs", "xenium", "rl", "05_post_qc", "rds")
 if(!dir.exists(output_path)) dir.create(output_path, recursive = TRUE)
 
 saveRDS(obj, file.path(output_path, "Xenium_RL_postQC_Res1.5_4-2-26.rds"), compress = FALSE)

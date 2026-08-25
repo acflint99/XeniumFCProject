@@ -4,7 +4,7 @@
 # Run from the XeniumFCProject root:
 #   Rscript scripts/validate_outputs_through_consensus.R
 #
-# Reports are written to outputs/validation_through_consensus/. No analysis
+# Reports are written to outputs/validation/through_consensus/. No analysis
 # objects or figures are modified.
 
 options(warn = 1)
@@ -48,7 +48,7 @@ samples <- read.csv(
   na.strings = character()
 )
 output_root <- file.path(project_root, config$project$outputs_dir)
-report_dir <- file.path(output_root, "validation_through_consensus")
+report_dir <- file.path(output_root, "validation", "through_consensus")
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
 
 references <- c("Aldinger", "Sepp", "Science")
@@ -92,7 +92,7 @@ append_issue <- function(issues, text) {
 initial_plot_paths <- function(sample_name) {
   file.path(
     output_root,
-    "Xenium_Res1.5_Plots",
+    "xenium", "preprocess", "03_clustered", "plots",
     paste0(
       sample_name,
       c(
@@ -105,9 +105,12 @@ initial_plot_paths <- function(sample_name) {
 }
 
 abt_paths <- function(sample_name, reference) {
-  table_dir <- file.path(output_root, paste0("Xenium_", reference, "ABT_Res1.5_Tables"))
-  plot_dir <- file.path(output_root, paste0("Xenium_", reference, "ABT_Res1.5_Plots"))
-  rds_dir <- file.path(output_root, paste0("Xenium_", reference, "ABT_Res1.5_RDS"))
+  reference_dir <- file.path(
+    output_root, "xenium", "annotation", "01_label_transfer", tolower(reference)
+  )
+  table_dir <- file.path(reference_dir, "tables")
+  plot_dir <- file.path(reference_dir, "plots")
+  rds_dir <- file.path(reference_dir, "rds")
   list(
     majority_table = file.path(
       table_dir, paste0(sample_name, "_", reference, "_majority_vs_weighted.csv")
@@ -142,14 +145,16 @@ abt_paths <- function(sample_name, reference) {
 }
 
 consensus_paths <- function(sample_name) {
-  plot_dir <- file.path(output_root, "Xenium_ConsensusABT_Res1.5_Plots")
+  plot_dir <- file.path(
+    output_root, "xenium", "annotation", "03_consensus_labels", "plots", "samples"
+  )
   list(
     table = file.path(
-      output_root, "Xenium_Comp_ABT_Res1.5_Tables",
+      output_root, "xenium", "annotation", "02_consensus", "tables",
       paste0(sample_name, "_comparison_merged.csv")
     ),
     rds = file.path(
-      output_root, "Xenium_ConsensusABT_Res1.5_RDS",
+      output_root, "xenium", "annotation", "03_consensus_labels", "rds",
       paste0(sample_name, "_Consensus_annotated.rds")
     ),
     plots = file.path(
@@ -236,10 +241,11 @@ validate_sample <- function(sample_name) {
   message("Validating ", sample_name, " ...")
   issues <- character()
   clustered_path <- file.path(
-    output_root, "Xenium_Res1.5_RDS", paste0(sample_name, "_CB_QC_cluster.rds")
+    output_root, "xenium", "preprocess", "03_clustered", "rds",
+    paste0(sample_name, "_CB_QC_cluster.rds")
   )
   qc_files <- file.path(
-    output_root, "XeniumQCPlots",
+    output_root, "xenium", "preprocess", "02_qc", "reports",
     paste0(sample_name, c("_QCplots.pdf", "_QC_thresholds.txt"))
   )
   cons <- consensus_paths(sample_name)

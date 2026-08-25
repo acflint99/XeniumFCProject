@@ -15,7 +15,9 @@ library(patchwork)
 # Load your new palette and order
 source(here("scripts", "color_palette.R"))
 
-input_path <- here("outputs", "XenAld_RL_Subclusters_Res1.5_RDS", "Xenium_RL_Res1.5_newSubclusters_4-3-26.rds")
+input_path <- here("outputs", "xenium", "rl", "06_subclusters", "rds", "Xenium_RL_Res1.5_newSubclusters_4-3-26.rds")
+plot_dir <- here("outputs", "xenium", "rl", "09_cluster_counts", "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 
 obj <- readRDS(input_path)
 
@@ -71,7 +73,7 @@ for (set_name in names(cluster_sets)) {
   file_name <- paste0("XenAld_RL_", set_name, "_ClusterCountPlot.tif")
   
   Cairo::CairoTIFF(
-    filename = here("outputs", "XenAld_RL_Subclusters_Res1.5_Plots", file_name),
+    filename = file.path(plot_dir, file_name),
     width = 10,
     height = 6,
     units = "in",
@@ -80,7 +82,7 @@ for (set_name in names(cluster_sets)) {
   print(p)
   grDevices::dev.off()
   ggplot2::ggsave(
-    here("outputs", "XenAld_RL_Subclusters_Res1.5_Plots", sub("\\.tif$", ".pdf", file_name)),
+    file.path(plot_dir, sub("\\.tif$", ".pdf", file_name)),
     p, device = grDevices::cairo_pdf, width = 10, height = 6
   )
   
