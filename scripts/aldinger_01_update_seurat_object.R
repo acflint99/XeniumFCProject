@@ -13,9 +13,9 @@ reference_rds_dir <- here("outputs", "references", "aldinger", "rds")
 dir.create(reference_rds_dir, recursive = TRUE, showWarnings = FALSE)
 
 
-#Update Seurat object & save to new .rds----
-remotes::install_version("Seurat", version = "4.4.0")
-library(Seurat)
+# Update Seurat object & save to new .rds----
+# Seurat is provided by the project renv library. Never install or downgrade
+# packages from an analysis script; use an explicit renv workflow if it is missing.
 obj <- readRDS("/data/user/acflint/FC_published/AldingerFC/Aldinger_seurat.rds")
 
 obj@reductions <- list()   # remove PCA, UMAP, tSNE

@@ -105,8 +105,20 @@ check_mem <- function(step_label) {
 }
 
 # 2. PARALLELIZATION SETUP
-plan("multisession", workers = 8) 
-options(future.globals.maxSize = 150 * 1024^3) # 150GB limit for globals
+workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1")))
+if (is.na(workers) || workers < 1L) {
+  stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
+}
+options(future.globals.maxSize = config$runtime$future_globals_max_gb_default * 1024^3)
+plan(sequential)
+set.seed(config$runtime$random_seed)
+
+with_future_workers <- function(expr) {
+  old_plan <- plan()
+  on.exit(plan(old_plan), add = TRUE)
+  if (workers > 1L) plan(multisession, workers = workers)
+  force(expr)
+}
 
 check_mem("PIPELINE START")
 
@@ -152,12 +164,16 @@ obj <- ScaleData(obj, features = VariableFeatures(obj), verbose = TRUE)
 check_mem("POST-SCALE")
 
 message("Running PCA...")
-obj <- RunPCA(obj, npcs = 30, verbose = FALSE)
+obj <- RunPCA(
+  obj, npcs = 30, verbose = FALSE,
+  seed.use = config$runtime$random_seed
+)
 
 # 5. BATCH CHECK (UNCORRECTED UMAP)
 message("Generating uncorrected UMAP...")
 obj <- RunUMAP(obj, reduction = "pca", dims = 1:30, 
-               reduction.name = "umap_uncorrected", verbose = TRUE)
+               reduction.name = "umap_uncorrected", verbose = TRUE,
+               seed.use = config$runtime$random_seed)
 check_mem("POST-UNCORRECTED UMAP")
 
 # 6. RUN HARMONY
@@ -169,16 +185,20 @@ check_mem("POST-HARMONY")
 # 7. POST-HARMONY REDUCTION & CLUSTERING
 message("Running Integrated UMAP and Neighbors...")
 obj <- RunUMAP(obj, reduction = "harmony", dims = 1:30, 
-               reduction.name = "umap_harmony", verbose = TRUE)
+               reduction.name = "umap_harmony", verbose = TRUE,
+               seed.use = config$runtime$random_seed)
 
 obj <- FindNeighbors(obj, reduction = "harmony", dims = 1:30, verbose = TRUE)
 
 # 8. GENERATE CLUSTERS (RUN IN BULK FOR SPEED)
 assay_prefix <- DefaultAssay(obj)
-message(Sys.time(), ": Calculating all clusters in parallel...")
+message(Sys.time(), ": Calculating all clusters with ", workers, " configured worker(s)...")
 
-# Running all resolutions at once is faster with future/parallelization
-obj <- FindClusters(obj, resolution = res_list, verbose = FALSE)
+# Limit multisession export of the large Seurat object to the operation that
+# can use it; the remaining workflow stays sequential.
+obj <- with_future_workers(
+  FindClusters(obj, resolution = res_list, verbose = FALSE)
+)
 check_mem("POST-BATCH-CLUSTERING")
 
 # Now loop only for sorting and plotting

@@ -3,9 +3,9 @@
 #SBATCH --array=1-34%3
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/VZsubset_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/VZsubset_%a.err
-#SBATCH --time=01:00:00
+#SBATCH --time=00:30:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=64G             
+#SBATCH --mem=32G
 #SBATCH --partition=short
 #SBATCH --constraint=intel
 

@@ -10,7 +10,7 @@ library(tidyr)
 library(tibble)
 library(here)
 
-xen_path <- here("outputs", "xenium", "vz", "06_subclusters", "rds", "Xenium_VZ_Res1.5_newSubclusters_3-28-26.rds")
+xen_path <- here("outputs", "xenium", "vz", "06_subclusters", "rds", "Xenium_VZ_subclusters_Res1.5.rds")
 xenium_merged <- readRDS(xen_path)
 
 sn_path <- here("outputs", "references", "aldinger", "vz", "rds", "Aldinger_VZ_4126.rds")

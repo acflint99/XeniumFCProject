@@ -29,7 +29,7 @@ input_dir <- file.path(output_root, "xenium", "rl", "04_qc", "rds")
 output_dir <- file.path(output_root, "xenium", "rl", "07_mapped", "rds")
 master_path <- file.path(
   output_root, "xenium", "rl", "06_subclusters", "rds",
-  "Xenium_RL_Res1.5_newSubclusters_4-3-26.rds"
+  "Xenium_RL_subclusters_Res1.5.rds"
 )
 input_names <- paste0(sample_ids, "_Ald_VZsub_RL_QC.rds")
 input_paths <- file.path(input_dir, input_names)

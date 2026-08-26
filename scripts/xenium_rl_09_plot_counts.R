@@ -1,25 +1,24 @@
-# Clear the environment
-rm(list = ls())
+#!/usr/bin/env Rscript
 
+# Plot the intentional focused RL developmental cohort.
+rm(list = ls())
 options(bitmapType = "cairo")
 
-# 1. INITIALIZATION & ENVIRONMENT
-source("renv/activate.R")
-library(here)
-library(Seurat)
-library(dplyr)
-library(future)
-library(ggplot2)
-library(patchwork)
+suppressPackageStartupMessages(library(here))
 
-# Load your new palette and order
-source(here("scripts", "color_palette.R"))
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!args %in% valid_options)) {
+  stop("Usage: Rscript scripts/xenium_rl_09_plot_counts.R [--dry-run|--overwrite]")
+}
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
-input_path <- here("outputs", "xenium", "rl", "06_subclusters", "rds", "Xenium_RL_Res1.5_newSubclusters_4-3-26.rds")
+input_path <- here("outputs", "xenium", "rl", "06_subclusters", "rds", "Xenium_RL_subclusters_Res1.5.rds")
 plot_dir <- here("outputs", "xenium", "rl", "09_cluster_counts", "plots")
-dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
-
-obj <- readRDS(input_path)
 
 # 1. Define a named list of your cluster sets
 cluster_sets <- list(
@@ -27,9 +26,55 @@ cluster_sets <- list(
   "UBC_Lineage" = c("RL VZ", "RL SVZ", "Intermediate Progenitors", "Immature UBCs", "Mature UBCs")
 )
 
+# Intentional focused cohort for the developmental lineage count comparison.
+# This is not the complete 34-sample manifest by design.
 target_samples <- c("FB328_1_X_G", "GZFB_12_X_G_3", "GZFB5_X_G",
                     "GZFB_1_X_G", "FB330_1_X_G", "FB78_X_G",
                     "GZFB4_X_G", "FB124_X_G") 
+
+plot_stems <- paste0("XenAld_RL_", names(cluster_sets), "_ClusterCountPlot")
+expected_outputs <- c(
+  file.path(plot_dir, paste0(plot_stems, ".tif")),
+  file.path(plot_dir, paste0(plot_stems, ".pdf"))
+)
+
+if (dry_run) {
+  cat("RL subcluster input:", input_path, "\n")
+  cat("RL subcluster input exists:", file.exists(input_path), "\n")
+  cat("Intentional focused cohort size:", length(target_samples), "\n")
+  cat("Intentional focused cohort:", paste(target_samples, collapse = ", "), "\n")
+  write.table(
+    data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
+    row.names = FALSE, quote = FALSE, sep = "\t"
+  )
+  quit(save = "no", status = 0L)
+}
+
+if (!file.exists(input_path)) stop("RL subcluster input not found: ", input_path)
+existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+if (length(existing_outputs) && !overwrite) {
+  stop(
+    "Refusing to overwrite existing RL count plots:\n- ",
+    paste(existing_outputs, collapse = "\n- "),
+    "\nUse --overwrite only after reviewing them."
+  )
+}
+
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(dplyr)
+  library(ggplot2)
+})
+source(here("scripts", "color_palette.R"))
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+obj <- readRDS(input_path)
+required_metadata <- c("PCW", "RL_subcluster", "orig.ident")
+missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
+if (length(missing_metadata)) stop("RL subcluster input lacks metadata: ", paste(missing_metadata, collapse = ", "))
+missing_target_samples <- setdiff(target_samples, unique(as.character(obj$orig.ident)))
+if (length(missing_target_samples)) {
+  stop("RL count cohort is missing sample(s): ", paste(missing_target_samples, collapse = ", "))
+}
 
 # 2. Iterate through the sets
 for (set_name in names(cluster_sets)) {

@@ -1,39 +1,108 @@
-# Clear the environment
+#!/usr/bin/env Rscript
+
+# Apply the reviewed RL subcluster labels and create summary figures.
 rm(list = ls())
 
-# 1. INITIALIZATION & ENVIRONMENT
-source("renv/activate.R")
-library(here)
-library(Seurat)
-library(harmony)
-library(dplyr)
-library(future)
-library(ggplot2)
-library(patchwork)
+suppressPackageStartupMessages(library(here))
+source(here("scripts", "R", "config.R"))
 
-# Load your new palette and order
+config <- load_pipeline_config()
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!args %in% valid_options)) {
+  stop("Usage: Rscript scripts/xenium_rl_06_annotate_subclusters.R [--dry-run|--overwrite]")
+}
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
+
+output_root <- here(config$project$outputs_dir)
+plot_path <- file.path(output_root, "xenium", "rl", "06_subclusters", "plots")
+table_path <- file.path(output_root, "xenium", "rl", "06_subclusters", "tables")
+rds_dir <- file.path(output_root, "xenium", "rl", "06_subclusters", "rds")
+merged_path <- file.path(output_root, "xenium", "rl", "05_post_qc", "rds", "Xenium_RL_postQC_Res1.5.rds")
+output_path <- file.path(rds_dir, "Xenium_RL_subclusters_Res1.5.rds")
+label_manifest_path <- file.path(table_path, "Xenium_RL_subcluster_labels.csv")
+expected_outputs <- c(
+  output_path,
+  label_manifest_path,
+  file.path(table_path, "XenAld_RL_Subcluster_QC_Summary.csv"),
+  file.path(table_path, "XenAld_RL_Subcluster_Markers.csv"),
+  file.path(plot_path, "XenAld_RL_Subcluster_QC_Violins.pdf"),
+  file.path(plot_path, "XenAld_RL_Subcluster_UMAP.tif"),
+  file.path(plot_path, "XenAld_RL_Subcluster_rmBG,Ep,PC_UMAP.tif"),
+  file.path(plot_path, "XenAld_RL_SubclusterMarker_DotPlot.tif"),
+  file.path(plot_path, "XenAld_RL_SubclusterMarker_DotPlot.pdf"),
+  file.path(plot_path, "XenAld_RL_Subcluster_Top5_Heatmap.tif"),
+  file.path(plot_path, "XenAld_RL_Subcluster_Top5_Heatmap.pdf")
+)
+
+if (dry_run) {
+  cat("RL post-QC input:", merged_path, "\n")
+  cat("RL post-QC input exists:", file.exists(merged_path), "\n")
+  cat("Annotation cluster column: Xenium_snn_res.0.5\n")
+  cat("Configured workers:", Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"), "\n")
+  write.table(
+    data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
+    row.names = FALSE, quote = FALSE, sep = "\t"
+  )
+  quit(save = "no", status = 0L)
+}
+
+if (!file.exists(merged_path)) stop("RL post-QC input not found: ", merged_path)
+existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+if (length(existing_outputs) && !overwrite) {
+  stop(
+    "Refusing to overwrite existing RL subcluster outputs:\n- ",
+    paste(existing_outputs, collapse = "\n- "),
+    "\nUse --overwrite only after reviewing them."
+  )
+}
+
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(harmony)
+  library(dplyr)
+  library(future)
+  library(ggplot2)
+  library(patchwork)
+})
 source(here("scripts", "color_palette.R"))
 
+workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1")))
+if (is.na(workers) || workers < 1L) {
+  stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
+}
+options(future.globals.maxSize = config$runtime$future_globals_max_gb_default * 1024^3)
+plan(sequential)
+set.seed(config$runtime$random_seed)
+
+with_future_workers <- function(expr) {
+  old_plan <- plan()
+  on.exit(plan(old_plan), add = TRUE)
+  if (workers > 1L) plan(multisession, workers = workers)
+  force(expr)
+}
+
 check_mem <- function(step_label) {
-  # gc() triggers garbage collection and returns a memory report
   m <- gc(full = TRUE)
-  # sum(m[,2]) gives the memory in MB currently used by R
   message(paste0("\n[", Sys.time(), "] --- ", step_label, " ---"))
   message("Memory in use: ", round(sum(m[, 2]), 1), " MB\n")
 }
 
-# 1. PARALLELIZATION 
-plan("multisession", workers = 8) 
-options(future.globals.maxSize = 200 * 1024^3)
+dir.create(plot_path, recursive = TRUE, showWarnings = FALSE)
+dir.create(table_path, recursive = TRUE, showWarnings = FALSE)
+dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
 
-plot_path <- here("outputs", "xenium", "rl", "06_subclusters", "plots")
-if(!dir.exists(plot_path)) dir.create(plot_path, recursive = TRUE)
-
-table_path <- here("outputs", "xenium", "rl", "06_subclusters", "tables")
-if(!dir.exists(table_path)) dir.create(table_path, recursive = TRUE)
-
-merged_path <- here("outputs", "xenium", "rl", "05_post_qc", "rds", "Xenium_RL_postQC_Res1.5_4-2-26.rds")
 obj <- readRDS(merged_path)
+required_metadata <- c("orig.ident", "consensus_label", "PCW", "Xenium_snn_res.0.5")
+missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
+if (length(missing_metadata)) stop("RL post-QC input lacks metadata: ", paste(missing_metadata, collapse = ", "))
+if (!"umap_clean" %in% Reductions(obj)) stop("RL post-QC input lacks the umap_clean reduction.")
+if (!"Xenium" %in% Assays(obj)) stop("RL post-QC input lacks the Xenium assay.")
+if (ncol(obj) == 0L) stop("RL post-QC input contains zero cells.")
 
 # # 2. SET THE IDENTITY
 # # Ensure we are looking at the resolution you liked best (e.g., 0.3)
@@ -99,14 +168,37 @@ new_labels <- c(
   "16" = "Intermediate Progenitors"
 )
 
+current_clusters <- levels(Idents(obj))
+missing_label_mappings <- setdiff(current_clusters, names(new_labels))
+unused_label_mappings <- setdiff(names(new_labels), current_clusters)
+if (length(missing_label_mappings) || length(unused_label_mappings)) {
+  stop(
+    "RL label mapping does not exactly match Xenium_snn_res.0.5. Missing: ",
+    if (length(missing_label_mappings)) paste(missing_label_mappings, collapse = ", ") else "none",
+    "; unused: ",
+    if (length(unused_label_mappings)) paste(unused_label_mappings, collapse = ", ") else "none"
+  )
+}
+if (anyNA(new_labels) || any(!nzchar(new_labels))) stop("RL label mapping contains missing or blank labels.")
+
 obj <- RenameIdents(obj, new_labels)
 
 # Final metadata assignment
 obj$RL_subcluster <- Idents(obj)
 
-output_path <- here("outputs", "xenium", "rl", "06_subclusters", "rds")
-if(!dir.exists(output_path)) dir.create(output_path, recursive = TRUE)
-saveRDS(obj, file.path(output_path, "Xenium_RL_Res1.5_newSubclusters_4-3-26.rds"), compress = FALSE)
+write.csv(
+  data.frame(
+    cluster_id = names(new_labels),
+    RL_subcluster = unname(new_labels),
+    source_column = "Xenium_snn_res.0.5",
+    input_rds = merged_path,
+    output_rds = output_path,
+    stringsAsFactors = FALSE
+  ),
+  label_manifest_path,
+  row.names = FALSE
+)
+saveRDS(obj, output_path, compress = FALSE)
 
 # 3. APPLY STANDARDIZED ORDERING
 # We use 'subcluster_order' from your color_palette.R script
@@ -136,7 +228,7 @@ qc_features <- c("nCount_Xenium", "nFeature_Xenium")
 
 # 3. Open the PDF device
 pdf_path <- file.path(plot_path, "XenAld_RL_Subcluster_QC_Violins.pdf")
-pdf(pdf_path, width = 12, height = 8)
+grDevices::cairo_pdf(pdf_path, width = 12, height = 8)
 
 # 4. Loop through features and print each to a new page
 for (feat in qc_features) {
@@ -259,12 +351,15 @@ check_mem("STARTING HEATMAP GENERATION")
 # 1. Identify Markers (if not already in environment from earlier)
 # We use a lower max.cells.per.ident to speed up the heatmap calculation
 message("Finding top 5 markers for heatmap...")
-heatmap_markers <- FindAllMarkers(
-  obj,
-  only.pos = TRUE,
-  min.pct = 0.25,
-  logfc.threshold = 0.25,
-  max.cells.per.ident = 500 # Faster for visualization purposes
+heatmap_markers <- with_future_workers(
+  FindAllMarkers(
+    obj,
+    only.pos = TRUE,
+    min.pct = 0.25,
+    logfc.threshold = 0.25,
+    max.cells.per.ident = 500,
+    random.seed = config$runtime$random_seed
+  )
 )
 
 write.csv(heatmap_markers,

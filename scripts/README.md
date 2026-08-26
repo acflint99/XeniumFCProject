@@ -5,7 +5,7 @@ This directory contains the R and Slurm scripts used to analyze 10x Genomics Xen
 The downstream scripts generate spatial maps, cell-type proportions, cross-study comparisons, spatially variable genes, neighborhood enrichment, ligand–receptor results, gene-expression gradients, and trajectory-ready `h5ad` files.
 
 > [!IMPORTANT]
-> This is an active research workflow, not a packaged command-line pipeline. Sample lists, dated RDS filenames, Slurm array bounds, cluster selections, and some absolute HPC paths must be checked before each run. The execution order below is inferred from script inputs and outputs.
+> This is an active research workflow, not a packaged command-line pipeline. Intentional focused cohorts, Slurm array bounds, cluster selections, and some absolute HPC paths must be checked before each run. The execution order below is inferred from script inputs and outputs.
 
 ## Biological scope
 
@@ -269,7 +269,10 @@ The VZ branch generally follows this order:
 The VZ driver reads all 34 samples from `config/samples.csv` and supports
 `--list`, `--dry-run`, and protected `--overwrite` operation. Submit
 per-sample extraction with `run_xenium_vz_01_subset.slurm`. Submit
-post-QC merged processing with `run_xenium_vz_05_reintegrate_post_qc.slurm`.
+merging with `run_xenium_vz_02_merge_samples.slurm`, integration with
+`run_xenium_vz_03_integrate.slurm`, post-QC integration with
+`run_xenium_vz_05_reintegrate_post_qc.slurm`, and subcluster annotation with
+`run_xenium_vz_06_annotate_subclusters.slurm`.
 `run_xenium_vz_07_map_to_samples.slurm` maps the refined identities, and
 `run_xenium_vz_08_plot_samples.slurm` launches 34 protected plotting tasks.
 
@@ -316,6 +319,21 @@ protects existing outputs, and records per-sample removal counts. Post-QC
 processing reads that manifest and cannot independently choose a different
 cluster.
 
+Inspect post-QC integration without loading the merged Seurat object:
+
+```bash
+Rscript scripts/xenium_vz_05_reintegrate_post_qc.R --dry-run
+```
+
+This stage writes the stable object
+`outputs/xenium/vz/05_post_qc/rds/Xenium_VZ_postQC_Res1.5.rds` and a provenance
+manifest. Stage 6 validates the complete cluster-to-label mapping before it
+writes `outputs/xenium/vz/06_subclusters/rds/Xenium_VZ_subclusters_Res1.5.rds`:
+
+```bash
+Rscript scripts/xenium_vz_06_annotate_subclusters.R --dry-run
+```
+
 Before mapping refined labels back to the whole-tissue objects, inspect all
 expected inputs and outputs without loading Seurat objects:
 
@@ -336,6 +354,11 @@ Rscript scripts/xenium_vz_08_plot_samples.R --list
 Rscript scripts/xenium_vz_08_plot_samples.R --dry-run 1
 ```
 
+Stage 9 intentionally compares a focused eight-sample developmental cohort;
+it does not use all 34 samples. Inspect its protected outputs with
+`Rscript scripts/xenium_vz_09_plot_counts.R --dry-run` and submit it with
+`run_xenium_vz_09_plot_counts.slurm`.
+
 ### 7. RL analysis
 
 The RL branch mirrors the VZ branch:
@@ -352,8 +375,11 @@ The RL branch mirrors the VZ branch:
 
 The RL driver also reads all 34 samples from `config/samples.csv` and supports
 the same inspection and overwrite protections. `run_xenium_rl_01_subset.slurm`
-submits RL extraction, and
-`run_xenium_rl_05_reintegrate_post_qc.slurm` submits post-QC merged processing.
+submits RL extraction. Use `run_xenium_rl_02_merge_samples.slurm`,
+`run_xenium_rl_03_integrate.slurm`,
+`run_xenium_rl_05_reintegrate_post_qc.slurm`, and
+`run_xenium_rl_06_annotate_subclusters.slurm` for the corresponding merged
+stages.
 
 RL outputs mirror the same numbered layout under `outputs/xenium/rl/`, from
 `01_subsets` through `09_cluster_counts`. This makes corresponding VZ and RL
@@ -410,6 +436,19 @@ Rscript scripts/xenium_rl_08_plot_samples.R --dry-run 1
 The stable processed object is
 `outputs/xenium/rl/03_integrated/rds/Xenium_RL_Res1.5.rds`; RL QC and post-QC
 processing consume that path.
+
+Inspect the protected post-QC and subcluster stages with:
+
+```bash
+Rscript scripts/xenium_rl_05_reintegrate_post_qc.R --dry-run
+Rscript scripts/xenium_rl_06_annotate_subclusters.R --dry-run
+```
+
+They write the stable objects `Xenium_RL_postQC_Res1.5.rds` and
+`Xenium_RL_subclusters_Res1.5.rds` in their numbered stage directories. Stage
+9 intentionally uses the same focused eight-sample cohort as VZ. Inspect it
+with `Rscript scripts/xenium_rl_09_plot_counts.R --dry-run` and submit it with
+`run_xenium_rl_09_plot_counts.slurm`.
 
 ### 8. Combined VZ/RL objects
 
@@ -618,7 +657,9 @@ Most outputs are written beneath `outputs/` in stage-specific directories. Commo
 - Giotto objects and interaction statistics in `.rds` format; and
 - AnnData `.h5ad` files for Python trajectory tools.
 
-Many intermediate filenames contain manually assigned dates. Downstream scripts often refer to those exact filenames, so renaming or regenerating an object requires updating its consumers.
+Some reference-preparation and optional comparison artifacts still use manually
+assigned dates. The primary Xenium preprocessing, annotation, and VZ/RL branch
+contracts use stable stage names.
 
 ## Reproducibility notes and known caveats
 
@@ -630,7 +671,7 @@ Many intermediate filenames contain manually assigned dates. Downstream scripts 
   `run_xenium_vz_05_reintegrate_post_qc.slurm` and `run_xenium_rl_05_reintegrate_post_qc.slurm`
   launchers.
 - Large objects can require 64–500 GB RAM depending on the stage. Do not copy the largest objects across too many `future` workers.
-- Random seeds are set in major Seurat stages, but manual cluster renaming and dated file selection remain part of the workflow.
+- Random seeds are set in major Seurat stages. VZ and RL subcluster identities remain manually reviewed mappings whose exact cluster coverage is validated before output.
 - The ignored `OLD/` directory contains superseded or experimental versions
   and is not part of the active workflow. This includes
   `AnchorBasedTransfer_RCTD_res1.5.R`, `XeniumABT_seq.R`, `SeppPreProcess.R`,
@@ -644,8 +685,7 @@ For future runs, the highest-impact improvements would be:
 
 1. migrate remaining hard-coded sample definitions and paths to the existing
    configuration files;
-2. replace dated input filenames with stable stage names or a manifest;
-3. validate Slurm array lengths automatically;
-4. eliminate absolute user-specific paths;
-5. pin all R and Python dependencies; and
-6. encode the stages in a workflow manager such as `targets`, Snakemake, or Nextflow.
+2. validate Slurm array lengths automatically;
+3. eliminate absolute user-specific paths;
+4. pin all R and Python dependencies; and
+5. encode the stages in a workflow manager such as `targets`, Snakemake, or Nextflow.

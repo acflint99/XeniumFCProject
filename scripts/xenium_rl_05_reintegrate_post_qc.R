@@ -1,73 +1,147 @@
-# Clear the environment
+#!/usr/bin/env Rscript
+
+# Reintegrate the reviewed RL object after the explicit stage-4 QC decision.
 rm(list = ls())
 
-# 1. INITIALIZATION & ENVIRONMENT
-source("renv/activate.R")
-library(here)
-library(Seurat)
-library(harmony)
-library(dplyr)
-library(future)
-library(ggplot2)
-library(patchwork)
-
-# Load your new palette and order
-source(here("scripts", "color_palette.R"))
+suppressPackageStartupMessages(library(here))
 source(here("scripts", "R", "config.R"))
 
 config <- load_pipeline_config()
 sample_ids <- load_sample_manifest(config)$sample_id
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!args %in% valid_options)) {
+  stop("Usage: Rscript scripts/xenium_rl_05_reintegrate_post_qc.R [--dry-run|--overwrite]")
+}
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
+
+output_root <- here(config$project$outputs_dir)
+plot_path <- file.path(output_root, "xenium", "rl", "05_post_qc", "plots")
+rds_dir <- file.path(output_root, "xenium", "rl", "05_post_qc", "rds")
+table_dir <- file.path(output_root, "xenium", "rl", "05_post_qc", "tables")
+merged_path <- file.path(output_root, "xenium", "rl", "03_integrated", "rds", "Xenium_RL_Res1.5.rds")
+removal_path <- file.path(output_root, "xenium", "rl", "04_qc", "tables", "XenAld_RL_QC_removal_manifest.csv")
+review_path <- file.path(output_root, "xenium", "rl", "04_qc", "tables", "XenAld_RL_QC_review_manifest.csv")
+output_path <- file.path(rds_dir, "Xenium_RL_postQC_Res1.5.rds")
+provenance_path <- file.path(table_dir, "Xenium_RL_postQC_manifest.csv")
+res_list <- c(0.3, 0.5, 0.8)
+plot_paths <- c(
+  file.path(plot_path, "XenAld_RL_PostQC_OrigCluster_UMAP.tif"),
+  file.path(plot_path, paste0("XenAld_RL_PostQC_UMAP_Res_", res_list, ".tif"))
+)
+expected_outputs <- c(output_path, provenance_path, plot_paths)
+
+required_removal_columns <- c(
+  "sample_id", "input_cells", "removed_cells", "remaining_cells", "clusters_removed"
+)
+required_review_columns <- c(
+  "merged_path", "merged_size", "merged_mtime", "cells", "cluster_column", "clusters", "random_seed"
+)
+removal_manifest <- if (file.exists(removal_path)) {
+  read.csv(removal_path, stringsAsFactors = FALSE)
+} else NULL
+review <- if (file.exists(review_path)) {
+  read.csv(review_path, stringsAsFactors = FALSE)
+} else NULL
+removal_ready <- !is.null(removal_manifest) &&
+  all(required_removal_columns %in% names(removal_manifest)) &&
+  nrow(removal_manifest) == length(sample_ids) &&
+  identical(as.character(removal_manifest$sample_id), sample_ids) &&
+  all(is.finite(suppressWarnings(as.numeric(removal_manifest$removed_cells))))
+review_ready <- !is.null(review) &&
+  all(required_review_columns %in% names(review)) &&
+  nrow(review) == 1L &&
+  identical(as.character(review$cluster_column), "Xenium_snn_res.0.8")
+
+if (dry_run) {
+  cat("Merged RL input:", merged_path, "\n")
+  cat("Merged RL input exists:", file.exists(merged_path), "\n")
+  cat("QC review manifest:", review_path, "\n")
+  cat("QC review manifest valid:", review_ready, "\n")
+  cat("QC removal manifest:", removal_path, "\n")
+  cat("QC removal manifest valid:", removal_ready, "\n")
+  cat("Configured workers:", Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"), "\n")
+  write.table(
+    data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
+    row.names = FALSE, quote = FALSE, sep = "\t"
+  )
+  quit(save = "no", status = 0L)
+}
+
+if (!file.exists(merged_path)) stop("Merged RL input not found: ", merged_path)
+if (!review_ready) stop("RL QC review manifest is missing or invalid: ", review_path)
+if (!removal_ready) stop("RL QC removal manifest is missing or invalid: ", removal_path)
+existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+if (length(existing_outputs) && !overwrite) {
+  stop(
+    "Refusing to overwrite existing RL post-QC outputs:\n- ",
+    paste(existing_outputs, collapse = "\n- "),
+    "\nUse --overwrite only after reviewing them."
+  )
+}
+
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(harmony)
+  library(dplyr)
+  library(future)
+  library(ggplot2)
+  library(patchwork)
+})
+source(here("scripts", "color_palette.R"))
+
+workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1")))
+if (is.na(workers) || workers < 1L) {
+  stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
+}
+options(future.globals.maxSize = config$runtime$future_globals_max_gb_default * 1024^3)
+plan(sequential)
+set.seed(config$runtime$random_seed)
+
+with_future_workers <- function(expr) {
+  old_plan <- plan()
+  on.exit(plan(old_plan), add = TRUE)
+  if (workers > 1L) plan(multisession, workers = workers)
+  force(expr)
+}
 
 check_mem <- function(step_label) {
-  # gc() triggers garbage collection and returns a memory report
   m <- gc(full = TRUE)
-  # sum(m[,2]) gives the memory in MB currently used by R
   message(paste0("\n[", Sys.time(), "] --- ", step_label, " ---"))
   message("Memory in use: ", round(sum(m[, 2]), 1), " MB\n")
 }
 
-# 1. PARALLELIZATION 
-plan(multisession, workers = 7)
-options(future.globals.maxSize = 200 * 1024^3)
+dir.create(plot_path, recursive = TRUE, showWarnings = FALSE)
+dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 
-plot_path <- here("outputs", "xenium", "rl", "05_post_qc", "plots")
-if(!dir.exists(plot_path)) dir.create(plot_path, recursive = TRUE)
-
-table_path <- here("outputs", "xenium", "rl", "05_post_qc", "tables")
-if(!dir.exists(table_path)) dir.create(table_path, recursive = TRUE)
-
-merged_path <- here("outputs", "xenium", "rl", "03_integrated", "rds", "Xenium_RL_Res1.5.rds")
-removal_path <- here("outputs", "xenium", "rl", "04_qc", "tables", "XenAld_RL_QC_removal_manifest.csv")
-review_path <- here("outputs", "xenium", "rl", "04_qc", "tables", "XenAld_RL_QC_review_manifest.csv")
-if (!file.exists(removal_path)) stop("Reviewed RL removal manifest not found: ", removal_path)
-if (!file.exists(review_path)) stop("RL QC review manifest not found: ", review_path)
-removal_manifest <- read.csv(removal_path, stringsAsFactors = FALSE)
-if (nrow(removal_manifest) != length(sample_ids) ||
-    !setequal(removal_manifest$sample_id, sample_ids)) {
-  stop("RL removal manifest must contain exactly the configured 34 samples.")
-}
-removal_decisions <- unique(as.character(removal_manifest$clusters_removed))
-if (length(removal_decisions) != 1L) stop("RL removal manifest contains inconsistent decisions.")
-clusters_to_remove <- if (identical(removal_decisions, "none")) {
-  character()
-} else strsplit(removal_decisions, "|", fixed = TRUE)[[1]]
 obj <- readRDS(merged_path)
+required_metadata <- c("orig.ident", "consensus_label", "PCW", "Xenium_snn_res.0.8")
+missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
+if (length(missing_metadata)) stop("Merged RL input lacks metadata: ", paste(missing_metadata, collapse = ", "))
+if (!setequal(unique(as.character(obj$orig.ident)), sample_ids)) {
+  stop("Merged RL input does not contain exactly the configured sample IDs.")
+}
 
-review <- read.csv(review_path, stringsAsFactors = FALSE)
 merged_info <- file.info(merged_path)
-review_is_current <- nrow(review) == 1L &&
+review_is_current <-
   isTRUE(all.equal(as.numeric(review$merged_size), as.numeric(merged_info$size))) &&
   isTRUE(all.equal(as.numeric(review$merged_mtime), as.numeric(merged_info$mtime))) &&
   identical(as.integer(review$cells), as.integer(ncol(obj)))
 if (!review_is_current) stop("RL merged object changed after QC review. Repeat the QC decision stage.")
 
-# Join the manifest-defined sample layers into one unified matrix.
+removal_decisions <- unique(as.character(removal_manifest$clusters_removed))
+if (length(removal_decisions) != 1L) stop("RL removal manifest contains inconsistent decisions.")
+clusters_to_remove <- if (identical(removal_decisions, "none")) {
+  character()
+} else strsplit(removal_decisions, "|", fixed = TRUE)[[1]]
+
 obj <- JoinLayers(obj)
-
-# 2. SET THE IDENTITY
-Idents(obj) <- "Xenium_snn_res.0.8" #check change resolution
-
-# Apply the explicit decision recorded after QC review.
+Idents(obj) <- "Xenium_snn_res.0.8"
 cells_before_qc <- ncol(obj)
 if (length(clusters_to_remove)) {
   unknown_clusters <- setdiff(clusters_to_remove, levels(Idents(obj)))
@@ -75,31 +149,37 @@ if (length(clusters_to_remove)) {
   obj <- subset(obj, idents = clusters_to_remove, invert = TRUE)
 }
 removed_cells <- cells_before_qc - ncol(obj)
-if (removed_cells != sum(removal_manifest$removed_cells)) {
+if (removed_cells != sum(as.numeric(removal_manifest$removed_cells))) {
   stop("Merged RL removal count does not match the reviewed per-sample removal manifest.")
 }
 
 # 1. Re-run PCA on the subset
-obj <- RunPCA(obj, verbose = FALSE, reduction.name = "pca_clean", npcs = 50)
+obj <- RunPCA(
+  obj, verbose = FALSE, reduction.name = "pca_clean", npcs = 50,
+  seed.use = config$runtime$random_seed
+)
 
 # 2. Re-run Harmony (If you used it originally)
 # You must re-integrate because the batch-effect vectors change when 31k cells leave
 obj <- RunHarmony(obj, group.by.vars = "orig.ident", reduction = "pca_clean", reduction.save = "harmony_clean")
 
 # 3. Re-run UMAP
-obj <- RunUMAP(obj, reduction = "harmony_clean", dims = 1:50, n.neighbors = 50, reduction.name = "umap_clean")
+obj <- RunUMAP(
+  obj, reduction = "harmony_clean", dims = 1:50, n.neighbors = 50,
+  reduction.name = "umap_clean", seed.use = config$runtime$random_seed
+)
 
 obj <- FindNeighbors(obj, reduction = "harmony_clean", dims = 1:50, k.param = 30, verbose = TRUE)
 
 # Define resolutions for the loop
-res_list <- c(0.3, 0.5, 0.8)
-
 # 8. GENERATE CLUSTERS (RUN IN BULK FOR SPEED)
 assay_prefix <- DefaultAssay(obj)
-message(Sys.time(), ": Calculating all clusters in parallel...")
+message(Sys.time(), ": Calculating all clusters with ", workers, " configured worker(s)...")
 
-# Running all resolutions at once is faster with future/parallelization
-obj <- FindClusters(obj, resolution = res_list, verbose = TRUE)
+# Scope multisession export of the large object to clustering.
+obj <- with_future_workers(
+  FindClusters(obj, resolution = res_list, verbose = TRUE)
+)
 check_mem("POST-BATCH-CLUSTERING")
 
 p1 <- DimPlot(obj, 
@@ -167,7 +247,31 @@ for(res in res_list) {
   gc()
 }
 
-output_path <- here("outputs", "xenium", "rl", "05_post_qc", "rds")
-if(!dir.exists(output_path)) dir.create(output_path, recursive = TRUE)
-
-saveRDS(obj, file.path(output_path, "Xenium_RL_postQC_Res1.5_4-2-26.rds"), compress = FALSE)
+saveRDS(obj, output_path, compress = FALSE)
+output_info <- file.info(output_path)
+write.csv(
+  data.frame(
+    branch = "RL",
+    input_rds = merged_path,
+    review_manifest = review_path,
+    removal_manifest = removal_path,
+    cells_before_qc = cells_before_qc,
+    removed_cells = removed_cells,
+    cells_after_qc = ncol(obj),
+    cluster_column = "Xenium_snn_res.0.8",
+    pca_dimensions = 50L,
+    umap_neighbors = 50L,
+    neighbor_k = 30L,
+    resolutions = paste(res_list, collapse = "|"),
+    random_seed = config$runtime$random_seed,
+    workers = workers,
+    output_rds = output_path,
+    output_size = as.numeric(output_info$size),
+    output_mtime = as.numeric(output_info$mtime),
+    stringsAsFactors = FALSE
+  ),
+  provenance_path,
+  row.names = FALSE
+)
+plan(sequential)
+check_mem("PIPELINE COMPLETE - FILE SAVED")
