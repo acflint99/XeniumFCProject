@@ -19,24 +19,85 @@ source(here("scripts", "R", "config.R"))
 source(here("scripts", "color_palette.R"))
 
 config <- load_pipeline_config()
-samples <- load_sample_manifest(config)
+sample_manifest <- load_sample_manifest(config)
+pilot_manifest <- load_resolution2_pilot_manifest(config)
 
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c(
+  "--dry-run", "--overwrite", "--dotplot-only", "--pilot-res2",
+  "--pilot-res3", "--pilot-res4", "--pilot-res5", "--all-samples-res4",
+  "--weighted-2of3", "--list"
+)
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options) > 0L) {
+  stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+}
+
+pilot_res2 <- "--pilot-res2" %in% args
+pilot_res3 <- "--pilot-res3" %in% args
+pilot_res4 <- "--pilot-res4" %in% args
+pilot_res5 <- "--pilot-res5" %in% args
+all_samples_res4 <- "--all-samples-res4" %in% args
+pilot_flags <- c(pilot_res2, pilot_res3, pilot_res4, pilot_res5)
+if (sum(pilot_flags) > 1L) {
+  stop(
+    "Choose only one of --pilot-res2, --pilot-res3, --pilot-res4, or --pilot-res5."
+  )
+}
+pilot_mode <- any(pilot_flags)
+if (all_samples_res4 && pilot_mode) {
+  stop("--all-samples-res4 cannot be combined with a pilot-resolution option.")
+}
+resolution_mode <- pilot_mode || all_samples_res4
+pilot_resolution_tag <- if (all_samples_res4) "4.0" else if (pilot_res5) "5.0" else if (pilot_res4) "4.0" else if (pilot_res3) "3.0" else "2.0"
+pilot_stage <- if (all_samples_res4) {
+  "03g_resolution4_all_samples"
+} else if (pilot_res5) {
+  "03e_resolution5_pilot"
+} else if (pilot_res4) {
+  "03d_resolution4_pilot"
+} else if (pilot_res3) {
+  "03c_resolution3_pilot"
+} else {
+  "03b_resolution2_pilot"
+}
+pilot_cluster_column <- paste0("whole_tissue_cluster_res", pilot_resolution_tag)
+pilot_graph_column <- paste0(
+  "Xenium_snn_res.",
+  if (pilot_res5) "5" else if (pilot_res4 || all_samples_res4) "4" else if (pilot_res3) "3" else "2"
+)
+facet_point_size <- if (all_samples_res4) {
+  0.02
+} else if (pilot_res3 || pilot_res4 || pilot_res5) {
+  0.03
+} else {
+  0.1
+}
+weighted_2of3 <- "--weighted-2of3" %in% args
+consensus_method <- if (weighted_2of3) "weighted_2of3" else "legacy_six_vote"
+samples <- if (pilot_mode) pilot_manifest else sample_manifest
+mode_description <- if (all_samples_res4) {
+  "resolution-4.0 all-sample analysis"
+} else if (pilot_mode) {
+  paste0("resolution-", pilot_resolution_tag, " pilot")
+} else {
+  "production"
+}
 task_map <- data.frame(
   task_id = seq_len(nrow(samples)),
   sample_id = samples$sample_id,
   stringsAsFactors = FALSE
 )
 
-args <- commandArgs(trailingOnly = TRUE)
-if (identical(args, "--list")) {
+if ("--list" %in% args) {
+  list_args <- args[!args %in% valid_options]
+  if (length(list_args)) stop("--list does not accept TASK_ID.")
+  cat(
+    "Mode:", mode_description, "\n"
+  )
+  cat("Consensus method:", consensus_method, "\n")
   write.table(task_map, row.names = FALSE, quote = FALSE, sep = "\t")
   quit(save = "no", status = 0L)
-}
-
-valid_options <- c("--dry-run", "--overwrite", "--dotplot-only")
-unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
-if (length(unknown_options) > 0L) {
-  stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
 }
 
 dry_run <- "--dry-run" %in% args
@@ -51,6 +112,8 @@ task_args <- args[!args %in% valid_options]
 if (length(task_args) > 1L) {
   stop(
     "Usage: Rscript scripts/xenium_annotate_03_apply_consensus.R ",
+    "[--pilot-res2|--pilot-res3|--pilot-res4|--pilot-res5|--all-samples-res4] ",
+    "[--weighted-2of3] ",
     "[--dry-run|--overwrite|--dotplot-only] [TASK_ID]"
   )
 }
@@ -67,22 +130,35 @@ if (is.na(task_id) || task_id < 1L || task_id > nrow(samples)) {
 
 sample_name <- samples$sample_id[[task_id]]
 output_root <- here(config$project$outputs_dir)
+annotation_root <- if (all_samples_res4) {
+  file.path(output_root, "xenium", "annotation", "resolution4_all_samples")
+} else if (pilot_mode) {
+  file.path(
+    output_root, "xenium", "preprocess", pilot_stage, "annotation"
+  )
+} else {
+  file.path(output_root, "xenium", "annotation")
+}
 input_path <- file.path(
-  output_root,
-  "xenium", "annotation", "01_label_transfer", "aldinger", "rds",
+  annotation_root, "01_label_transfer", "aldinger", "rds",
   paste0(sample_name, "_Aldinger_annotated.rds")
 )
 comparison_path <- file.path(
-  output_root,
-  "xenium", "annotation", "02_consensus", "tables",
+  annotation_root,
+  if (weighted_2of3) "02_consensus_weighted_2of3" else "02_consensus",
+  "tables",
   paste0(sample_name, "_comparison_merged.csv")
 )
 metadata_path <- resolve_config_path(config$manifests$sample_metadata, config)
 output_dir <- file.path(
-  output_root, "xenium", "annotation", "03_consensus_labels", "rds"
+  annotation_root,
+  if (weighted_2of3) "03_consensus_labels_weighted_2of3" else "03_consensus_labels",
+  "rds"
 )
 plot_dir <- file.path(
-  output_root, "xenium", "annotation", "03_consensus_labels", "plots", "samples"
+  annotation_root,
+  if (weighted_2of3) "03_consensus_labels_weighted_2of3" else "03_consensus_labels",
+  "plots"
 )
 output_path <- file.path(output_dir, paste0(sample_name, "_Consensus_annotated.rds"))
 plot_paths <- file.path(
@@ -126,10 +202,14 @@ save_consensus_dotplot <- function(obj, sample_name, dotplot_paths) {
     obj,
     features = existing_markers,
     assay = "Xenium",
-    cols = c("lightgrey", "red")
-  ) +
-    scale_y_discrete(limits = rev(consensus_levels)) +
-    RotatedAxis() +
+    col.min = broad_dotplot_col_min,
+    col.max = broad_dotplot_col_max,
+    dot.min = broad_dotplot_dot_min / 100,
+    dot.scale = broad_dotplot_dot_scale,
+    scale.min = broad_dotplot_dot_min,
+    scale.max = broad_dotplot_dot_max
+  )
+  p_dot <- standardize_broad_dotplot(p_dot) +
     ggtitle(paste(sample_name, "Consensus marker expression"))
 
   Cairo::CairoTIFF(dotplot_paths[[1]], width = 10, height = 6, units = "in", res = 600)
@@ -147,6 +227,10 @@ save_consensus_dotplot <- function(obj, sample_name, dotplot_paths) {
 
 if (dotplot_only) {
   if (dry_run) {
+    cat(
+      "Mode:", mode_description, "\n"
+    )
+    cat("Consensus method:", consensus_method, "\n")
     cat("Task:", task_id, "of", nrow(samples), "\n")
     cat("Biological sample:", sample_name, "\n")
     cat("Consensus input:", output_path, "\n")
@@ -168,39 +252,64 @@ if (dotplot_only) {
   quit(save = "no", status = 0L)
 }
 
-if (!file.exists(metadata_path)) stop("Sample metadata not found: ", metadata_path)
-sample_map <- readxl::read_excel(metadata_path)
-required_metadata_columns <- c("sample", "PCW")
-if (!all(required_metadata_columns %in% names(sample_map))) {
-  stop("Sample metadata must contain: ", paste(required_metadata_columns, collapse = ", "))
-}
-base_sample_name <- sub("_\\d+$", "", sample_name)
-metadata_matches <- which(as.character(sample_map$sample) == base_sample_name)
-if (length(metadata_matches) != 1L) {
-  stop(
-    "Expected one PCW metadata match for '", base_sample_name,
-    "'; found ", length(metadata_matches), "."
-  )
-}
-pcw_value <- as.character(sample_map$PCW[[metadata_matches]])
-if (is.na(pcw_value) || !nzchar(pcw_value)) {
-  stop("PCW metadata is blank for '", base_sample_name, "'.")
-}
-
 if (dry_run) {
+  cat("Mode:", mode_description, "\n")
+  cat("Consensus method:", consensus_method, "\n")
   cat("Task:", task_id, "of", nrow(samples), "\n")
   cat("Biological sample:", sample_name, "\n")
-  cat("Annotated input:", input_path, "\n")
-  cat("Consensus table:", comparison_path, "\n")
-  cat("Sample metadata:", metadata_path, "\n")
-  cat("Matched PCW:", pcw_value, "\n")
+  cat("Dry-run scope: path inspection only; no CSV, XLSX, or RDS file is loaded.\n")
+  input_checks <- data.frame(
+    input_type = c(
+      "Aldinger annotated RDS",
+      "consensus table",
+      if (pilot_mode) "pilot PCW manifest" else "sample metadata"
+    ),
+    input = c(
+      input_path,
+      comparison_path,
+      if (pilot_mode) "config/resolution2_pilot_samples.csv" else metadata_path
+    ),
+    exists = c(
+      file.exists(input_path),
+      file.exists(comparison_path),
+      if (pilot_mode) TRUE else file.exists(metadata_path)
+    ),
+    stringsAsFactors = FALSE
+  )
+  write.table(input_checks, row.names = FALSE, quote = FALSE, sep = "\t")
   write.table(
     data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
     row.names = FALSE,
     quote = FALSE,
     sep = "\t"
   )
-  quit(save = "no", status = 0L)
+  quit(save = "no", status = if (all(input_checks$exists)) 0L else 1L)
+}
+
+if (pilot_mode) {
+  if (!"PCW" %in% names(samples)) {
+    stop("Clustering pilot manifest lacks the required PCW column.")
+  }
+  pcw_value <- as.character(samples$PCW[[task_id]])
+} else {
+  if (!file.exists(metadata_path)) stop("Sample metadata not found: ", metadata_path)
+  sample_map <- readxl::read_excel(metadata_path)
+  required_metadata_columns <- c("sample", "PCW")
+  if (!all(required_metadata_columns %in% names(sample_map))) {
+    stop("Sample metadata must contain: ", paste(required_metadata_columns, collapse = ", "))
+  }
+  base_sample_name <- sub("_\\d+$", "", sample_name)
+  metadata_matches <- which(as.character(sample_map$sample) == base_sample_name)
+  if (length(metadata_matches) != 1L) {
+    stop(
+      "Expected one PCW metadata match for '", base_sample_name,
+      "'; found ", length(metadata_matches), "."
+    )
+  }
+  pcw_value <- as.character(sample_map$PCW[[metadata_matches]])
+}
+if (is.na(pcw_value) || !nzchar(pcw_value)) {
+  stop("PCW metadata is blank for '", sample_name, "'.")
 }
 
 if (!file.exists(input_path)) stop("Annotated input not found: ", input_path)
@@ -222,13 +331,50 @@ obj <- readRDS(input_path)
 if (!"seurat_clusters" %in% colnames(obj[[]])) {
   stop("Annotated object lacks the 'seurat_clusters' metadata column: ", input_path)
 }
+if (anyDuplicated(Cells(obj))) stop("Annotated object contains duplicate cell IDs: ", input_path)
+if (resolution_mode) {
+  required_pilot_metadata <- c(
+    "whole_tissue_cluster_res1.5",
+    pilot_cluster_column,
+    pilot_graph_column,
+    "seurat_clusters"
+  )
+  missing_pilot_metadata <- setdiff(required_pilot_metadata, colnames(obj[[]]))
+  if (length(missing_pilot_metadata)) {
+    stop(
+      "Resolution-", pilot_resolution_tag, " Aldinger object lacks metadata: ",
+      paste(missing_pilot_metadata, collapse = ", ")
+    )
+  }
+  if (!identical(
+    as.character(obj$seurat_clusters),
+    as.character(obj[[pilot_cluster_column]][, 1])
+  )) {
+    stop(
+      "Resolution-specific Aldinger object seurat_clusters does not exactly match ",
+      pilot_cluster_column, "."
+    )
+  }
+}
 
 obj$PCW <- pcw_value
 
 comparison <- read.csv(comparison_path, stringsAsFactors = FALSE, check.names = FALSE)
 required_columns <- c("seurat_clusters", "consensus_label")
+if (weighted_2of3) {
+  required_columns <- c(
+    required_columns, "consensus_support_n", "consensus_nonunknown_n",
+    "consensus_status", "consensus_method"
+  )
+}
 if (!all(required_columns %in% names(comparison))) {
   stop("Consensus table must contain: ", paste(required_columns, collapse = ", "))
+}
+if (weighted_2of3) {
+  table_methods <- unique(as.character(comparison$consensus_method))
+  if (!identical(table_methods, "weighted_2of3")) {
+    stop("Consensus table was not produced by the weighted_2of3 method: ", comparison_path)
+  }
 }
 if (anyDuplicated(as.character(comparison$seurat_clusters))) {
   stop("Consensus table contains duplicate seurat_clusters values: ", comparison_path)
@@ -236,6 +382,16 @@ if (anyDuplicated(as.character(comparison$seurat_clusters))) {
 
 cell_clusters <- as.character(obj$seurat_clusters)
 cluster_ids <- as.character(comparison$seurat_clusters)
+if (anyNA(cluster_ids) || any(!nzchar(cluster_ids))) {
+  stop("Consensus table contains blank seurat_clusters values: ", comparison_path)
+}
+if (resolution_mode && !setequal(unique(cell_clusters), cluster_ids)) {
+  stop(
+    "Resolution-", pilot_resolution_tag,
+    " object and consensus table do not contain identical cluster IDs for ",
+    sample_name, "."
+  )
+}
 cluster_lookup <- setNames(trimws(as.character(comparison$consensus_label)), cluster_ids)
 unmapped_clusters <- setdiff(unique(cell_clusters), names(cluster_lookup))
 if (length(unmapped_clusters) > 0L) {
@@ -287,9 +443,14 @@ Cairo::CairoTIFF(
 print(p_spatial)
 grDevices::dev.off()
 
-coords <- GetTissueCoordinates(obj)
-if (!"cell" %in% colnames(coords)) {
-  stop("Spatial coordinates lack the expected 'cell' identifier column.")
+coords <- Seurat::GetTissueCoordinates(obj, image = "fov", full = FALSE)
+required_coordinate_columns <- c("x", "y", "cell")
+missing_coordinate_columns <- setdiff(required_coordinate_columns, colnames(coords))
+if (length(missing_coordinate_columns)) {
+  stop(
+    "Spatial coordinates lack required columns: ",
+    paste(missing_coordinate_columns, collapse = ", ")
+  )
 }
 coordinate_cell_ids <- as.character(coords$cell)
 if (anyDuplicated(coordinate_cell_ids)) {
@@ -311,7 +472,7 @@ plot_data <- cbind(
   )
 )
 p_facet <- ggplot(plot_data, aes(x = y, y = x, color = consensus_label)) +
-  geom_point(size = 0.1) +
+  geom_point(size = facet_point_size) +
   facet_wrap(~consensus_label) +
   scale_color_manual(values = plot_colors, drop = FALSE) +
   coord_fixed() +

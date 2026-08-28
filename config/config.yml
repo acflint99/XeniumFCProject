@@ -15,6 +15,7 @@ manifests:
   samples: "config/samples.csv"
   slides: "config/slides.csv"
   sample_metadata: "metadata/samples_meta.xlsx"
+  resolution2_pilot_samples: "config/resolution2_pilot_samples.csv"
 
 runtime:
   r_version: "4.4.1"

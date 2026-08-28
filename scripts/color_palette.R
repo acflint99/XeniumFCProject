@@ -41,6 +41,44 @@ celltype_order <- c(
   "Endothelial", "Immune", "Unknown"
 )
 
+# Shared broad-label DotPlot scales. Keeping these fixed makes color, dot size,
+# label order, and legend orientation directly comparable across samples,
+# references, voting methods, and final consensus plots.
+broad_dotplot_col_min <- -2.5
+broad_dotplot_col_max <- 2.5
+broad_dotplot_dot_min <- 0
+broad_dotplot_dot_max <- 100
+broad_dotplot_dot_scale <- 6
+
+standardize_broad_dotplot <- function(plot) {
+  plot +
+    ggplot2::scale_y_discrete(limits = rev(celltype_order), drop = FALSE) +
+    ggplot2::scale_color_gradient(
+      low = "lightgrey",
+      high = "red",
+      limits = c(broad_dotplot_col_min, broad_dotplot_col_max),
+      breaks = c(broad_dotplot_col_min, 0, broad_dotplot_col_max),
+      oob = scales::squish,
+      name = "Average expression\n(scaled)"
+    ) +
+    ggplot2::scale_radius(
+      range = c(0, broad_dotplot_dot_scale),
+      limits = c(broad_dotplot_dot_min, broad_dotplot_dot_max),
+      breaks = c(0, 25, 50, 75, 100),
+      name = "Percent expressed"
+    ) +
+    ggplot2::guides(
+      size = ggplot2::guide_legend(order = 1, direction = "vertical"),
+      color = ggplot2::guide_colorbar(order = 2, direction = "vertical")
+    ) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
+      legend.position = "right",
+      legend.box = "vertical",
+      legend.direction = "vertical"
+    )
+}
+
 markers <- list(
   "RL" = c("MKI67", "LTBP1", "OTX2"),
   "UBC" = c("EOMES"),

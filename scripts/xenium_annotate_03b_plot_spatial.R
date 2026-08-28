@@ -13,7 +13,7 @@ source(here("scripts", "R", "config.R"))
 input_dir <- here("outputs", "xenium", "annotation", "03_consensus_labels", "rds")
 
 output_dir <- here(
-  "outputs", "xenium", "annotation", "03_consensus_labels", "plots", "spatial"
+  "outputs", "xenium", "annotation", "03_consensus_labels", "plots"
 )
 
 # Create output directory if it doesn't exist

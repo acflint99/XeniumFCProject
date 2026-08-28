@@ -146,7 +146,7 @@ abt_paths <- function(sample_name, reference) {
 
 consensus_paths <- function(sample_name) {
   plot_dir <- file.path(
-    output_root, "xenium", "annotation", "03_consensus_labels", "plots", "samples"
+    output_root, "xenium", "annotation", "03_consensus_labels", "plots"
   )
   list(
     table = file.path(

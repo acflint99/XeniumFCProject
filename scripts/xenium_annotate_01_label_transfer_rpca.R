@@ -5,23 +5,100 @@ rm(list = ls())
 
 library(here)
 
-sample_manifest <- read.csv(
-  here("config", "samples.csv"),
-  check.names = FALSE,
-  stringsAsFactors = FALSE,
-  na.strings = character()
-)
+source(here("scripts", "R", "config.R"))
+
+config <- load_pipeline_config()
+sample_manifest <- load_sample_manifest(config)
 sample_list <- sample_manifest$sample_id
 
+pilot_manifest <- load_resolution2_pilot_manifest(config)
+required_pilot_columns <- c("task_id", "sample_id", "PCW", "age_group")
+if (!all(required_pilot_columns %in% names(pilot_manifest))) {
+  stop(
+    "Resolution-2.0 pilot manifest must contain: ",
+    paste(required_pilot_columns, collapse = ", ")
+  )
+}
+pilot_manifest_counts <- vapply(
+  pilot_manifest$sample_id,
+  function(sample_id) sum(sample_manifest$sample_id == sample_id),
+  integer(1)
+)
+if (any(pilot_manifest_counts != 1L)) {
+  stop("Every clustering-pilot sample must map to exactly one config/samples.csv row.")
+}
+
 reference_paths <- c(
-  Aldinger = here("outputs", "references", "aldinger", "rds", "Aldinger_newClusters_newUMAPv2_5k.rds"),
-  Sepp = here("outputs", "references", "sepp", "rds", "Sepp_newClusters_newUMAPv2_5k.rds"),
-  Science = here("outputs", "references", "science", "rds", "Science_newClusters_newUMAPv2_5k.rds")
+  Aldinger = resolve_config_path(config$inputs$references$aldinger, config),
+  Sepp = resolve_config_path(config$inputs$references$sepp, config),
+  Science = resolve_config_path(config$inputs$references$science, config)
 )
 
 args <- commandArgs(trailingOnly = TRUE)
 
-if (identical(args, "--list")) {
+valid_options <- c(
+  "--dry-run", "--overwrite", "--pilot-res2", "--pilot-res3",
+  "--pilot-res4", "--pilot-res5", "--all-samples-res4", "--list"
+)
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options) > 0L) {
+  stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+}
+
+pilot_res2 <- "--pilot-res2" %in% args
+pilot_res3 <- "--pilot-res3" %in% args
+pilot_res4 <- "--pilot-res4" %in% args
+pilot_res5 <- "--pilot-res5" %in% args
+all_samples_res4 <- "--all-samples-res4" %in% args
+pilot_flags <- c(pilot_res2, pilot_res3, pilot_res4, pilot_res5)
+if (sum(pilot_flags) > 1L) {
+  stop(
+    "Choose only one of --pilot-res2, --pilot-res3, --pilot-res4, or --pilot-res5."
+  )
+}
+pilot_mode <- any(pilot_flags)
+if (all_samples_res4 && pilot_mode) {
+  stop("--all-samples-res4 cannot be combined with a pilot-resolution option.")
+}
+resolution_mode <- pilot_mode || all_samples_res4
+pilot_resolution <- if (all_samples_res4) 4.0 else if (pilot_res5) 5.0 else if (pilot_res4) 4.0 else if (pilot_res3) 3.0 else 2.0
+pilot_resolution_tag <- sprintf("%.1f", pilot_resolution)
+pilot_stage <- if (all_samples_res4) {
+  "03g_resolution4_all_samples"
+} else if (pilot_res5) {
+  "03e_resolution5_pilot"
+} else if (pilot_res4) {
+  "03d_resolution4_pilot"
+} else if (pilot_res3) {
+  "03c_resolution3_pilot"
+} else {
+  "03b_resolution2_pilot"
+}
+pilot_cluster_column <- paste0("whole_tissue_cluster_res", pilot_resolution_tag)
+pilot_graph_column <- paste0("Xenium_snn_res.", format(pilot_resolution, trim = TRUE))
+facet_point_size <- if (all_samples_res4) {
+  0.02
+} else if (pilot_res3 || pilot_res4 || pilot_res5) {
+  0.03
+} else {
+  0.1
+}
+list_requested <- "--list" %in% args
+sample_list <- if (pilot_mode) pilot_manifest$sample_id else sample_manifest$sample_id
+mode_description <- if (all_samples_res4) {
+  "resolution-4.0 all-sample analysis"
+} else if (pilot_mode) {
+  paste0("resolution-", pilot_resolution_tag, " pilot")
+} else {
+  "production"
+}
+
+if (list_requested) {
+  list_args <- args[!args %in% valid_options]
+  if (length(list_args)) stop("--list does not accept REFERENCE or TASK_ID arguments.")
+  cat(
+    "Mode:", mode_description, "\n"
+  )
   cat("References:", paste(names(reference_paths), collapse = ", "), "\n")
   write.table(
     data.frame(task_id = seq_along(sample_list), sample_id = sample_list),
@@ -30,12 +107,6 @@ if (identical(args, "--list")) {
     sep = "\t"
   )
   quit(save = "no", status = 0L)
-}
-
-valid_options <- c("--dry-run", "--overwrite")
-unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
-if (length(unknown_options) > 0L) {
-  stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
 }
 
 dry_run <- "--dry-run" %in% args
@@ -48,6 +119,7 @@ job_args <- args[!args %in% valid_options]
 if (length(job_args) != 2L) {
   stop(
     "Usage: Rscript scripts/xenium_annotate_01_label_transfer_rpca.R ",
+    "[--pilot-res2|--pilot-res3|--pilot-res4|--pilot-res5|--all-samples-res4] ",
     "[--dry-run|--overwrite] REFERENCE TASK_ID"
   )
 }
@@ -66,13 +138,30 @@ if (is.na(task_id) || task_id < 1L || task_id > length(sample_list)) {
 }
 
 current_sample <- sample_list[[task_id]]
-input_file <- here(
-  "outputs", "xenium", "preprocess", "03_clustered", "rds",
-  paste0(current_sample, "_CB_QC_cluster.rds")
-)
-annotation_dir <- here(
-  "outputs", "xenium", "annotation", "01_label_transfer", reference_key
-)
+if (resolution_mode) {
+  pilot_root <- here(
+    "outputs", "xenium", "preprocess", pilot_stage
+  )
+  input_file <- file.path(
+    pilot_root, "rds",
+    paste0(
+      current_sample, "_whole_tissue_Res", pilot_resolution_tag,
+      if (all_samples_res4) "" else "_pilot", ".rds"
+    )
+  )
+  annotation_root <- if (all_samples_res4) {
+    here("outputs", "xenium", "annotation", "resolution4_all_samples")
+  } else {
+    file.path(pilot_root, "annotation")
+  }
+} else {
+  input_file <- here(
+    "outputs", "xenium", "preprocess", "03_clustered", "rds",
+    paste0(current_sample, "_CB_QC_cluster.rds")
+  )
+  annotation_root <- here("outputs", "xenium", "annotation")
+}
+annotation_dir <- file.path(annotation_root, "01_label_transfer", reference_key)
 plots_dir <- file.path(annotation_dir, "plots")
 tables_dir <- file.path(annotation_dir, "tables")
 rds_dir <- file.path(annotation_dir, "rds")
@@ -96,23 +185,30 @@ expected_outputs <- c(
 )
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
 
-if (!file.exists(input_file)) stop("Input file not found: ", input_file)
-if (!file.exists(reference_path)) stop("Reference file not found: ", reference_path)
-
 if (dry_run) {
+  cat(
+    "Mode:", mode_description, "\n"
+  )
   cat("Reference:", reference_name, "\n")
   cat("Task:", task_id, "of", length(sample_list), "\n")
   cat("Sample:", current_sample, "\n")
   cat("Input:", input_file, "\n")
+  cat("Input exists:", file.exists(input_file), "\n")
   cat("Reference RDS:", reference_path, "\n")
+  cat("Reference exists:", file.exists(reference_path), "\n")
+  cat("Dry-run scope: path inspection only; no RDS is loaded.\n")
   write.table(
     data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
     row.names = FALSE,
     quote = FALSE,
     sep = "\t"
   )
-  quit(save = "no", status = 0L)
+  inputs_ready <- file.exists(input_file) && file.exists(reference_path)
+  quit(save = "no", status = if (inputs_ready) 0L else 1L)
 }
+
+if (!file.exists(input_file)) stop("Input file not found: ", input_file)
+if (!file.exists(reference_path)) stop("Reference file not found: ", reference_path)
 
 if (length(existing_outputs) > 0L && !overwrite) {
   stop(
@@ -150,7 +246,8 @@ message(
 annotate_xenium_from_ref <- function(xenium_obj,
                                      sample_name,
                                      reference_name,
-                                     reference_path) {
+                                     reference_path,
+                                     annotation_dir) {
   
   ## ----------------------------
   ## 0. Setup & Paths
@@ -162,11 +259,6 @@ annotate_xenium_from_ref <- function(xenium_obj,
   source(here("scripts", "color_palette.R")) 
   
   pred_score_thresh <- 0.4
-  annotation_dir <- here(
-    "outputs", "xenium", "annotation", "01_label_transfer",
-    tolower(reference_name)
-  )
-
   plots_dir <- file.path(annotation_dir, "plots")
   if(!dir.exists(plots_dir)) dir.create(plots_dir, recursive = TRUE)
   
@@ -369,7 +461,7 @@ annotate_xenium_from_ref <- function(xenium_obj,
   # Weighted Facet
   plot_data_wei <- cbind(coords, cluster = factor(as.character(xenium_obj$cluster_weighted), levels = celltype_order))
   p_facet_wei <- ggplot(plot_data_wei, aes(x = y, y = x, color = cluster)) + 
-    geom_point(size = 0.1) + facet_wrap(~cluster) +
+    geom_point(size = facet_point_size) + facet_wrap(~cluster) +
     scale_color_manual(values = cluster_colors) + coord_fixed() + theme_void() +
     theme(panel.background = element_rect(fill = "black"), plot.background = element_rect(fill = "black"),
           legend.position = "none", strip.text = element_text(color = "white"))
@@ -381,7 +473,7 @@ annotate_xenium_from_ref <- function(xenium_obj,
   # Majority Facet
   plot_data_maj <- cbind(coords, cluster = factor(as.character(xenium_obj$cluster_majority), levels = celltype_order))
   p_facet_maj <- ggplot(plot_data_maj, aes(x = y, y = x, color = cluster)) + 
-    geom_point(size = 0.1) + facet_wrap(~cluster) +
+    geom_point(size = facet_point_size) + facet_wrap(~cluster) +
     scale_color_manual(values = cluster_colors) + coord_fixed() + theme_void() +
     theme(panel.background = element_rect(fill = "black"), plot.background = element_rect(fill = "black"),
           legend.position = "none", strip.text = element_text(color = "white"))
@@ -395,8 +487,18 @@ annotate_xenium_from_ref <- function(xenium_obj,
   
   # Weighted DotPlot
   Idents(xenium_obj) <- factor(xenium_obj$cluster_weighted, levels = rev(celltype_order))
-  p_dot_wei <- DotPlot(xenium_obj, features = existing_markers, assay = "Xenium") + 
-    RotatedAxis() + scale_color_gradient(low = "lightgrey", high = "red") +
+  p_dot_wei <- DotPlot(
+    xenium_obj,
+    features = existing_markers,
+    assay = "Xenium",
+    col.min = broad_dotplot_col_min,
+    col.max = broad_dotplot_col_max,
+    dot.min = broad_dotplot_dot_min / 100,
+    dot.scale = broad_dotplot_dot_scale,
+    scale.min = broad_dotplot_dot_min,
+    scale.max = broad_dotplot_dot_max
+  )
+  p_dot_wei <- standardize_broad_dotplot(p_dot_wei) +
     ggtitle(paste(sample_name, "Markers (Weighted)"))
   
   CairoTIFF(here(plots_dir, paste0(sample_name, "_Broad_Marker_DotPlot_Weighted.tif")), width = 10, height = 6, units = "in", res = 600)
@@ -406,8 +508,18 @@ annotate_xenium_from_ref <- function(xenium_obj,
   
   # Majority DotPlot
   Idents(xenium_obj) <- factor(xenium_obj$cluster_majority, levels = rev(celltype_order))
-  p_dot_maj <- DotPlot(xenium_obj, features = existing_markers, assay = "Xenium") + 
-    RotatedAxis() + scale_color_gradient(low = "lightgrey", high = "red") +
+  p_dot_maj <- DotPlot(
+    xenium_obj,
+    features = existing_markers,
+    assay = "Xenium",
+    col.min = broad_dotplot_col_min,
+    col.max = broad_dotplot_col_max,
+    dot.min = broad_dotplot_dot_min / 100,
+    dot.scale = broad_dotplot_dot_scale,
+    scale.min = broad_dotplot_dot_min,
+    scale.max = broad_dotplot_dot_max
+  )
+  p_dot_maj <- standardize_broad_dotplot(p_dot_maj) +
     ggtitle(paste(sample_name, "Markers (Majority)"))
   
   CairoTIFF(here(plots_dir, paste0(sample_name, "_Broad_Marker_DotPlot_Majority.tif")), width = 10, height = 6, units = "in", res = 600)
@@ -431,9 +543,36 @@ annotate_xenium_from_ref <- function(xenium_obj,
 # Execution
 # =========================================================
 seu <- readRDS(input_file)
+if (resolution_mode) {
+  required_pilot_metadata <- c(
+    "whole_tissue_cluster_res1.5",
+    pilot_cluster_column,
+    pilot_graph_column,
+    "seurat_clusters"
+  )
+  missing_pilot_metadata <- setdiff(required_pilot_metadata, colnames(seu[[]]))
+  if (length(missing_pilot_metadata)) {
+    stop(
+      "Resolution-", pilot_resolution_tag, " input lacks metadata: ",
+      paste(missing_pilot_metadata, collapse = ", ")
+    )
+  }
+  candidate_clusters <- as.character(seu[[pilot_cluster_column]][, 1])
+  seurat_clusters <- as.character(seu$seurat_clusters)
+  if (anyNA(candidate_clusters) || !identical(candidate_clusters, seurat_clusters)) {
+    stop(
+      "Resolution-specific input seurat_clusters does not exactly match ",
+      pilot_cluster_column, " for every cell."
+    )
+  }
+  if (anyDuplicated(Cells(seu))) {
+    stop("Resolution-specific input contains duplicate cell IDs.")
+  }
+}
 annotate_xenium_from_ref(
   xenium_obj = seu,
   sample_name = current_sample,
   reference_name = reference_name,
-  reference_path = reference_path
+  reference_path = reference_path,
+  annotation_dir = annotation_dir
 )

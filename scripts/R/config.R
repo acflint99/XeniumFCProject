@@ -48,6 +48,12 @@ load_slide_manifest <- function(config = load_pipeline_config()) {
   read.csv(path, check.names = FALSE, stringsAsFactors = FALSE, na.strings = character())
 }
 
+load_resolution2_pilot_manifest <- function(config = load_pipeline_config()) {
+  path <- resolve_config_path(config$manifests$resolution2_pilot_samples, config)
+  if (!file.exists(path)) stop("Resolution-2.0 pilot manifest not found: ", path)
+  read.csv(path, check.names = FALSE, stringsAsFactors = FALSE, na.strings = character())
+}
+
 get_sample_record <- function(sample_id,
                               samples = NULL,
                               config = load_pipeline_config()) {
@@ -93,6 +99,7 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
 
   samples <- load_sample_manifest(config)
   slides <- load_slide_manifest(config)
+  resolution2_pilot <- load_resolution2_pilot_manifest(config)
 
   required_sample_columns <- c(
     "sample_id", "input_directory", "input_layout", "cell_stats_file"
@@ -105,6 +112,39 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   if (any(!nzchar(samples$sample_id))) add_error("Blank sample IDs found.")
   if (any(!samples$input_layout %in% c("single", "multi_sample_slide"))) {
     add_error("input_layout must be 'single' or 'multi_sample_slide'.")
+  }
+
+  required_pilot_columns <- c("task_id", "sample_id", "PCW", "age_group")
+  missing_pilot_columns <- setdiff(required_pilot_columns, names(resolution2_pilot))
+  if (length(missing_pilot_columns)) {
+    add_error(
+      "Missing resolution-2.0 pilot columns: ",
+      paste(missing_pilot_columns, collapse = ", ")
+    )
+  } else {
+    pilot_task_ids <- suppressWarnings(as.integer(resolution2_pilot$task_id))
+    if (!identical(pilot_task_ids, seq_len(nrow(resolution2_pilot)))) {
+      add_error("Resolution-2.0 pilot task_id values must be consecutive and one-based.")
+    }
+    if (anyDuplicated(resolution2_pilot$sample_id)) {
+      add_error("Duplicate resolution-2.0 pilot sample IDs found.")
+    }
+    if (any(!nzchar(resolution2_pilot$sample_id))) {
+      add_error("Blank resolution-2.0 pilot sample IDs found.")
+    }
+    if (any(!nzchar(resolution2_pilot$PCW))) {
+      add_error("Blank resolution-2.0 pilot PCW values found.")
+    }
+    pilot_manifest_counts <- vapply(
+      resolution2_pilot$sample_id,
+      function(sample_id) sum(samples$sample_id == sample_id),
+      integer(1)
+    )
+    if (any(pilot_manifest_counts != 1L)) {
+      add_error(
+        "Every resolution-2.0 pilot sample must map to exactly one samples.csv row."
+      )
+    }
   }
 
   multi <- samples[samples$input_layout == "multi_sample_slide", , drop = FALSE]
@@ -188,7 +228,13 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   message(
     "Configuration valid: ", nrow(samples), " biological samples; ",
     nrow(slides), " multi-sample slide directories; file checks ",
-    if (isTRUE(check_files)) "enabled." else "disabled."
+    if (isTRUE(check_files)) "enabled; " else "disabled; ",
+    nrow(resolution2_pilot), " resolution-2.0 pilot samples."
   )
-  invisible(list(config = config, samples = samples, slides = slides))
+  invisible(list(
+    config = config,
+    samples = samples,
+    slides = slides,
+    resolution2_pilot = resolution2_pilot
+  ))
 }
