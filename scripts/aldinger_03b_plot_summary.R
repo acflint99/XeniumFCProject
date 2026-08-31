@@ -59,25 +59,35 @@ Idents(AldingerSubset_newUMAP) <- factor(
   levels = rev(celltype_order)
 )
 
-# markers <- c("OTX2", "EOMES", "RELN", "FOXP2", "PAX2", "TNC",
-#                                      "OLIG1", "FOXC1", "CLDN5", "P2RY12")
+# Use only configured markers that are present in the active panel assay.
+dotplot_assay <- DefaultAssay(AldingerSubset_newUMAP)
+existing_markers <- lapply(
+  markers,
+  function(features) intersect(features, rownames(AldingerSubset_newUMAP[[dotplot_assay]]))
+)
+existing_markers <- existing_markers[lengths(existing_markers) > 0L]
+if (!length(existing_markers)) {
+  stop("None of the configured broad-cell markers are present in the Aldinger panel object.")
+}
 
 p3 <- DotPlot(
   AldingerSubset_newUMAP,
-  features = markers
-) +
-  RotatedAxis() +
-  scale_color_gradient(low = "lightgrey", high = "red") +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    plot.title = element_text(hjust = 0.5)
-  ) +
+  features = existing_markers,
+  assay = dotplot_assay,
+  col.min = broad_dotplot_col_min,
+  col.max = broad_dotplot_col_max,
+  dot.min = broad_dotplot_dot_min / 100,
+  dot.scale = broad_dotplot_dot_scale,
+  scale.min = broad_dotplot_dot_min,
+  scale.max = broad_dotplot_dot_max
+)
+p3 <- standardize_broad_dotplot(p3) +
   ggtitle("High-Specificity Marker Expression by Cluster")
 
 p3
 Cairo::CairoTIFF(
   filename = file.path(plot_dir, "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.tif"),
-  width = 14,
+  width = 10,
   height = 6,
   units = "in",
   res = 600
@@ -86,7 +96,7 @@ print(p3)
 grDevices::dev.off()
 ggplot2::ggsave(
   filename = file.path(plot_dir, "AldingerDotPlot_newclusters_5k_newUMAP50v2_markers.pdf"),
-  plot = p3, device = grDevices::cairo_pdf, width = 14, height = 6
+  plot = p3, device = grDevices::cairo_pdf, width = 10, height = 6
 )
 
 #### --- Proportion Plot: clusters_refined by PCW --- ####

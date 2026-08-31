@@ -1,33 +1,95 @@
+#!/usr/bin/env Rscript
+
+# Restrict the standardized Science reference to the Xenium gene panel.
+
 # Clear the environment
 rm(list = ls())
 
 options(bitmapType = "cairo")
 
-# load libraries
-library(Seurat)
-library(dplyr)
-library(patchwork)
-library(ggplot2)
+# Load only the path dependency before the path-only dry-run exits.
 library(here)
-library(Cairo)
 
-# Source the color palette ----
-source(here("scripts", "color_palette.R"))
+source(here("scripts", "R", "config.R"))
+config <- load_pipeline_config()
+
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!args %in% valid_options)) {
+  stop("Usage: Rscript scripts/science_02_subset_gene_panel.R [--dry-run|--overwrite]")
+}
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 # Define output directories
 plot_path <- here("outputs", "references", "science", "plots")
 RDS_path <- here("outputs", "references", "science", "rds")
+
+input_path <- file.path(RDS_path, "Science_newClusters_newUMAPv1.rds")
+panel_path <- here("inputs", "xenium_5k_genes.rds")
+output_paths <- c(
+  file.path(plot_path, "ScienceUMAP_FC_newClusters_5k.tiff"),
+  file.path(plot_path, "ScienceUMAP_newClusters_5k_newUMAP50v2.tiff"),
+  file.path(plot_path, "ScienceDotPlot_newClusters_5k_newUMAP50v2_markers.tiff"),
+  file.path(plot_path, "ScienceDotPlot_newclusters_5k_newUMAP50v2_markers.pdf"),
+  file.path(RDS_path, "Science_newClusters_UMAPv1_5k.rds"),
+  file.path(RDS_path, "Science_newClusters_newUMAPv2_5k.rds")
+)
+
+if (dry_run) {
+  cat("Standardized Science input:", input_path, "\n")
+  cat("Input exists:", file.exists(input_path), "\n")
+  cat("Xenium panel:", panel_path, "\n")
+  cat("Panel exists:", file.exists(panel_path), "\n")
+  write.table(
+    data.frame(output = output_paths, exists = file.exists(output_paths)),
+    row.names = FALSE, quote = FALSE, sep = "\t"
+  )
+  quit(save = "no", status = 0L)
+}
+
+missing_inputs <- c(input_path, panel_path)[!file.exists(c(input_path, panel_path))]
+if (length(missing_inputs)) stop("Science panel stage is missing input(s):\n- ", paste(missing_inputs, collapse = "\n- "))
+existing_outputs <- output_paths[file.exists(output_paths)]
+if (length(existing_outputs) && !overwrite) {
+  stop(
+    "Refusing to overwrite existing Science panel outputs:\n- ",
+    paste(existing_outputs, collapse = "\n- "),
+    "\nUse --overwrite only after reviewing the standardized Science reference."
+  )
+}
+
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(dplyr)
+  library(patchwork)
+  library(ggplot2)
+  library(Cairo)
+})
+source(here("scripts", "color_palette.R"))
 
 # Ensure directories exist before saving any files
 if (!dir.exists(plot_path)) dir.create(plot_path, recursive = TRUE)
 if (!dir.exists(RDS_path)) dir.create(RDS_path, recursive = TRUE)
 
 # Load the FC dataset ----
-Science = readRDS(file.path(RDS_path, "Science_newClusters_newUMAPv1.rds"))
+Science <- readRDS(input_path)
 
-xenium_genes <- readRDS(here("inputs", "xenium_5k_genes.rds"))
+if (!"clusters_refined" %in% colnames(Science[[]])) {
+  stop("Standardized Science input lacks 'clusters_refined'.")
+}
+if (anyDuplicated(colnames(Science))) stop("Standardized Science input contains duplicate cell IDs.")
+if (!all(c("Glia", "RL") %in% unique(as.character(Science$clusters_refined)))) {
+  stop("Standardized Science input must contain both Glia and RL labels.")
+}
+
+xenium_genes <- readRDS(panel_path)
 
 genes_present <- intersect(xenium_genes, rownames(Science))
+if (!length(genes_present)) stop("Science reference and Xenium panel have no genes in common.")
 
 ScienceSubset <- subset(
   Science,
@@ -107,16 +169,28 @@ Idents(ScienceSubset_newUMAP) <- factor(
   levels = rev(intersect(celltype_order, unique(ScienceSubset_newUMAP$clusters_refined)))
 )
 
+dotplot_assay <- DefaultAssay(ScienceSubset_newUMAP)
+existing_markers <- lapply(
+  markers,
+  function(features) intersect(features, rownames(ScienceSubset_newUMAP[[dotplot_assay]]))
+)
+existing_markers <- existing_markers[lengths(existing_markers) > 0L]
+if (!length(existing_markers)) {
+  stop("None of the configured broad-cell markers are present in the Science panel object.")
+}
+
 p3 <- DotPlot(
   ScienceSubset_newUMAP,
-  features = markers
-) +
-  RotatedAxis() +
-  scale_color_gradient(low = "lightgrey", high = "red") +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    plot.title = element_text(hjust = 0.5)
-  ) +
+  features = existing_markers,
+  assay = dotplot_assay,
+  col.min = broad_dotplot_col_min,
+  col.max = broad_dotplot_col_max,
+  dot.min = broad_dotplot_dot_min / 100,
+  dot.scale = broad_dotplot_dot_scale,
+  scale.min = broad_dotplot_dot_min,
+  scale.max = broad_dotplot_dot_max
+)
+p3 <- standardize_broad_dotplot(p3) +
   ggtitle("High-Specificity Marker Expression by Cluster")
 
 CairoTIFF(filename = file.path(plot_path, "ScienceDotPlot_newClusters_5k_newUMAP50v2_markers.tiff"), 
