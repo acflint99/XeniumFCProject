@@ -69,13 +69,15 @@ plot_names <- c(
 plot_paths <- file.path(plot_dir, plot_names)
 
 if (dry_run) {
-  cat("Combined merge:", input_path, "\n")
-  cat("Combined merge exists:", file.exists(input_path), "\n")
-  cat("Input manifest exists:", file.exists(input_manifest_path), "\n")
-  cat("Processed object:", processed_path, "\n")
-  cat("Processed object exists:", file.exists(processed_path), "\n")
-  cat("Plot outputs existing:", sum(file.exists(plot_paths)), "of", length(plot_paths), "\n")
-  cat("Requested mode:", if (process_only) "processing" else if (plots_only) "plotting" else "inspection only", "\n")
+  compact_dry_run(
+    paste0(
+      "Combined regional analysis [",
+      if (process_only) "processing" else if (plots_only) "plotting" else "inspection",
+      "]"
+    ),
+    inputs = if (plots_only) processed_path else c(input_path, input_manifest_path),
+    outputs = c(processed_path, processed_manifest_path, plot_paths)
+  )
   quit(save = "no", status = 0L)
 }
 if (!process_only && !plots_only) {
@@ -176,18 +178,14 @@ Cairo::CairoTIFF(plot_paths[[1]], width = 16, height = 7, units = "in", res = 60
 print(p_pre + p_post)
 grDevices::dev.off()
 
-  observed_consensus <- unique(as.character(merged_obj$consensus_label))
-  unexpected_consensus <- setdiff(observed_consensus, celltype_order)
-  if (length(unexpected_consensus)) {
-    stop("Processed object has consensus labels absent from celltype_order: ",
-         paste(unexpected_consensus, collapse = ", "))
-  }
-  consensus_levels <- intersect(celltype_order, observed_consensus)
-validate_palette(setdiff(consensus_levels, "Unknown"))
+observed_consensus <- unique(as.character(merged_obj$consensus_label))
+consensus_levels <- order_consensus_levels(observed_consensus, celltype_order)
+validate_palette(consensus_levels)
+consensus_colors <- resolve_cluster_colors(consensus_levels)
 p_consensus <- DimPlot(
   merged_obj, reduction = "umap.harmony", group.by = "consensus_label",
   label = TRUE, label.size = 4, label.box = TRUE, raster = TRUE,
-  pt.size = 0.5, alpha = 0.8, cols = cluster_colors[consensus_levels]
+  pt.size = 0.5, alpha = 0.8, cols = consensus_colors
 ) + ggtitle("Xenium Merged UMAP: Consensus Labels") + theme_classic()
 Cairo::CairoTIFF(plot_paths[[2]], width = 12, height = 9, units = "in", res = 600)
 print(p_consensus)
@@ -230,7 +228,7 @@ top_markers <- heatmap_markers %>% group_by(cluster) %>%
 temp_obj <- ScaleData(merged_obj, features = top_markers, verbose = FALSE)
 p_heatmap <- DoHeatmap(
   subset(temp_obj, downsample = 100), features = rev(top_markers),
-  group.by = "consensus_label", group.colors = cluster_colors,
+  group.by = "consensus_label", group.colors = consensus_colors,
   size = 4, angle = 45, draw.lines = TRUE, raster = FALSE
 ) + scale_fill_viridis_c(option = "viridis", name = "Z-Score", na.value = "white") +
   ggtitle("Top 5 Markers per Cluster")

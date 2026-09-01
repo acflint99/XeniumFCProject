@@ -65,23 +65,14 @@ missing_names <- input_names[!file.exists(input_paths)]
 unexpected_names <- setdiff(observed_names, input_names)
 
 if (dry_run) {
-  cat("Expected combined-subcluster inputs:", length(input_paths), "\n")
-  cat("Existing combined-subcluster inputs:", sum(file.exists(input_paths)), "\n")
-  cat("Unexpected top-level RDS files:", length(unexpected_names), "\n")
-  write.table(
-    data.frame(
-      sample_id = sample_ids,
-      input = input_paths,
-      input_exists = file.exists(input_paths),
-      expected_outputs = lengths(expected_by_sample),
-      existing_outputs = vapply(expected_by_sample, function(x) sum(file.exists(x)), integer(1))
-    ),
-    row.names = FALSE,
-    quote = FALSE,
-    sep = "\t"
+  compact_dry_run(
+    "Combined regional labels",
+    inputs = input_paths,
+    outputs = unlist(expected_by_sample, use.names = FALSE),
+    checks = c(no_unexpected_inputs = !length(unexpected_names))
   )
   if (length(unexpected_names)) {
-    cat("Unexpected files:\n- ", paste(unexpected_names, collapse = "\n- "), "\n")
+    cat("  Unexpected inputs: ", paste(unexpected_names, collapse = "; "), "\n")
   }
   quit(save = "no", status = 0L)
 }
@@ -131,17 +122,22 @@ for (i in seq_along(sample_ids)) {
   if (anyNA(combined_labels) || any(!nzchar(combined_labels))) {
     stop(sample_id, " has cells without a VZ, RL, or consensus label.")
   }
-  unexpected_labels <- setdiff(unique(combined_labels), master_subcluster_order)
+  unexpected_labels <- setdiff(
+    unique(combined_labels)[!is_unknown_consensus_label(unique(combined_labels))],
+    master_subcluster_order
+  )
   if (length(unexpected_labels)) {
     stop(
       sample_id, " has combined labels absent from master_subcluster_order: ",
       paste(unexpected_labels, collapse = ", ")
     )
   }
-  present_levels <- master_subcluster_order[master_subcluster_order %in% unique(combined_labels)]
+  present_levels <- order_consensus_levels(combined_labels, master_subcluster_order)
   obj$comb_subcluster <- factor(combined_labels, levels = present_levels)
   Idents(obj) <- "comb_subcluster"
   plot_colors <- subcluster_palette[present_levels]
+  unknown_present <- present_levels[is_unknown_consensus_label(present_levels)]
+  plot_colors[unknown_present] <- resolve_cluster_colors(unknown_present)
   if (anyNA(plot_colors)) {
     stop(sample_id, " has combined labels without colors in subcluster_palette.")
   }
@@ -173,11 +169,8 @@ for (i in seq_along(sample_ids)) {
   print(p_comb_085)
   grDevices::dev.off()
 
-  consensus_levels <- levels(droplevels(factor(obj$consensus_label)))
-  consensus_colors <- cluster_colors[consensus_levels]
-  if (anyNA(consensus_colors)) {
-    stop(sample_id, " has consensus labels without colors in cluster_colors.")
-  }
+  consensus_levels <- order_consensus_levels(obj$consensus_label, celltype_order)
+  consensus_colors <- resolve_cluster_colors(consensus_levels)
   p_consensus_085 <- ImageDimPlot(
     obj, group.by = "consensus_label", size = 0.85, cols = consensus_colors
   ) + ggtitle(paste(sample_id, "-Post QC (Consensus)"))

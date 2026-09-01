@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-# Descriptive QC audit for cells assigned to consensus_label = "Unknown".
+# Descriptive QC audit for cells assigned to an Unknown-## consensus label.
 # This script does not filter, relabel, or save a modified Seurat object.
 
 rm(list = ls())
@@ -13,6 +13,7 @@ suppressPackageStartupMessages({
 })
 
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "consensus_labels.R"))
 
 config <- load_pipeline_config()
 pilot_manifest <- load_resolution2_pilot_manifest(config)
@@ -125,12 +126,11 @@ output_paths <- c(
 )
 
 if (dry_run) {
-  cat("Task ID:", task_id, "\n")
-  cat("Sample:", sample_name, "\n")
-  cat("Input:", input_path, "\n")
-  cat("Expected outputs:\n")
-  cat(paste0("- ", output_paths), sep = "\n")
-  cat("\nDry-run is path-only; no RDS object was loaded.\n")
+  compact_dry_run(
+    paste0("Unknown-QC audit task ", task_id, " [", sample_name, "]"),
+    inputs = input_path,
+    outputs = output_paths
+  )
   quit(save = "no", status = 0L)
 }
 
@@ -173,18 +173,19 @@ labels <- trimws(as.character(metadata$consensus_label))
 if (anyNA(labels) || any(!nzchar(labels))) {
   stop("Blank or missing consensus labels in ", sample_name, ".")
 }
-if (!any(labels == "Unknown")) {
-  stop("No cells have consensus_label = Unknown in ", sample_name, ".")
+unknown_cells <- is_unknown_consensus_label(labels)
+if (!any(unknown_cells)) {
+  stop("No cells have an Unknown-## consensus label in ", sample_name, ".")
 }
-if (!any(labels != "Unknown")) {
-  stop("All cells have consensus_label = Unknown in ", sample_name, ".")
+if (!any(!unknown_cells)) {
+  stop("All cells have an Unknown-## consensus label in ", sample_name, ".")
 }
 
 qc_data <- data.frame(
   cell_id = cell_ids,
   seurat_clusters = as.character(metadata$seurat_clusters),
   consensus_label = labels,
-  qc_group = ifelse(labels == "Unknown", "Unknown", "Known"),
+  qc_group = ifelse(unknown_cells, "Unknown", "Known"),
   stringsAsFactors = FALSE
 )
 for (metric in qc_metrics) {
@@ -289,12 +290,13 @@ cluster_rows <- lapply(sort(unique(unknown_data$seurat_clusters)), function(clus
     , drop = FALSE
   ]
   cluster_labels <- unique(cluster_data$consensus_label)
-  if (length(cluster_labels) != 1L || cluster_labels != "Unknown") {
+  if (length(cluster_labels) != 1L || !is_unknown_consensus_label(cluster_labels)) {
     stop("Unexpected cluster-to-consensus cardinality for cluster ", cluster_id, ".")
   }
   data.frame(
     sample = sample_name,
     seurat_clusters = cluster_id,
+    consensus_label = cluster_labels,
     n_cells = nrow(cluster_data),
     fraction_of_sample = nrow(cluster_data) / nrow(qc_data),
     median_nCount_Xenium = median(cluster_data$nCount_Xenium),

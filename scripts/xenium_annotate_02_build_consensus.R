@@ -17,7 +17,9 @@ references <- c("Aldinger", "Sepp", "Science")
 args <- commandArgs(trailingOnly = TRUE)
 valid_options <- c(
   "--pilot-res2", "--pilot-res3", "--pilot-res4", "--pilot-res5", "--dry-run",
-  "--overwrite", "--weighted-2of3", "--all-samples-res4", "--list"
+  "--overwrite", "--weighted-2of3", "--all-samples-res4", "--all-samples-res5",
+  "--selected-sample",
+  "--list"
 )
 unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
 if (length(unknown_options)) {
@@ -29,6 +31,9 @@ pilot_res3 <- "--pilot-res3" %in% args
 pilot_res4 <- "--pilot-res4" %in% args
 pilot_res5 <- "--pilot-res5" %in% args
 all_samples_res4 <- "--all-samples-res4" %in% args
+all_samples_res5 <- "--all-samples-res5" %in% args
+all_samples_mode <- all_samples_res4 || all_samples_res5
+selected_sample_mode <- "--selected-sample" %in% args
 pilot_flags <- c(pilot_res2, pilot_res3, pilot_res4, pilot_res5)
 if (sum(pilot_flags) > 1L) {
   stop(
@@ -36,13 +41,37 @@ if (sum(pilot_flags) > 1L) {
   )
 }
 pilot_mode <- any(pilot_flags)
-if (all_samples_res4 && pilot_mode) {
-  stop("--all-samples-res4 cannot be combined with a pilot-resolution option.")
+if (all_samples_res4 && all_samples_res5) {
+  stop("Choose only one of --all-samples-res4 or --all-samples-res5.")
 }
-resolution_mode <- pilot_mode || all_samples_res4
-pilot_resolution_tag <- if (all_samples_res4) "4.0" else if (pilot_res5) "5.0" else if (pilot_res4) "4.0" else if (pilot_res3) "3.0" else "2.0"
-pilot_stage <- if (all_samples_res4) {
+if (all_samples_mode && pilot_mode) {
+  stop("An all-samples mode cannot be combined with a pilot-resolution option.")
+}
+if (selected_sample_mode && (!pilot_res5 || all_samples_mode)) {
+  stop("--selected-sample currently requires --pilot-res5.")
+}
+selected_sample_id <- if (selected_sample_mode) {
+  trimws(Sys.getenv("SELECTED_SAMPLE_ID", unset = ""))
+} else {
+  ""
+}
+if (selected_sample_mode) {
+  selected_matches <- which(sample_manifest$sample_id == selected_sample_id)
+  if (!nzchar(selected_sample_id) || length(selected_matches) != 1L) {
+    stop(
+      "SELECTED_SAMPLE_ID must match exactly one config/samples.csv row; found ",
+      length(selected_matches), " match(es) for '", selected_sample_id, "'."
+    )
+  }
+}
+resolution_mode <- pilot_mode || all_samples_mode
+pilot_resolution_tag <- if (all_samples_res5) "5.0" else if (all_samples_res4) "4.0" else if (pilot_res5) "5.0" else if (pilot_res4) "4.0" else if (pilot_res3) "3.0" else "2.0"
+pilot_stage <- if (selected_sample_mode) {
+  "03h_resolution5_selected_sample"
+} else if (all_samples_res4) {
   "03g_resolution4_all_samples"
+} else if (all_samples_res5) {
+  "03i_resolution5_all_samples"
 } else if (pilot_res5) {
   "03e_resolution5_pilot"
 } else if (pilot_res4) {
@@ -63,7 +92,8 @@ positional_args <- args[!args %in% valid_options]
 if (length(positional_args) > 1L) {
   stop(
     "Usage: Rscript scripts/xenium_annotate_02_build_consensus.R ",
-    "[--pilot-res2|--pilot-res3|--pilot-res4|--pilot-res5|--all-samples-res4] ",
+    "[--pilot-res2|--pilot-res3|--pilot-res4|--pilot-res5|--all-samples-res4|--all-samples-res5] ",
+    "[--selected-sample] ",
     "[--weighted-2of3] ",
     "[--list|--dry-run|--overwrite] [OUTPUT_ROOT]"
   )
@@ -72,6 +102,8 @@ output_root <- if (length(positional_args)) positional_args[[1]] else "outputs"
 
 annotation_root <- if (all_samples_res4) {
   file.path(output_root, "xenium", "annotation", "resolution4_all_samples")
+} else if (all_samples_res5) {
+  file.path(output_root, "xenium", "annotation", "resolution5_all_samples")
 } else if (pilot_mode) {
   file.path(
     output_root, "xenium", "preprocess", pilot_stage, "annotation"
@@ -102,8 +134,12 @@ all_samples <- as.character(sample_manifest$sample_id)
 if (anyDuplicated(all_samples) || any(!nzchar(all_samples))) {
   stop("config/samples.csv contains duplicate or blank sample IDs.")
 }
-mode_description <- if (all_samples_res4) {
+mode_description <- if (selected_sample_mode) {
+  paste0("resolution-5.0 selected-sample pilot: ", selected_sample_id)
+} else if (all_samples_res4) {
   "resolution-4.0 all-sample analysis"
+} else if (all_samples_res5) {
+  "resolution-5.0 all-sample analysis"
 } else if (pilot_mode) {
   paste0("resolution-", pilot_resolution_tag, " pilot")
 } else {
@@ -112,7 +148,13 @@ mode_description <- if (all_samples_res4) {
 
 if (list_requested) {
   if (length(positional_args)) stop("--list does not accept OUTPUT_ROOT.")
-  sample_names <- if (pilot_mode) pilot_samples else all_samples
+  sample_names <- if (selected_sample_mode) {
+    selected_sample_id
+  } else if (pilot_mode) {
+    pilot_samples
+  } else {
+    all_samples
+  }
   cat(
     "Mode:", mode_description, "\n"
   )
@@ -135,9 +177,11 @@ comparison_files <- lapply(references, function(reference) {
 })
 names(comparison_files) <- references
 
-if (pilot_mode) {
+if (selected_sample_mode) {
+  sample_names <- selected_sample_id
+} else if (pilot_mode) {
   sample_names <- pilot_samples
-} else if (all_samples_res4) {
+} else if (all_samples_mode) {
   sample_names <- all_samples
 } else {
   sample_names <- sort(unique(unlist(Map(
@@ -172,22 +216,10 @@ input_grid <- do.call(rbind, lapply(sample_names, function(sample_name) {
 output_paths <- file.path(merged_dir, paste0(sample_names, "_comparison_merged.csv"))
 
 if (dry_run) {
-  cat(
-    "Mode:", mode_description, "\n"
-  )
-  cat("Consensus method:", consensus_method, "\n")
-  cat("Dry-run scope: path inspection only; no CSV or RDS file is loaded.\n")
-  write.table(
-    transform(input_grid, exists = file.exists(input)),
-    row.names = FALSE,
-    quote = FALSE,
-    sep = "\t"
-  )
-  write.table(
-    data.frame(output = output_paths, exists = file.exists(output_paths)),
-    row.names = FALSE,
-    quote = FALSE,
-    sep = "\t"
+  compact_dry_run(
+    paste0("Consensus build [", consensus_method, "]"),
+    inputs = input_grid$input,
+    outputs = output_paths
   )
   inputs_ready <- all(file.exists(input_grid$input))
   quit(save = "no", status = if (inputs_ready) 0L else 1L)
@@ -204,8 +236,10 @@ if (length(missing_dirs)) {
 if (resolution_mode && any(!file.exists(input_grid$input))) {
   stop(
     "The resolution-", pilot_resolution_tag,
-    if (all_samples_res4) {
+    if (all_samples_mode) {
       " all-sample analysis requires all 102 reference/sample tables. Missing:\n- "
+    } else if (selected_sample_mode) {
+      " selected-sample pilot requires all three reference tables. Missing:\n- "
     } else {
       " pilot requires all nine reference/sample tables. Missing:\n- "
     },
@@ -366,6 +400,12 @@ for (sample_name in sample_names) {
     ,
     drop = FALSE
   ]
+  unknown_rows <- which(tolower(trimws(as.character(merged$consensus_label))) == "unknown")
+  if (length(unknown_rows)) {
+    merged$consensus_label[unknown_rows] <- sprintf(
+      "Unknown-%02d", seq_along(unknown_rows)
+    )
+  }
   merged_tables[[sample_name]] <- merged
 }
 
@@ -380,13 +420,21 @@ for (sample_name in sample_names) {
 
 unknown_consensus <- do.call(rbind, lapply(sample_names, function(sample_name) {
   merged <- merged_tables[[sample_name]]
-  unknown <- merged[merged$consensus_label == "Unknown", "seurat_clusters", drop = FALSE]
+  unknown <- merged[
+    grepl("^Unknown-[0-9]{2,}$", merged$consensus_label),
+    c("seurat_clusters", "consensus_label"),
+    drop = FALSE
+  ]
   if (!nrow(unknown)) return(NULL)
-  data.frame(sample = sample_name, seurat_clusters = unknown$seurat_clusters)
+  data.frame(
+    sample = sample_name,
+    seurat_clusters = unknown$seurat_clusters,
+    consensus_label = unknown$consensus_label
+  )
 }))
 
 if (is.null(unknown_consensus) || !nrow(unknown_consensus)) {
-  message("No samples had clusters with consensus_label = Unknown.")
+  message("No samples had Unknown consensus clusters.")
 } else {
   print(unknown_consensus)
 }

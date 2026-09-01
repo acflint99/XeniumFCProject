@@ -29,6 +29,7 @@ if (!file.exists(config_path)) {
   config_path <- file.path(project_root, "config", "config.yml")
 }
 if (!file.exists(config_path)) stop("Could not find config/config.yml.")
+source(file.path(script_dir, "R", "consensus_labels.R"))
 
 config <- yaml::read_yaml(config_path)
 resolve_project_path <- function(path) {
@@ -164,7 +165,12 @@ consensus_paths <- function(sample_name) {
         c(
           "_Consensus_UMAP.tif", "_Consensus_GlobalSpatial.tif",
           "_Consensus_FacetSpatial.tif", "_Consensus_Marker_DotPlot.tif",
-          "_Consensus_Marker_DotPlot.pdf"
+          "_Consensus_Marker_DotPlot.pdf",
+          "_Consensus_KnownOnly_UMAP.tif",
+          "_Consensus_KnownOnly_GlobalSpatial.tif",
+          "_Consensus_KnownOnly_FacetSpatial.tif",
+          "_Consensus_KnownOnly_Marker_DotPlot.tif",
+          "_Consensus_KnownOnly_Marker_DotPlot.pdf"
         )
       )
     )
@@ -416,8 +422,10 @@ validate_sample <- function(sample_name) {
       } else {
         consensus_values <- as.character(obj$consensus_label)
         n_consensus_labels <- length(unique(consensus_values))
-        unknown_cells <- sum(is.na(consensus_values) | !nzchar(consensus_values) |
-                               tolower(consensus_values) == "unknown")
+        unknown_cells <- sum(
+          is.na(consensus_values) | !nzchar(consensus_values) |
+            is_unknown_consensus_label(consensus_values)
+        )
         unknown_percent <- 100 * unknown_cells / ncol(obj)
         label_counts <- as.data.frame(table(consensus_label = consensus_values, useNA = "ifany"))
         names(label_counts)[[2]] <- "n_cells"

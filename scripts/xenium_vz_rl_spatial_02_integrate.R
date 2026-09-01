@@ -47,11 +47,11 @@ plot_paths <- file.path(
 expected_outputs <- c(output_path, output_manifest_path, plot_paths)
 
 if (dry_run) {
-  cat("Spatial merged input:", input_path, "\n")
-  cat("Spatial merged input exists:", file.exists(input_path), "\n")
-  cat("Spatial merge manifest exists:", file.exists(input_manifest_path), "\n")
-  write.table(data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
-              row.names = FALSE, quote = FALSE, sep = "\t")
+  compact_dry_run(
+    "Spatial regional integration",
+    inputs = c(input_path, input_manifest_path),
+    outputs = expected_outputs
+  )
   quit(save = "no", status = 0L)
 }
 
@@ -139,15 +139,25 @@ obj <- ProjectData(
 DefaultAssay(obj) <- "Xenium"
 
 observed_consensus <- unique(as.character(obj$consensus_label))
-unexpected_consensus <- setdiff(observed_consensus, celltype_order)
-if (length(unexpected_consensus)) stop("Unexpected consensus labels: ", paste(unexpected_consensus, collapse = ", "))
-consensus_levels <- intersect(celltype_order, observed_consensus)
+consensus_levels <- order_consensus_levels(observed_consensus, celltype_order)
 obj$consensus_label <- factor(obj$consensus_label, levels = consensus_levels)
 observed_subclusters <- unique(as.character(obj$comb_subcluster))
-unexpected_subclusters <- setdiff(observed_subclusters, master_subcluster_order)
+unexpected_subclusters <- setdiff(
+  observed_subclusters[!is_unknown_consensus_label(observed_subclusters)],
+  master_subcluster_order
+)
 if (length(unexpected_subclusters)) stop("Unexpected combined subclusters: ", paste(unexpected_subclusters, collapse = ", "))
-subcluster_levels <- intersect(master_subcluster_order, observed_subclusters)
+subcluster_levels <- order_consensus_levels(observed_subclusters, master_subcluster_order)
 obj$comb_subcluster <- factor(obj$comb_subcluster, levels = subcluster_levels)
+subcluster_colors <- subcluster_palette[subcluster_levels]
+unknown_subclusters <- subcluster_levels[is_unknown_consensus_label(subcluster_levels)]
+subcluster_colors[unknown_subclusters] <- resolve_cluster_colors(unknown_subclusters)
+if (anyNA(subcluster_colors)) {
+  stop(
+    "Combined subcluster labels lack colors: ",
+    paste(names(subcluster_colors)[is.na(subcluster_colors)], collapse = ", ")
+  )
+}
 
 p_sample <- DimPlot(obj, reduction = "umap.harmony", group.by = "sample_id", raster = TRUE) +
   ggtitle("Integrated by Sample")
@@ -157,7 +167,7 @@ grDevices::dev.off()
 
 p_broad <- DimPlot(
   obj, reduction = "umap.harmony", group.by = "consensus_label",
-  label = TRUE, raster = TRUE, cols = cluster_colors[consensus_levels]
+  label = TRUE, raster = TRUE, cols = resolve_cluster_colors(consensus_levels)
 ) + ggtitle("Integrated: Broad Clusters")
 Cairo::CairoTIFF(plot_paths[[2]], width = 14, height = 14, units = "in", res = 600)
 print(p_broad)
@@ -166,7 +176,7 @@ grDevices::dev.off()
 p_subcluster <- DimPlot(
   obj, reduction = "umap.harmony", group.by = "comb_subcluster",
   label = TRUE, label.size = 3.5, repel = TRUE, label.box = TRUE,
-  raster = TRUE, alpha = 0.6, cols = subcluster_palette[subcluster_levels]
+  raster = TRUE, alpha = 0.6, cols = subcluster_colors
 ) + ggtitle("Integrated: Subclusters") +
   theme(legend.text = element_text(size = 9), legend.key.size = grid::unit(0.5, "cm")) +
   guides(color = guide_legend(ncol = 1, override.aes = list(size = 5)))

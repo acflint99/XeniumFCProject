@@ -3,6 +3,7 @@
 # Cerebellar Xenium Project
 # =====================================================
 library(scales) # Required for alpha()
+source(here::here("scripts", "R", "consensus_labels.R"))
 
 ####broad cluster label colors & order####
 # Named vector: names MUST match cluster labels exactly
@@ -23,7 +24,7 @@ cluster_colors <- c(
 
 # Optional: function to validate palette
 validate_palette <- function(labels) {
-  missing <- setdiff(labels, names(cluster_colors))
+  missing <- setdiff(labels[!is_unknown_consensus_label(labels)], names(cluster_colors))
   if (length(missing) > 0) {
     stop(
       paste(
@@ -32,6 +33,26 @@ validate_palette <- function(labels) {
       )
     )
   }
+}
+
+# Detailed Unknown clusters receive deterministic grey shades. The numbering
+# order controls the shade order, so plots remain stable across reruns.
+resolve_cluster_colors <- function(labels) {
+  labels <- as.character(labels)
+  validate_palette(labels)
+  colors <- cluster_colors[labels]
+  unknown_labels <- labels[is_unknown_consensus_label(labels)]
+  if (length(unknown_labels)) {
+    unknown_numbers <- suppressWarnings(
+      as.integer(sub("^Unknown-", "", unknown_labels))
+    )
+    unknown_numbers[is.na(unknown_numbers)] <- seq_len(sum(is.na(unknown_numbers)))
+    grey_values <- grDevices::gray(
+      pmin(0.35 + 0.08 * (unknown_numbers - 1L), 0.83)
+    )
+    colors[match(unknown_labels, labels)] <- grey_values
+  }
+  stats::setNames(unname(colors), labels)
 }
 
 #lock factor order
@@ -50,9 +71,9 @@ broad_dotplot_dot_min <- 0
 broad_dotplot_dot_max <- 100
 broad_dotplot_dot_scale <- 6
 
-standardize_broad_dotplot <- function(plot) {
+standardize_broad_dotplot <- function(plot, label_order = celltype_order) {
   plot +
-    ggplot2::scale_y_discrete(limits = rev(celltype_order), drop = FALSE) +
+    ggplot2::scale_y_discrete(limits = rev(label_order), drop = FALSE) +
     ggplot2::scale_color_gradient(
       low = "lightgrey",
       high = "red",
