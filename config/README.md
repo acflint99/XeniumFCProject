@@ -13,6 +13,7 @@ When this directory is moved to the HPC project root, the intended layout is:
 ```text
 /home/acflint/R/Projects/XeniumFCProject/
 ├── config/
+│   ├── cheaha_slurm_partitions.csv
 │   ├── config.yml
 │   ├── samples.csv
 │   └── slides.csv
@@ -47,6 +48,12 @@ confirmed v2 reference RDS paths, and the consensus broad labels used for VZ
 and RL subsetting. It is not yet the source of truth for the full pipeline.
 VZ/RL integration settings still differ among scripts and should not be
 unified without checking the intended scientific workflow.
+
+`cheaha_slurm_partitions.csv` is a dated scheduling-policy snapshot rather
+than pipeline configuration. It records the partition classes, node counts,
+per-researcher node limits, maximum wall times, and priority tiers shown in the
+Cheaha "Available Slurm Partitions" table supplied on 2026-09-01. Check the
+current Cheaha information before relying on it for a later submission.
 
 The configured v2 reference objects are stored below
 `outputs/references/<study>/rds/`. Reference plots and VZ-specific reference
