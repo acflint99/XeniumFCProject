@@ -1,73 +1,112 @@
+#!/usr/bin/env Rscript
+
+# Standardize the published Science reference labels. Existing outputs are
+# protected because every downstream Science transfer depends on this object.
+
 # Clear the environment
 rm(list = ls())
 
-# load libraries
-library(Seurat)
-library(dplyr)
-library(patchwork)
-library(ggplot2)
-library(here)
-library(Cairo)
+# Load only the path dependency before the path-only dry-run exits.
+suppressPackageStartupMessages(library(here))
 
-# Source the color palette ----
-# Ensure color_palette.R is saved in your project root, or update this path accordingly.
-source(here("scripts", "color_palette.R"))
+source(here("scripts", "R", "config.R"))
+config <- load_pipeline_config()
+
+args <- commandArgs(trailingOnly = TRUE)
+valid_options <- c("--dry-run", "--overwrite")
+unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
+if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
+if (any(!args %in% valid_options)) {
+  stop("Usage: Rscript scripts/science_01_standardize_cell_types.R [--dry-run|--overwrite]")
+}
+dry_run <- "--dry-run" %in% args
+overwrite <- "--overwrite" %in% args
+if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 # Define output directories
 plot_path <- here("outputs", "references", "science", "plots")
 RDS_path <- here("outputs", "references", "science", "rds")
+
+input_path <- file.path(
+  config$inputs$published_data_root,
+  "ScienceBraunFC", "Luo", "Science_9-15pcw_res1.2_broad_label_clusters.rds"
+)
+output_paths <- c(
+  file.path(plot_path, "ScienceUMAP_newClusters.tiff"),
+  file.path(plot_path, "ScienceUMAP_newClusters_newUMAP50v1.tiff"),
+  file.path(RDS_path, "Science_newClusters.rds"),
+  file.path(RDS_path, "Science_newClusters_newUMAPv1.rds")
+)
+
+if (dry_run) {
+  compact_dry_run(
+    "Science reference standardization",
+    inputs = input_path,
+    outputs = output_paths
+  )
+  quit(save = "no", status = 0L)
+}
+
+if (!file.exists(input_path)) stop("Science source object not found: ", input_path)
+existing_outputs <- output_paths[file.exists(output_paths)]
+if (length(existing_outputs) && !overwrite) {
+  stop(
+    "Refusing to overwrite existing Science reference outputs:\n- ",
+    paste(existing_outputs, collapse = "\n- "),
+    "\nUse --overwrite only after reviewing the Science reference changes."
+  )
+}
+
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(dplyr)
+  library(patchwork)
+  library(ggplot2)
+  library(Cairo)
+})
+source(here("scripts", "color_palette.R"))
 
 # Ensure directories exist before saving any files
 if (!dir.exists(plot_path)) dir.create(plot_path, recursive = TRUE)
 if (!dir.exists(RDS_path)) dir.create(RDS_path, recursive = TRUE)
 
 # Load the FC dataset
-Science = readRDS("/data/user/acflint/FC_published/ScienceBraunFC/Luo/Science_9-15pcw-celltype.rds")
+Science <- readRDS(input_path)
 
-Idents(Science) <- "celltype"
+if (!"science_broad_label" %in% colnames(Science[[]])) {
+  stop("Science source object lacks required metadata column 'science_broad_label'.")
+}
+if (anyDuplicated(colnames(Science))) stop("Science source object contains duplicate cell IDs.")
+if (!"umap" %in% Reductions(Science)) stop("Science source object lacks the expected 'umap' reduction.")
 
-# plot UMAP
-p <- DimPlot(Science, reduction = "umap", group.by = "celltype")
-
-CairoTIFF(filename = file.path(plot_path, "ScienceUMAP_Luoclusters.tiff"), 
-          width = 9, height = 6, units = "in", res = 600)
-print(p)
-dev.off()
-
-# check markers
-# markers_Cycling <- FindMarkers(Science, ident.1 = "Cycling", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) %>% dplyr::arrange(desc(avg_log2FC)) %>% head(20) %>% rownames()
+Idents(Science) <- "science_broad_label"
 
 # remove clusters----
-Science <- subset(Science, idents = c("RBC", "brainstem", "Cycling"), invert = TRUE)
+Science <- subset(Science, idents = c("RBC", "Brainstem", "Cycling", "Other"), invert = TRUE)
 
-# rename clusters with simple/harmonized names----
-Science@meta.data$clusters_refined <- Science@meta.data$celltype
-
-Science@meta.data$clusters_refined <- dplyr::recode(
-  Science@meta.data$clusters_refined,
-  "PC" = "Purkinje",
-  "GCP1" = "Granule",
-  "SPON1_NSC" = "Glia",
-  "GABA.inter" = "GABA",
-  "TCP?" = "VZ",
-  "Glut.DN" = "Granule",
-  "UBC" = "UBC",
-  "TNC_NSC" = "Glia",
-  "GCP-P" = "Granule",
-  "Granule1" = "Granule",
-  "RLVZ" = "RL",
-  "VZP/eTCP" = "VZ",
-  "GABA.LHX9" = "GABA",
-  "RLSVZ" = "RL",
-  "GPC2" = "Granule",
-  "Immune" = "Immune",
-  "Granule2" = "Granule",
-  "GABA.CN" = "GABA",
-  "34_NSC" = "Glia",
-  "Endothelial" = "Endothelial",
-  "Pericyte" = "Meninges",
-  "OPC" = "OPC"
+expected_labels <- c(
+  "Purkinje", "GABA", "Granule", "RL", "UBC", "Glia",
+  "OPC", "Immune", "Endothelial", "Meninges", "VZ"
 )
+
+unexpected_labels <- setdiff(
+  unique(as.character(Science$science_broad_label)),
+  expected_labels
+)
+
+if (length(unexpected_labels) > 0) {
+  stop(
+    "Unexpected science_broad_label values: ",
+    paste(unexpected_labels, collapse = ", ")
+  )
+}
+
+Science$clusters_refined <- as.character(Science$science_broad_label)
+
+if (anyNA(Science$clusters_refined) || any(!nzchar(as.character(Science$clusters_refined)))) {
+  stop("Science standardized labels contain missing or blank values.")
+}
+
 
 # Apply celltype order from color_palette.R as factor levels
 Science$clusters_refined <- factor(
@@ -77,14 +116,11 @@ Science$clusters_refined <- factor(
 
 Idents(Science) <- "clusters_refined"
 
-# check markers
-# markers_GlutDN <- FindMarkers(Science, ident.1 = "Glut.DN", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) %>% dplyr::arrange(desc(avg_log2FC)) %>% head(20) %>% rownames()
-
 # plot UMAP again with new cluster labels and color_palette.R colors ----
 p1 <- DimPlot(Science, reduction = "umap", group.by = "clusters_refined") +
   scale_color_manual(values = cluster_colors)
 
-CairoTIFF(filename = file.path(plot_path, "ScienceUMAP_newclusters.tiff"), 
+CairoTIFF(filename = file.path(plot_path, "ScienceUMAP_newClusters.tiff"), 
           width = 7, height = 6, units = "in", res = 600)
 print(p1)
 dev.off()
@@ -116,13 +152,17 @@ Science_newUMAP$clusters_refined <- factor(
 Idents(Science_newUMAP) <- "clusters_refined"
 
 # 7️⃣ Run UMAP
-Science_newUMAP <- RunUMAP(Science_newUMAP, dims = 1:50)
+Science_newUMAP <- RunUMAP(
+  Science_newUMAP,
+  dims = 1:50,
+  seed.use = config$runtime$random_seed
+)
 
 # 8️⃣ Plot UMAP with color_palette.R colors ----
 p2 <- DimPlot(Science_newUMAP, reduction = "umap", group.by = "clusters_refined") +
   scale_color_manual(values = cluster_colors)
 
-CairoTIFF(filename = file.path(plot_path, "ScienceUMAP_newclusters_newUMAP50v1.tiff"), 
+CairoTIFF(filename = file.path(plot_path, "ScienceUMAP_newClusters_newUMAP50v1.tiff"), 
           width = 7, height = 6, units = "in", res = 600)
 print(p2)
 dev.off()

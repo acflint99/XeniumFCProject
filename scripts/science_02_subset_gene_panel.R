@@ -8,7 +8,7 @@ rm(list = ls())
 options(bitmapType = "cairo")
 
 # Load only the path dependency before the path-only dry-run exits.
-library(here)
+suppressPackageStartupMessages(library(here))
 
 source(here("scripts", "R", "config.R"))
 config <- load_pipeline_config()
@@ -40,13 +40,10 @@ output_paths <- c(
 )
 
 if (dry_run) {
-  cat("Standardized Science input:", input_path, "\n")
-  cat("Input exists:", file.exists(input_path), "\n")
-  cat("Xenium panel:", panel_path, "\n")
-  cat("Panel exists:", file.exists(panel_path), "\n")
-  write.table(
-    data.frame(output = output_paths, exists = file.exists(output_paths)),
-    row.names = FALSE, quote = FALSE, sep = "\t"
+  compact_dry_run(
+    "Science Xenium-panel subset",
+    inputs = c(input_path, panel_path),
+    outputs = output_paths
   )
   quit(save = "no", status = 0L)
 }
@@ -140,7 +137,11 @@ ScienceSubset_newUMAP$clusters_refined <- factor(
 Idents(ScienceSubset_newUMAP) <- "clusters_refined"
 
 # 7️⃣ Run UMAP
-ScienceSubset_newUMAP <- RunUMAP(ScienceSubset_newUMAP, dims = 1:50)
+ScienceSubset_newUMAP <- RunUMAP(
+  ScienceSubset_newUMAP,
+  dims = 1:50,
+  seed.use = config$runtime$random_seed
+)
 
 # 8️⃣ Plot UMAP with color_palette.R colors
 p2 <- DimPlot(ScienceSubset_newUMAP, reduction = "umap", group.by = "clusters_refined") +
