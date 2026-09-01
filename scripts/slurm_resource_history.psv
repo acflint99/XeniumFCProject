@@ -1,0 +1,6 @@
+observed_date|stage|mode|reference|job_id|task_count|array_concurrency|completed_tasks|failed_tasks|elapsed_min_min|elapsed_min_median|elapsed_min_mean|elapsed_min_max|max_rss_gb|max_rss_task_id|max_rss_sample_id|req_mem_gb|alloc_cpus_per_task|requested_time|partition|source
+2026-08-28|xenium_annotate_01_label_transfer_rpca|resolution5_all_samples|Aldinger|39875880|34|3|34|0|7.33|17.89|18.73|46.87|49.28|6|GZFB4_X_G|64|1|04:00:00|medium|sacct collected 2026-09-01
+2026-08-28|xenium_annotate_01_label_transfer_rpca|resolution5_all_samples|Sepp|39875881|34|3|34|0|8.23|17.94|18.96|40.42|44.49|6|GZFB4_X_G|64|1|04:00:00|medium|sacct collected 2026-09-01
+2026-08-28|xenium_annotate_01_label_transfer_rpca|resolution5_all_samples|Science|39875882|34|3|34|0|7.70|18.08|19.31|43.13|46.36|6|GZFB4_X_G|64|1|04:00:00|medium|sacct collected 2026-09-01
+2026-08-29|xenium_annotate_01_label_transfer_rpca|resolution5_all_samples|Science|39912562|34|3|34|0|8.00|18.78|19.10|47.32|46.14|6|GZFB4_X_G|64|1|04:00:00|medium|sacct collected 2026-09-01
+2026-08-31|xenium_annotate_01_label_transfer_rpca|resolution5_all_samples|Science|39943655|34|3|34|0|10.60|19.72|19.75|43.90|46.60|6|GZFB4_X_G|64|1|04:00:00|medium|sacct collected 2026-09-01
