@@ -1,6 +1,6 @@
 # Compare whole-tissue clustering at resolution 2.0, 3.0, 4.0, or 5.0 with the
 # existing resolution-1.5 result. Pilot modes use three selected samples; the
-# --all-samples-res4 mode uses every row in config/samples.csv. Use
+# --all-samples-res4 and --all-samples-res5 use every row in config/samples.csv. Use
 # --resolution3, --resolution4, or --resolution5 for an isolated higher-resolution pilot;
 # resolution 2.0 remains the default for compatibility with completed jobs.
 #
@@ -10,7 +10,7 @@
 
 rm(list = ls())
 
-library(here)
+suppressPackageStartupMessages(library(here))
 
 source(here("scripts", "R", "config.R"))
 
@@ -20,7 +20,8 @@ samples <- load_sample_manifest(config)
 args <- commandArgs(trailingOnly = TRUE)
 valid_options <- c(
   "--dry-run", "--overwrite", "--resolution3", "--resolution4",
-  "--resolution5", "--all-samples-res4", "--list"
+  "--resolution5", "--all-samples-res4", "--all-samples-res5",
+  "--selected-sample", "--list"
 )
 unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
 if (length(unknown_options)) {
@@ -31,16 +32,35 @@ resolution3_pilot <- "--resolution3" %in% args
 resolution4_pilot <- "--resolution4" %in% args
 resolution5_pilot <- "--resolution5" %in% args
 all_samples_res4 <- "--all-samples-res4" %in% args
+all_samples_res5 <- "--all-samples-res5" %in% args
+all_samples_mode <- all_samples_res4 || all_samples_res5
+selected_sample_mode <- "--selected-sample" %in% args
 resolution_flags <- c(resolution3_pilot, resolution4_pilot, resolution5_pilot)
 if (sum(resolution_flags) > 1L) {
   stop("Choose only one of --resolution3, --resolution4, or --resolution5.")
 }
-if (all_samples_res4 && any(resolution_flags)) {
-  stop("--all-samples-res4 cannot be combined with a pilot-resolution option.")
+if (all_samples_res4 && all_samples_res5) {
+  stop("Choose only one of --all-samples-res4 or --all-samples-res5.")
+}
+if (all_samples_mode && any(resolution_flags)) {
+  stop("An all-samples mode cannot be combined with a pilot-resolution option.")
+}
+if (selected_sample_mode && (!resolution5_pilot || all_samples_mode)) {
+  stop("--selected-sample currently requires --resolution5.")
+}
+selected_sample_id <- if (selected_sample_mode) {
+  trimws(Sys.getenv("SELECTED_SAMPLE_ID", unset = ""))
+} else {
+  ""
+}
+if (selected_sample_mode && !nzchar(selected_sample_id)) {
+  stop("Set SELECTED_SAMPLE_ID when using --selected-sample.")
 }
 
 baseline_resolution <- 1.5
-candidate_resolution <- if (all_samples_res4) {
+candidate_resolution <- if (all_samples_res5) {
+  5.0
+} else if (all_samples_res4) {
   4.0
 } else if (resolution5_pilot) {
   5.0
@@ -74,7 +94,23 @@ if (any(manifest_counts != 1L)) {
 manifest_matches <- match(pilot_samples$sample_id, samples$sample_id)
 pilot_samples$input_layout <- samples$input_layout[manifest_matches]
 
-analysis_samples <- if (all_samples_res4) {
+analysis_samples <- if (selected_sample_mode) {
+  selected_matches <- which(samples$sample_id == selected_sample_id)
+  if (length(selected_matches) != 1L) {
+    stop(
+      "SELECTED_SAMPLE_ID must match exactly one config/samples.csv row; found ",
+      length(selected_matches), " match(es) for '", selected_sample_id, "'."
+    )
+  }
+  data.frame(
+    task_id = 1L,
+    sample_id = samples$sample_id[selected_matches],
+    PCW = "not_loaded_at_clustering",
+    age_group = "not_loaded_at_clustering",
+    input_layout = samples$input_layout[selected_matches],
+    stringsAsFactors = FALSE
+  )
+} else if (all_samples_mode) {
   data.frame(
     task_id = seq_len(nrow(samples)),
     sample_id = samples$sample_id,
@@ -105,8 +141,8 @@ format_resolution <- function(x) {
 baseline_tag <- format_resolution(baseline_resolution)
 candidate_tag <- sprintf("%.1f", candidate_resolution)
 candidate_identity_column <- paste0("whole_tissue_cluster_res", candidate_tag)
-facet_point_size <- if (all_samples_res4) {
-  0.02
+facet_point_size <- if (all_samples_mode || selected_sample_mode) {
+  0.01
 } else if (any(resolution_flags)) {
   0.03
 } else {
@@ -119,8 +155,12 @@ candidate_column <- paste0(graph_name, "_res.", format_resolution(candidate_reso
 
 output_root <- here(config$project$outputs_dir)
 input_dir <- file.path(output_root, "xenium", "preprocess", "03_clustered", "rds")
-pilot_stage <- if (all_samples_res4) {
+pilot_stage <- if (selected_sample_mode) {
+  "03h_resolution5_selected_sample"
+} else if (all_samples_res4) {
   "03g_resolution4_all_samples"
+} else if (all_samples_res5) {
+  "03i_resolution5_all_samples"
 } else if (resolution5_pilot) {
   "03e_resolution5_pilot"
 } else if (resolution4_pilot) {
@@ -143,7 +183,7 @@ analysis_samples$input_path <- file.path(
 output_paths_for_sample <- function(sample_id) {
   stem <- paste0(
     sample_id, "_whole_tissue_Res", candidate_tag,
-    if (all_samples_res4) "" else "_pilot"
+    if (all_samples_mode) "" else "_pilot"
   )
   c(
     rds = file.path(rds_dir, paste0(stem, ".rds")),
@@ -163,7 +203,14 @@ task_map <- analysis_samples[, c(
 if ("--list" %in% args) {
   list_args <- args[!args %in% valid_options]
   if (length(list_args)) stop("--list does not accept TASK_ID.")
-  cat("Scope:", if (all_samples_res4) "all manifest samples" else "three-sample pilot", "\n")
+  scope_description <- if (selected_sample_mode) {
+    paste0("selected manifest sample: ", selected_sample_id)
+  } else if (all_samples_mode) {
+    "all manifest samples"
+  } else {
+    "three-sample pilot"
+  }
+  cat("Scope:", scope_description, "\n")
   cat("Candidate resolution:", candidate_tag, "\n")
   write.table(task_map, row.names = FALSE, quote = FALSE, sep = "\t")
   quit(save = "no", status = 0L)
@@ -177,7 +224,8 @@ task_args <- args[!args %in% valid_options]
 if (length(task_args) > 1L) {
   stop(
     "Usage: Rscript scripts/xenium_preprocess_03b_resolution2_pilot.R ",
-    "[--resolution3|--resolution4|--resolution5|--all-samples-res4] ",
+    "[--resolution3|--resolution4|--resolution5|--all-samples-res4|--all-samples-res5] ",
+    "[--selected-sample] ",
     "[--list|--dry-run|--overwrite] [TASK_ID]"
   )
 }
@@ -199,24 +247,13 @@ expected_outputs <- output_paths_for_sample(sample_id)
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
 
 if (dry_run) {
-  cat("Task:", task_id, "of", nrow(task_map), "\n")
-  cat("Biological sample:", sample_id, "\n")
-  cat("Developmental age:", task$PCW[[1]], "(", task$age_group[[1]], ")\n")
-  cat("Baseline resolution:", baseline_tag, "\n")
-  cat("Candidate resolution:", candidate_tag, "\n")
-  cat("Input clustered RDS:", input_path, "\n")
-  cat("Input exists:", file.exists(input_path), "\n")
-  cat("Dry-run scope: path inspection only; no RDS is loaded.\n")
-  write.table(
-    data.frame(
-      output_type = names(expected_outputs),
-      output = unname(expected_outputs),
-      exists = file.exists(expected_outputs),
-      stringsAsFactors = FALSE
+  compact_dry_run(
+    paste0(
+      "Resolution-", candidate_tag, " task ", task_id, "/", nrow(task_map),
+      " [", sample_id, "]"
     ),
-    row.names = FALSE,
-    quote = FALSE,
-    sep = "\t"
+    inputs = input_path,
+    outputs = expected_outputs
   )
   quit(save = "no", status = if (file.exists(input_path)) 0L else 1L)
 }
@@ -225,7 +262,7 @@ if (!file.exists(input_path)) stop("Input clustered RDS not found: ", input_path
 if (length(existing_outputs) && !overwrite) {
   stop(
     "Refusing to overwrite existing resolution-", candidate_tag,
-    if (all_samples_res4) " all-sample outputs for " else " pilot outputs for ",
+    if (all_samples_mode) " all-sample outputs for " else " pilot outputs for ",
     sample_id,
     ":\n- ", paste(existing_outputs, collapse = "\n- "),
     "\nRerun with --overwrite only after reviewing these files."

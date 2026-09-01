@@ -3,7 +3,7 @@
 
 rm(list = ls())
 
-library(here)
+suppressPackageStartupMessages(library(here))
 
 source(here("scripts", "R", "config.R"))
 
@@ -38,7 +38,9 @@ args <- commandArgs(trailingOnly = TRUE)
 
 valid_options <- c(
   "--dry-run", "--overwrite", "--pilot-res2", "--pilot-res3",
-  "--pilot-res4", "--pilot-res5", "--all-samples-res4", "--list"
+  "--pilot-res4", "--pilot-res5", "--all-samples-res4", "--all-samples-res5",
+  "--selected-sample",
+  "--list"
 )
 unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
 if (length(unknown_options) > 0L) {
@@ -50,6 +52,9 @@ pilot_res3 <- "--pilot-res3" %in% args
 pilot_res4 <- "--pilot-res4" %in% args
 pilot_res5 <- "--pilot-res5" %in% args
 all_samples_res4 <- "--all-samples-res4" %in% args
+all_samples_res5 <- "--all-samples-res5" %in% args
+all_samples_mode <- all_samples_res4 || all_samples_res5
+selected_sample_mode <- "--selected-sample" %in% args
 pilot_flags <- c(pilot_res2, pilot_res3, pilot_res4, pilot_res5)
 if (sum(pilot_flags) > 1L) {
   stop(
@@ -57,14 +62,38 @@ if (sum(pilot_flags) > 1L) {
   )
 }
 pilot_mode <- any(pilot_flags)
-if (all_samples_res4 && pilot_mode) {
-  stop("--all-samples-res4 cannot be combined with a pilot-resolution option.")
+if (all_samples_res4 && all_samples_res5) {
+  stop("Choose only one of --all-samples-res4 or --all-samples-res5.")
 }
-resolution_mode <- pilot_mode || all_samples_res4
-pilot_resolution <- if (all_samples_res4) 4.0 else if (pilot_res5) 5.0 else if (pilot_res4) 4.0 else if (pilot_res3) 3.0 else 2.0
+if (all_samples_mode && pilot_mode) {
+  stop("An all-samples mode cannot be combined with a pilot-resolution option.")
+}
+if (selected_sample_mode && (!pilot_res5 || all_samples_mode)) {
+  stop("--selected-sample currently requires --pilot-res5.")
+}
+selected_sample_id <- if (selected_sample_mode) {
+  trimws(Sys.getenv("SELECTED_SAMPLE_ID", unset = ""))
+} else {
+  ""
+}
+if (selected_sample_mode) {
+  selected_matches <- which(sample_manifest$sample_id == selected_sample_id)
+  if (!nzchar(selected_sample_id) || length(selected_matches) != 1L) {
+    stop(
+      "SELECTED_SAMPLE_ID must match exactly one config/samples.csv row; found ",
+      length(selected_matches), " match(es) for '", selected_sample_id, "'."
+    )
+  }
+}
+resolution_mode <- pilot_mode || all_samples_mode
+pilot_resolution <- if (all_samples_res5) 5.0 else if (all_samples_res4) 4.0 else if (pilot_res5) 5.0 else if (pilot_res4) 4.0 else if (pilot_res3) 3.0 else 2.0
 pilot_resolution_tag <- sprintf("%.1f", pilot_resolution)
-pilot_stage <- if (all_samples_res4) {
+pilot_stage <- if (selected_sample_mode) {
+  "03h_resolution5_selected_sample"
+} else if (all_samples_res4) {
   "03g_resolution4_all_samples"
+} else if (all_samples_res5) {
+  "03i_resolution5_all_samples"
 } else if (pilot_res5) {
   "03e_resolution5_pilot"
 } else if (pilot_res4) {
@@ -76,17 +105,27 @@ pilot_stage <- if (all_samples_res4) {
 }
 pilot_cluster_column <- paste0("whole_tissue_cluster_res", pilot_resolution_tag)
 pilot_graph_column <- paste0("Xenium_snn_res.", format(pilot_resolution, trim = TRUE))
-facet_point_size <- if (all_samples_res4) {
-  0.02
+facet_point_size <- if (all_samples_mode || selected_sample_mode) {
+  0.01
 } else if (pilot_res3 || pilot_res4 || pilot_res5) {
   0.03
 } else {
   0.1
 }
 list_requested <- "--list" %in% args
-sample_list <- if (pilot_mode) pilot_manifest$sample_id else sample_manifest$sample_id
-mode_description <- if (all_samples_res4) {
+sample_list <- if (selected_sample_mode) {
+  selected_sample_id
+} else if (pilot_mode) {
+  pilot_manifest$sample_id
+} else {
+  sample_manifest$sample_id
+}
+mode_description <- if (selected_sample_mode) {
+  paste0("resolution-5.0 selected-sample pilot: ", selected_sample_id)
+} else if (all_samples_res4) {
   "resolution-4.0 all-sample analysis"
+} else if (all_samples_res5) {
+  "resolution-5.0 all-sample analysis"
 } else if (pilot_mode) {
   paste0("resolution-", pilot_resolution_tag, " pilot")
 } else {
@@ -119,7 +158,8 @@ job_args <- args[!args %in% valid_options]
 if (length(job_args) != 2L) {
   stop(
     "Usage: Rscript scripts/xenium_annotate_01_label_transfer_rpca.R ",
-    "[--pilot-res2|--pilot-res3|--pilot-res4|--pilot-res5|--all-samples-res4] ",
+    "[--pilot-res2|--pilot-res3|--pilot-res4|--pilot-res5|--all-samples-res4|--all-samples-res5] ",
+    "[--selected-sample] ",
     "[--dry-run|--overwrite] REFERENCE TASK_ID"
   )
 }
@@ -146,11 +186,13 @@ if (resolution_mode) {
     pilot_root, "rds",
     paste0(
       current_sample, "_whole_tissue_Res", pilot_resolution_tag,
-      if (all_samples_res4) "" else "_pilot", ".rds"
+      if (all_samples_mode) "" else "_pilot", ".rds"
     )
   )
   annotation_root <- if (all_samples_res4) {
     here("outputs", "xenium", "annotation", "resolution4_all_samples")
+  } else if (all_samples_res5) {
+    here("outputs", "xenium", "annotation", "resolution5_all_samples")
   } else {
     file.path(pilot_root, "annotation")
   }
@@ -186,22 +228,13 @@ expected_outputs <- c(
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
 
 if (dry_run) {
-  cat(
-    "Mode:", mode_description, "\n"
-  )
-  cat("Reference:", reference_name, "\n")
-  cat("Task:", task_id, "of", length(sample_list), "\n")
-  cat("Sample:", current_sample, "\n")
-  cat("Input:", input_file, "\n")
-  cat("Input exists:", file.exists(input_file), "\n")
-  cat("Reference RDS:", reference_path, "\n")
-  cat("Reference exists:", file.exists(reference_path), "\n")
-  cat("Dry-run scope: path inspection only; no RDS is loaded.\n")
-  write.table(
-    data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
-    row.names = FALSE,
-    quote = FALSE,
-    sep = "\t"
+  compact_dry_run(
+    paste0(
+      reference_name, " transfer task ", task_id, "/", length(sample_list),
+      " [", current_sample, "]"
+    ),
+    inputs = c(input_file, reference_path),
+    outputs = expected_outputs
   )
   inputs_ready <- file.exists(input_file) && file.exists(reference_path)
   quit(save = "no", status = if (inputs_ready) 0L else 1L)
