@@ -47,12 +47,11 @@ output_suffixes <- c(
 output_paths <- file.path(sample_dir, paste0(sample_id, output_suffixes))
 
 if (dry_run) {
-  cat("Task:", task_id, "of", length(sample_ids), "\n")
-  cat("Biological sample:", sample_id, "\n")
-  cat("RL mapped input:", input_path, "\n")
-  cat("Input exists:", file.exists(input_path), "\n")
-  write.table(data.frame(output = output_paths, exists = file.exists(output_paths)),
-              row.names = FALSE, quote = FALSE, sep = "\t")
+  compact_dry_run(
+    paste0("RL report task ", task_id, "/", length(sample_ids), " [", sample_id, "]"),
+    inputs = input_path,
+    outputs = output_paths
+  )
   quit(save = "no", status = 0L)
 }
 if (!file.exists(input_path)) stop("RL mapped input not found: ", input_path)

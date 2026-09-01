@@ -167,15 +167,10 @@ if (combine_mode) {
     vapply(per_sample_paths, `[[`, character(1), "label_stability")
   )
   if (dry_run) {
-    cat("Mode: combine completed per-sample resolution-consistency audits\n")
-    cat("Dry-run scope: path inspection only; no CSV or RDS file is loaded.\n")
-    write.table(
-      data.frame(input = required_inputs, exists = file.exists(required_inputs)),
-      row.names = FALSE, quote = FALSE, sep = "\t"
-    )
-    write.table(
-      data.frame(output = combined_paths, exists = file.exists(combined_paths)),
-      row.names = FALSE, quote = FALSE, sep = "\t"
+    compact_dry_run(
+      "Combined resolution-consistency audit",
+      inputs = required_inputs,
+      outputs = combined_paths
     )
     quit(
       save = "no",
@@ -303,20 +298,13 @@ input_paths <- input_paths_for_sample(sample_id)
 output_paths <- output_paths_for_sample(sample_id)
 
 if (dry_run) {
-  cat("Mode: weighted-2-of-3 consensus consistency across resolutions 3, 4, and 5\n")
-  cat("Task:", task_id, "of", nrow(task_map), "\n")
-  cat("Sample:", sample_id, "\n")
-  cat("Dry-run scope: path inspection only; no RDS object is loaded.\n")
-  write.table(
-    data.frame(
-      resolution = names(input_paths), input = unname(input_paths),
-      exists = file.exists(input_paths)
+  compact_dry_run(
+    paste0(
+      "Resolution-consistency task ", task_id, "/", nrow(task_map),
+      " [", sample_id, "]"
     ),
-    row.names = FALSE, quote = FALSE, sep = "\t"
-  )
-  write.table(
-    data.frame(output = output_paths, exists = file.exists(output_paths)),
-    row.names = FALSE, quote = FALSE, sep = "\t"
+    inputs = input_paths,
+    outputs = output_paths
   )
   quit(save = "no", status = if (all(file.exists(input_paths))) 0L else 1L)
 }

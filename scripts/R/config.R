@@ -1,5 +1,62 @@
 # Read-only configuration utilities for the fetal cerebellum Xenium pipeline.
 
+# Print a single-line dry-run summary while retaining concise failure details.
+# This helper only checks paths and logical conditions supplied by the caller;
+# it never reads an analysis object or writes an output.
+compact_dry_run <- function(stage,
+                            inputs = character(),
+                            outputs = character(),
+                            checks = logical()) {
+  if (length(stage) != 1L || is.na(stage) || !nzchar(stage)) {
+    stop("stage must be one nonblank string.")
+  }
+
+  inputs <- as.character(inputs)
+  outputs <- as.character(outputs)
+  input_exists <- file.exists(inputs)
+  output_exists <- file.exists(outputs)
+  check_ok <- !is.na(checks) & as.logical(checks)
+  dry_run_ok <- all(input_exists) && all(check_ok)
+
+  fields <- c(
+    paste("DRY-RUN", if (dry_run_ok) "PASS" else "FAIL"),
+    stage
+  )
+  if (length(inputs)) {
+    fields <- c(fields, paste0("inputs=", sum(input_exists), "/", length(inputs)))
+  }
+  if (length(outputs)) {
+    fields <- c(
+      fields,
+      paste0("outputs-existing=", sum(output_exists), "/", length(outputs))
+    )
+  }
+  if (length(checks)) {
+    fields <- c(fields, paste0("checks=", sum(check_ok), "/", length(checks)))
+  }
+  cat(paste(fields, collapse = " | "), "\n", sep = "")
+
+  missing_inputs <- inputs[!input_exists]
+  if (length(missing_inputs)) {
+    shown <- head(missing_inputs, 3L)
+    suffix <- if (length(missing_inputs) > length(shown)) {
+      paste0("; +", length(missing_inputs) - length(shown), " more")
+    } else {
+      ""
+    }
+    cat("  Missing inputs: ", paste(shown, collapse = "; "), suffix, "\n", sep = "")
+  }
+
+  if (length(checks) && any(!check_ok)) {
+    check_names <- names(checks)
+    if (is.null(check_names)) check_names <- rep("unnamed check", length(checks))
+    check_names[!nzchar(check_names)] <- "unnamed check"
+    cat("  Failed checks: ", paste(check_names[!check_ok], collapse = "; "), "\n", sep = "")
+  }
+
+  invisible(dry_run_ok)
+}
+
 find_pipeline_config <- function() {
   candidates <- c(
     here::here("config", "config.yml"),

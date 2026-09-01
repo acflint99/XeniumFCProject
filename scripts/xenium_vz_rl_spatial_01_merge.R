@@ -40,15 +40,13 @@ missing_names <- input_names[!file.exists(input_paths)]
 unexpected_names <- setdiff(observed_names, input_names)
 
 if (dry_run) {
-  cat("Expected spatial-merge inputs:", length(input_paths), "\n")
-  cat("Existing spatial-merge inputs:", sum(file.exists(input_paths)), "\n")
-  cat("Unexpected top-level RDS files:", length(unexpected_names), "\n")
-  cat("Spatial merged output:", merged_path, "\n")
-  cat("Spatial merged output exists:", file.exists(merged_path), "\n")
-  cat("Spatial merge manifest exists:", file.exists(manifest_path), "\n")
-  write.table(data.frame(sample_id = sample_ids, input_exists = file.exists(input_paths)),
-              row.names = FALSE, quote = FALSE, sep = "\t")
-  if (length(unexpected_names)) cat("Unexpected files:\n- ", paste(unexpected_names, collapse = "\n- "), "\n")
+  compact_dry_run(
+    "Spatial regional merge",
+    inputs = input_paths,
+    outputs = c(merged_path, manifest_path),
+    checks = c(no_unexpected_inputs = !length(unexpected_names))
+  )
+  if (length(unexpected_names)) cat("  Unexpected inputs: ", paste(unexpected_names, collapse = "; "), "\n")
   quit(save = "no", status = 0L)
 }
 

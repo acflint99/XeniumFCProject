@@ -40,13 +40,10 @@ expected_outputs <- c(
 )
 
 if (dry_run) {
-  cat("RL post-QC input:", merged_path, "\n")
-  cat("RL post-QC input exists:", file.exists(merged_path), "\n")
-  cat("Annotation cluster column: Xenium_snn_res.0.5\n")
-  cat("Configured workers:", Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"), "\n")
-  write.table(
-    data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
-    row.names = FALSE, quote = FALSE, sep = "\t"
+  compact_dry_run(
+    "RL subcluster annotation",
+    inputs = merged_path,
+    outputs = expected_outputs
   )
   quit(save = "no", status = 0L)
 }

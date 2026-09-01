@@ -60,16 +60,16 @@ if (file.exists(merge_manifest_path)) {
 }
 
 if (dry_run) {
-  cat("Merged VZ input:", merged_path, "\n")
-  cat("Merged VZ input exists:", file.exists(merged_path), "\n")
-  cat("Merge manifest:", merge_manifest_path, "\n")
-  cat("Manifest rows:", manifest_rows, "\n")
-  cat("Manifest columns valid:", manifest_columns_match, "\n")
-  cat("Manifest cell counts and PCW valid:", manifest_values_valid, "\n")
-  cat("Manifest sample IDs match config:", manifest_ids_match, "\n")
-  write.table(
-    data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
-    row.names = FALSE, quote = FALSE, sep = "\t"
+  compact_dry_run(
+    "VZ integration",
+    inputs = c(merged_path, merge_manifest_path),
+    outputs = expected_outputs,
+    checks = c(
+      manifest_rows = manifest_rows == length(sample_ids),
+      manifest_columns = manifest_columns_match,
+      manifest_values = manifest_values_valid,
+      manifest_sample_ids = manifest_ids_match
+    )
   )
   quit(save = "no", status = 0L)
 }

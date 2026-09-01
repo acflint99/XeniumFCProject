@@ -5,6 +5,7 @@ rm(list = ls())
 options(bitmapType = "cairo")
 
 suppressPackageStartupMessages(library(here))
+source(here("scripts", "R", "config.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 valid_options <- c("--dry-run", "--overwrite")
@@ -39,13 +40,10 @@ expected_outputs <- c(
 )
 
 if (dry_run) {
-  cat("RL subcluster input:", input_path, "\n")
-  cat("RL subcluster input exists:", file.exists(input_path), "\n")
-  cat("Intentional focused cohort size:", length(target_samples), "\n")
-  cat("Intentional focused cohort:", paste(target_samples, collapse = ", "), "\n")
-  write.table(
-    data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
-    row.names = FALSE, quote = FALSE, sep = "\t"
+  compact_dry_run(
+    paste0("RL count plots [", length(target_samples), "-sample focused cohort]"),
+    inputs = input_path,
+    outputs = expected_outputs
   )
   quit(save = "no", status = 0L)
 }

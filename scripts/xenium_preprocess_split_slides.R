@@ -4,7 +4,7 @@
 
 rm(list = ls())
 
-library(here)
+suppressPackageStartupMessages(library(here))
 
 source(here("scripts", "R", "config.R"))
 
@@ -96,15 +96,13 @@ expected_outputs <- c(
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
 
 if (dry_run) {
-  cat("Task:", task_id, "of", nrow(split_samples), "\n")
-  cat("Biological sample:", sample_name, "\n")
-  cat("Input slide:", sample_paths$input_dir, "\n")
-  cat("Cell-stat CSV:", sample_paths$cell_stats_path, "\n")
-  write.table(
-    data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
-    row.names = FALSE,
-    quote = FALSE,
-    sep = "\t"
+  compact_dry_run(
+    paste0(
+      "Split-slide preprocessing task ", task_id, "/", nrow(split_samples),
+      " [", sample_name, "]"
+    ),
+    inputs = c(sample_paths$input_dir, sample_paths$cell_stats_path),
+    outputs = expected_outputs
   )
   quit(save = "no", status = 0L)
 }

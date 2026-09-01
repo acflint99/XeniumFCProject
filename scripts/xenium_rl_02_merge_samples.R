@@ -40,18 +40,13 @@ missing_names <- subset_names[!file.exists(subset_paths)]
 unexpected_names <- setdiff(observed_names, subset_names)
 
 if (dry_run) {
-  cat("Expected RL subset inputs:", length(subset_paths), "\n")
-  cat("Existing RL subset inputs:", sum(file.exists(subset_paths)), "\n")
-  cat("Unexpected top-level RDS files:", length(unexpected_names), "\n")
-  cat("Merged output:", output_path, "\n")
-  cat("Merged output exists:", file.exists(output_path), "\n")
-  write.table(
-    data.frame(sample_id = sample_ids, input = subset_paths, exists = file.exists(subset_paths)),
-    row.names = FALSE,
-    quote = FALSE,
-    sep = "\t"
+  compact_dry_run(
+    "RL subset merge",
+    inputs = subset_paths,
+    outputs = c(output_path, manifest_path),
+    checks = c(no_unexpected_inputs = !length(unexpected_names))
   )
-  if (length(unexpected_names)) cat("Unexpected files:\n- ", paste(unexpected_names, collapse = "\n- "), "\n")
+  if (length(unexpected_names)) cat("  Unexpected inputs: ", paste(unexpected_names, collapse = "; "), "\n")
   quit(save = "no", status = 0L)
 }
 

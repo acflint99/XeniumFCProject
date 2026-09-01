@@ -43,11 +43,11 @@ output_dir <- file.path(output_root, "xenium", "rl", "01_subsets", "rds")
 output_path <- file.path(output_dir, paste0(current_sample, "_RLsubset.rds"))
 
 if (dry_run) {
-  cat("Task:", task_id, "of", nrow(samples), "\n")
-  cat("Biological sample:", current_sample, "\n")
-  cat("Consensus input:", input_path, "\n")
-  cat("Output:", output_path, "\n")
-  cat("Output exists:", file.exists(output_path), "\n")
+  compact_dry_run(
+    paste0("RL subset task ", task_id, "/", nrow(samples), " [", current_sample, "]"),
+    inputs = input_path,
+    outputs = output_path
+  )
   quit(save = "no", status = 0L)
 }
 if (!file.exists(input_path)) stop("Consensus-labelled input not found: ", input_path)

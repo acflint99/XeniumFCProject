@@ -42,18 +42,13 @@ missing_names <- input_names[!file.exists(input_paths)]
 unexpected_names <- setdiff(observed_names, input_names)
 
 if (dry_run) {
-  cat("Expected combined inputs:", length(input_paths), "\n")
-  cat("Existing combined inputs:", sum(file.exists(input_paths)), "\n")
-  cat("Unexpected top-level RDS files:", length(unexpected_names), "\n")
-  cat("Clean sample outputs existing:", sum(file.exists(clean_paths)), "of", length(clean_paths), "\n")
-  cat("Merged output:", merged_path, "\n")
-  cat("Merged output exists:", file.exists(merged_path), "\n")
-  write.table(
-    data.frame(sample_id = sample_ids, input_exists = file.exists(input_paths),
-               clean_output_exists = file.exists(clean_paths)),
-    row.names = FALSE, quote = FALSE, sep = "\t"
+  compact_dry_run(
+    "Combined regional merge",
+    inputs = input_paths,
+    outputs = c(clean_paths, merged_path, manifest_path),
+    checks = c(no_unexpected_inputs = !length(unexpected_names))
   )
-  if (length(unexpected_names)) cat("Unexpected files:\n- ", paste(unexpected_names, collapse = "\n- "), "\n")
+  if (length(unexpected_names)) cat("  Unexpected inputs: ", paste(unexpected_names, collapse = "; "), "\n")
   quit(save = "no", status = 0L)
 }
 

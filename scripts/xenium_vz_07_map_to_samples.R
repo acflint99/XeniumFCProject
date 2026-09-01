@@ -43,23 +43,14 @@ missing_names <- input_names[!file.exists(input_paths)]
 unexpected_names <- setdiff(observed_names, input_names)
 
 if (dry_run) {
-  cat("Expected VZ mapping inputs:", length(input_paths), "\n")
-  cat("Existing VZ mapping inputs:", sum(file.exists(input_paths)), "\n")
-  cat("Unexpected top-level RDS files:", length(unexpected_names), "\n")
-  cat("Master VZ object:", master_path, "\n")
-  cat("Master VZ object exists:", file.exists(master_path), "\n")
-  cat("Mapping manifest:", manifest_path, "\n")
-  cat("Mapping manifest exists:", file.exists(manifest_path), "\n")
-  write.table(
-    data.frame(
-      sample_id = sample_ids, input = input_paths,
-      input_exists = file.exists(input_paths), output = output_paths,
-      output_exists = file.exists(output_paths)
-    ),
-    row.names = FALSE, quote = FALSE, sep = "\t"
+  compact_dry_run(
+    "VZ label mapping",
+    inputs = c(master_path, input_paths),
+    outputs = c(output_paths, manifest_path),
+    checks = c(no_unexpected_inputs = !length(unexpected_names))
   )
   if (length(unexpected_names)) {
-    cat("Unexpected files:\n- ", paste(unexpected_names, collapse = "\n- "), "\n")
+    cat("  Unexpected inputs: ", paste(unexpected_names, collapse = "; "), "\n")
   }
   quit(save = "no", status = 0L)
 }

@@ -67,23 +67,17 @@ missing_names <- input_names[!file.exists(input_paths)]
 unexpected_names <- setdiff(observed_names, input_names)
 
 if (dry_run) {
-  cat("Merged RL object:", merged_path, "\n")
-  cat("Merged RL object exists:", file.exists(merged_path), "\n")
-  cat("Expected VZ-labelled inputs:", length(input_paths), "\n")
-  cat("Existing VZ-labelled inputs:", sum(file.exists(input_paths)), "\n")
-  cat("Unexpected top-level RDS files:", length(unexpected_names), "\n")
-  cat("QC review outputs existing:", sum(file.exists(qc_outputs)), "of", length(qc_outputs), "\n")
-  cat("Filtered sample outputs existing:", sum(file.exists(output_paths)), "of", length(output_paths), "\n")
-  cat("Requested mode:", if (qc_only) "QC review" else if (remove_supplied) "apply removal" else "inspection only", "\n")
-  if (remove_supplied) {
-    cat("Clusters to remove:", if (length(clusters_to_remove)) paste(clusters_to_remove, collapse = ", ") else "none", "\n")
-  }
-  write.table(
-    data.frame(sample_id = sample_ids, input_exists = file.exists(input_paths),
-               filtered_output_exists = file.exists(output_paths)),
-    row.names = FALSE, quote = FALSE, sep = "\t"
+  compact_dry_run(
+    paste0(
+      "RL QC [",
+      if (qc_only) "review" else if (remove_supplied) "apply removal" else "inspection",
+      "]"
+    ),
+    inputs = c(merged_path, input_paths),
+    outputs = c(qc_outputs, output_paths),
+    checks = c(no_unexpected_inputs = !length(unexpected_names))
   )
-  if (length(unexpected_names)) cat("Unexpected files:\n- ", paste(unexpected_names, collapse = "\n- "), "\n")
+  if (length(unexpected_names)) cat("  Unexpected inputs: ", paste(unexpected_names, collapse = "; "), "\n")
   quit(save = "no", status = 0L)
 }
 

@@ -58,16 +58,11 @@ review_ready <- !is.null(review) &&
   identical(as.character(review$cluster_column), "Xenium_snn_res.0.8")
 
 if (dry_run) {
-  cat("Merged RL input:", merged_path, "\n")
-  cat("Merged RL input exists:", file.exists(merged_path), "\n")
-  cat("QC review manifest:", review_path, "\n")
-  cat("QC review manifest valid:", review_ready, "\n")
-  cat("QC removal manifest:", removal_path, "\n")
-  cat("QC removal manifest valid:", removal_ready, "\n")
-  cat("Configured workers:", Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"), "\n")
-  write.table(
-    data.frame(output = expected_outputs, exists = file.exists(expected_outputs)),
-    row.names = FALSE, quote = FALSE, sep = "\t"
+  compact_dry_run(
+    "RL post-QC reintegration",
+    inputs = c(merged_path, review_path, removal_path),
+    outputs = expected_outputs,
+    checks = c(review_manifest = review_ready, removal_manifest = removal_ready)
   )
   quit(save = "no", status = 0L)
 }
