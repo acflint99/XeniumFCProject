@@ -503,7 +503,7 @@ cluster-wide at their maximum combined concurrency of nine.
 Resolution 5.0 writes only beneath
 `outputs/xenium/preprocess/03e_resolution5_pilot/` and preserves all lower-resolution
 results. It reuses the saved SNN graph, the three approved references, the
-weighted 2-of-3 consensus method, and faceted spatial point size 0.03.
+weighted 2-of-3 consensus method, and faceted spatial point size 0.01.
 
 Run clustering:
 
@@ -561,6 +561,74 @@ pilot estimates above. Resolution 5 may create smaller clusters; compare cluster
 sizes, marker coherence, spatial coherence, and Unknown frequency with the
 resolution-3 and resolution-4 pilots before selecting it for all 34 samples.
 
+#### Resolution-5.0 weighted 2-of-3 pilot for one selected sample
+
+Use this isolated mode to inspect one manifest-validated sample without rerunning
+the original three-sample pilot. Set the sample explicitly; the example below is
+`GZFB_22_X_G_5`. All results are protected beneath
+`outputs/xenium/preprocess/03h_resolution5_selected_sample/`.
+
+First verify the mapping and submit clustering:
+
+```bash
+export SELECTED_SAMPLE_ID=GZFB_22_X_G_5
+
+Rscript scripts/xenium_preprocess_03b_resolution2_pilot.R \
+  --resolution5 --selected-sample --list
+Rscript scripts/xenium_preprocess_03b_resolution2_pilot.R \
+  --resolution5 --selected-sample --dry-run 1
+
+cluster_job=$(sbatch --parsable \
+  --export=ALL,SELECTED_SAMPLE_ID="${SELECTED_SAMPLE_ID}" \
+  scripts/run_xenium_preprocess_03h_resolution5_selected_sample.slurm)
+echo "${cluster_job}"
+```
+
+After clustering completes successfully, verify and submit all three reference
+transfers. The three jobs may run concurrently:
+
+```bash
+for reference in Aldinger Sepp Science; do
+  Rscript scripts/xenium_annotate_01_label_transfer_rpca.R \
+    --pilot-res5 --selected-sample --dry-run "${reference}" 1
+done
+
+for reference in Aldinger Sepp Science; do
+  sbatch --job-name="Xen_res5_${reference}_${SELECTED_SAMPLE_ID}" \
+    --export=ALL,SELECTED_SAMPLE_ID="${SELECTED_SAMPLE_ID}",REFERENCE="${reference}" \
+    scripts/run_xenium_annotate_01_transfer_resolution5_selected_sample.slurm
+done
+```
+
+After all three transfers complete, build the weighted 2-of-3 consensus table
+and submit the final annotation and plot job:
+
+```bash
+Rscript scripts/xenium_annotate_02_build_consensus.R \
+  --pilot-res5 --selected-sample --weighted-2of3 --dry-run
+Rscript scripts/xenium_annotate_02_build_consensus.R \
+  --pilot-res5 --selected-sample --weighted-2of3
+
+Rscript scripts/xenium_annotate_03_apply_consensus.R \
+  --pilot-res5 --selected-sample --weighted-2of3 --dry-run 1
+final_job=$(sbatch --parsable \
+  --export=ALL,SELECTED_SAMPLE_ID="${SELECTED_SAMPLE_ID}" \
+  scripts/run_xenium_annotate_03_apply_consensus_resolution5_selected_sample_weighted2of3.slurm)
+echo "${final_job}"
+```
+
+The requested faceted plot is written to
+`outputs/xenium/preprocess/03h_resolution5_selected_sample/annotation/03_consensus_labels_weighted_2of3/plots/GZFB_22_X_G_5_Consensus_FacetSpatial.tif`.
+Its point size is 0.01.
+
+Expected active runtimes, excluding queue wait, are approximately 5–15 minutes
+for clustering; 15 minutes to 3 hours per label-transfer job and about the same
+total wall time when all three run concurrently; under 2 minutes for consensus
+table construction; and 10–60 minutes for final annotation and plotting. These
+moderate-confidence estimates use the measured resolution-3/4 pilot jobs and the
+observed 91,577-cell label-transfer outlier. The requested Slurm limits are 1,
+4, and 2 hours for clustering, each transfer, and final plotting, respectively.
+
 #### Consensus-label consistency across resolutions 3, 4, and 5
 
 After weighted-2-of-3 consensus objects exist for all three resolutions, the
@@ -605,7 +673,7 @@ consensus outputs are written beneath
 resolution-1.5 production objects or any pilot. All broad-label DotPlots use
 the same scaled-expression range (-2.5 to 2.5), percent-expressed range
 (0% to 100%), cell-type order, genes-on-x orientation, and vertical right-side
-legends. Faceted spatial point size is 0.02.
+legends. Faceted spatial point size is 0.01.
 
 Inspect and submit clustering:
 
@@ -660,6 +728,53 @@ sbatch \
   scripts/run_xenium_annotate_03_apply_consensus_resolution4_all_samples_weighted2of3.slurm
 ```
 
+To regenerate all final consensus plots after a visualization-only change,
+without rewriting any consensus RDS or table, inspect and submit the dedicated
+plots-only array:
+
+```bash
+for task_id in $(seq 1 34); do
+  Rscript scripts/xenium_annotate_03_apply_consensus.R \
+    --all-samples-res4 --weighted-2of3 --plots-only --dry-run "${task_id}"
+done
+sbatch \
+  scripts/run_xenium_annotate_03_regenerate_plots_resolution4_all_samples_weighted2of3.slurm
+```
+
+The plots-only mode intentionally replaces the five plot files for each sample
+but reads the existing consensus object as its sole analysis input and never
+rewrites RDS or consensus tables. Expected runtime is approximately 10-60
+minutes per task and 1.5-8 hours total at concurrency four (low confidence,
+based on the measured plotting time for the largest sample); each task requests
+2 hours.
+
+After all 34 consensus objects and per-sample plots complete, inspect and submit
+the PCW-ordered merged report:
+
+```bash
+Rscript scripts/xenium_annotate_03d_plot_report.R \
+  --all-samples-res4 --weighted-2of3 --list
+Rscript scripts/xenium_annotate_03d_plot_report.R \
+  --all-samples-res4 --weighted-2of3 --dry-run
+page_job=$(sbatch --parsable \
+  scripts/run_xenium_annotate_03d_plot_report_resolution4_all_samples_weighted2of3.slurm)
+merge_job=$(sbatch --parsable --dependency="afterok:${page_job}" \
+  scripts/run_xenium_annotate_03d_plot_report_resolution4_all_samples_weighted2of3_merge.slurm)
+echo "Page array: ${page_job}; dependent merge: ${merge_job}"
+```
+
+The protected 34-page output is
+`outputs/xenium/annotation/resolution4_all_samples/03_consensus_labels_weighted_2of3/plots/Xenium_Consensus_Res4_Weighted2of3_All_Samples_Report.pdf`.
+Each page validates resolution-4 identities and `weighted_2of3` provenance,
+uses the shared fixed DotPlot scales and orientation, and uses point size 0.01
+in the faceted spatial panel. Pages are rendered independently at concurrency
+six, then a dependent single job verifies and merges the 34 ordered PNG pages.
+Expected page-rendering runtime is approximately 10-45 minutes per task and
+1-4 hours total at concurrency six; the merge should take under 10 minutes.
+These are low-confidence estimates based on static inspection and the measured
+cost of plotting the largest sample. Page tasks request 2 hours each and the
+merge requests 30 minutes.
+
 Expected clustering runtime is approximately 4-10 minutes per task and
 35-90 minutes total at concurrency four. Each reference transfer is expected
 to take approximately 8-30 minutes per task and 1.5-6 hours per 34-task array
@@ -669,6 +784,225 @@ and consensus application approximately 1-4 minutes per task and 10-25 minutes
 total at concurrency six. Estimates exclude queue wait and are based on the
 measured three-sample pilots; estimates for unmeasured larger samples are
 moderate confidence.
+
+#### Resolution-5 analysis for all 34 samples, start to finish
+
+This isolated workflow changes only the whole-tissue clustering resolution from
+4 to 5. It retains the saved SNN graph, three reference-transfer settings,
+weighted 2-of-3 consensus rules, seeds, marker sets, and fixed DotPlot scales.
+Clustering outputs are written beneath
+`outputs/xenium/preprocess/03i_resolution5_all_samples/`; annotation and report
+outputs are written beneath `outputs/xenium/annotation/resolution5_all_samples/`.
+Existing resolution-1.5, resolution-4, and pilot results are not replaced.
+
+After reviewing the 34-row mapping, this single shell block submits the complete
+workflow with `afterok` dependencies:
+
+```bash
+set -euo pipefail
+cd /home/acflint/R/Projects/XeniumFCProject
+
+Rscript scripts/xenium_preprocess_03b_resolution2_pilot.R \
+  --all-samples-res5 --list
+
+for task_id in $(seq 1 34); do
+  Rscript scripts/xenium_preprocess_03b_resolution2_pilot.R \
+    --all-samples-res5 --dry-run "${task_id}"
+done
+
+cluster_submit=$(sbatch --parsable \
+  scripts/run_xenium_preprocess_03i_resolution5_all_samples.slurm)
+cluster_job=${cluster_submit%%;*}
+
+transfer_jobs=()
+for reference in Aldinger Sepp Science; do
+  transfer_submit=$(sbatch --parsable \
+    --dependency="afterok:${cluster_job}" \
+    --array="1-34%6" \
+    --job-name="Xen_res5_all_${reference}" \
+    --export=ALL,REFERENCE="${reference}" \
+    scripts/run_xenium_annotate_01_transfer_resolution5_all_samples.slurm)
+  transfer_jobs+=("${transfer_submit%%;*}")
+done
+transfer_dependency=$(IFS=:; echo "${transfer_jobs[*]}")
+
+build_submit=$(sbatch --parsable \
+  --dependency="afterok:${transfer_dependency}" \
+  scripts/run_xenium_annotate_02_build_consensus_resolution5_all_samples_weighted2of3.slurm)
+build_job=${build_submit%%;*}
+
+apply_submit=$(sbatch --parsable \
+  --dependency="afterok:${build_job}" \
+  scripts/run_xenium_annotate_03_apply_consensus_resolution5_all_samples_weighted2of3.slurm)
+apply_job=${apply_submit%%;*}
+
+pages_submit=$(sbatch --parsable \
+  --dependency="afterok:${apply_job}" \
+  scripts/run_xenium_annotate_03d_plot_report_resolution5_all_samples_weighted2of3.slurm)
+pages_job=${pages_submit%%;*}
+
+merge_submit=$(sbatch --parsable \
+  --dependency="afterok:${pages_job}" \
+  scripts/run_xenium_annotate_03d_plot_report_resolution5_all_samples_weighted2of3_merge.slurm)
+merge_job=${merge_submit%%;*}
+
+printf 'clustering=%s\ntransfers=%s\nbuild=%s\napply=%s\npages=%s\nmerge=%s\n' \
+  "${cluster_job}" "${transfer_dependency}" "${build_job}" \
+  "${apply_job}" "${pages_job}" "${merge_job}"
+```
+
+Every production launcher repeats its relevant path-only `--dry-run` after its
+upstream dependency succeeds. No launcher enables overwrite by default. The
+all-cell final report is
+`outputs/xenium/annotation/resolution5_all_samples/03_consensus_labels_weighted_2of3/plots/Xenium_Consensus_Res5_Weighted2of3_All_Samples_Report.pdf`.
+A matched report with every `Unknown-##` cell removed is written as
+`Xenium_Consensus_Res5_Weighted2of3_All_Samples_KnownOnly_Report.pdf` in the
+same directory.
+Report facet panels use point size 0.01, a one-pixel glyph, and alpha 0.55 to
+make reduced overplotting visible after rasterization.
+
+Final insufficient-support clusters are retained as distinct downstream
+identities. They are numbered in numeric `seurat_clusters` order within each
+sample as `Unknown-01`, `Unknown-02`, and so on; a sample with one such cluster
+uses `Unknown-01`. Existing consensus UMAP, global spatial, faceted spatial,
+and marker DotPlot filenames are the all-cell versions and show detailed
+Unknown identities with deterministic grey shades. Each also has a matched
+`_Consensus_KnownOnly_...` output made after removing all Unknown cells.
+
+Every sample with at least one Unknown cluster also receives
+`tables/unknown_markers/<sample>_Unknown_cluster_top20_markers.xlsx`, with one
+sheet per `Unknown-##`. Markers are positive one-versus-rest Wilcoxon results
+from the normalized `Xenium` assay (`only.pos=TRUE`, `logfc.threshold=0.1`,
+`min.pct=0.01`), ranked by average log2 fold change, adjusted P value, and gene,
+then limited to 20 rows. A sample with only `Unknown-01` therefore receives a
+one-sheet workbook; only samples with no Unknown clusters receive no workbook.
+This conditional output requires `writexl` in the active project `renv`; the
+production script never installs it.
+
+Expected runtime per clustering task is 4-10 minutes and approximately 35-90
+minutes total at concurrency four. Across 170 completed resolution-5 transfer
+tasks from jobs 39875880-39875882, 39912562, and 39943655, observed task times
+were 7.3-47.3 minutes with per-array means of 18.7-19.8 minutes. Aldinger,
+Sepp, and Science are each capped at six concurrent tasks; each array should
+finish in approximately 2-3 hours and all three may do so concurrently when
+all 18 tasks can be scheduled. At maximum simultaneous use, the transfer
+arrays can reserve up to 1,152 GB cluster-wide. Observed maximum RSS was
+49.28 GB, consistently peaking for manifest task 6 (`GZFB4_X_G`), so the
+64-GB per-task request is retained.
+Consensus-table construction should take under 2 minutes. Consensus
+application, paired plot sets, and conditional Unknown marker tests are
+expected to take 15-90 minutes per task and approximately 1.5-9 hours total at
+concurrency six. Paired report pages are expected to take 20-90 minutes per
+task and approximately 2-9 hours total at concurrency six; merging both reports
+should take under 15 minutes. These revised estimates are low confidence and
+come from prior single-version plotting history plus static inspection of the
+new doubled plotting and marker workload; the next `sacct` results should be
+used to refine them. Requested limits remain 1 hour for
+clustering, 4 hours per transfer, 30
+minutes for table construction, 2 hours per consensus/report-page task, and 30
+minutes for the merge.
+
+To propagate a reviewed Sepp panel-reference update without rerunning Xenium
+clustering or the unchanged Aldinger and Science transfers, use the dedicated
+submitter. It uses the shared six-task resolution-5 transfer concurrency:
+
+```bash
+bash scripts/submit_sepp_reference_resolution5_consensus.sh --dry-run
+bash scripts/submit_sepp_reference_resolution5_consensus.sh
+```
+
+If `sepp_02_subset_gene_panel.R` has already completed successfully, skip it
+and start at the six-concurrent-task Sepp transfer:
+
+```bash
+bash scripts/submit_sepp_reference_resolution5_consensus.sh \
+  --downstream-only --dry-run
+bash scripts/submit_sepp_reference_resolution5_consensus.sh \
+  --downstream-only
+```
+
+The dry-run validates the 34-row manifest and all Sepp transfer input paths but
+does not load large RDS objects. The full workflow explicitly replaces the 34
+Sepp transfer outputs, weighted 2-of-3 tables, consensus objects, paired plots,
+Unknown marker workbooks, report pages, and both final PDFs. The Sepp panel script itself writes its stable RDS
+and plot names directly and has no overwrite flag, so run the full mode only
+after reviewing those existing reference outputs. The completed Sepp array
+ran in 8.2-40.4 minutes per task with a mean of 19.0 minutes. At concurrency
+six, expect approximately 2-3 hours for the array and roughly 6-23 hours for
+the complete downstream chain, excluding queue wait. The transfer estimate is
+high confidence from all 34 samples; downstream plotting remains lower
+confidence.
+
+Each preflight line begins with `DRY-RUN PASS` or `DRY-RUN FAIL`. The submitter
+also ends with a boxed `DRY-RUN SUCCESS` or `DRY-RUN FAILED` summary that names
+the failed stage and confirms whether any jobs were submitted. The
+`outputs-existing` field is informational: it counts protected outputs already
+on disk and does not itself indicate failure. The submitter suppresses repeated
+`renv` synchronization notices during its 34 path checks without changing the
+environment; inspect it once with `renv::status()` before production.
+
+To propagate a reviewed Science-reference update without rerunning unchanged
+Xenium clustering or the unchanged Aldinger and Sepp transfers, run this
+protected dependency submitter from the project root on an allocated compute
+node:
+
+```bash
+bash scripts/submit_science_reference_resolution5_consensus.sh --dry-run
+bash scripts/submit_science_reference_resolution5_consensus.sh
+```
+
+If the two Science reference stages have already completed and only downstream
+stages 3-7 need to be rerun, use:
+
+```bash
+bash scripts/submit_science_reference_resolution5_consensus.sh \
+  --downstream-only --dry-run
+bash scripts/submit_science_reference_resolution5_consensus.sh \
+  --downstream-only
+```
+
+The dry-run checks the manifest, Science reference, and all 34 label-transfer
+inputs, then submits nothing. Checks for the consensus and report stages are
+deferred until their upstream dependency jobs have produced the required
+inputs; each production launcher repeats its own path-only dry-run before
+running. Active R drivers report dry-runs in a compact format such as
+`DRY-RUN PASS | stage | inputs=2/2 | outputs-existing=0/15`; missing inputs and
+failed checks are still named without printing every expected output path.
+The full second command repeats the initial checks, rebuilds the two Science
+reference stages, reruns all 34 resolution-5 Science transfers, rebuilds and
+applies the weighted 2-of-3 consensus, renders both versions of all 34 report
+pages, and merges both final PDFs. With `--downstream-only`, the two reference stages are skipped
+and the existing Science reference output is used. Both submission modes
+explicitly enable each submitted stage's protected overwrite switch; neither
+submits preprocessing, clustering, VZ/RL, Giotto, or SpaTrack jobs.
+`RLSVZ` remains mapped to `RL`.
+
+If the two Science reference stages have already completed successfully, skip
+them and start the protected dependency chain at the 34-sample Science label
+transfer:
+
+```bash
+bash scripts/submit_science_reference_resolution5_consensus.sh \
+  --downstream-only --dry-run
+bash scripts/submit_science_reference_resolution5_consensus.sh \
+  --downstream-only
+```
+
+The downstream-only dry-run verifies the existing panel-restricted Science
+reference through the transfer input checks before submitting anything.
+
+Observed Science-reference jobs took about 2-3 minutes each in the available
+Slurm history, so their 1-hour requested limits are conservative. Three
+completed 34-task Science transfer arrays ran in 7.7-47.3 minutes per task,
+with means of 19.1-19.8 minutes. Expect about 2-3 hours per array at concurrency
+six. Consensus construction should take under 2 minutes; consensus application,
+paired plots, and marker tests should take 15-90 minutes per task and about
+1.5-9 hours total at concurrency six; paired report pages should take 20-90
+minutes per task and about 2-9 hours total at concurrency six; merging both
+reports should take under 15 minutes. Approximate active wall time is 6-23
+hours, excluding queue wait. Transfer estimates are high confidence; the
+revised downstream estimates are low confidence and should be refined with
+`sacct` after completion.
 
 ### 5. Reference-based annotation
 
@@ -706,18 +1040,20 @@ tables are written to `outputs/xenium/annotation/02_consensus/tables/`.
 
 Related scripts:
 
-- `xenium_annotate_02_build_consensus.R` – merges the three reference comparisons and calculates one cluster-level `consensus_label`;
-- `xenium_annotate_03_apply_consensus.R` – adds consensus labels and PCW metadata to individual objects, makes consensus labels the active identities, and writes consensus UMAP, spatial, and marker DotPlot figures;
+- `xenium_annotate_02_build_consensus.R` – merges the three reference comparisons, calculates one cluster-level `consensus_label`, and numbers insufficient-support clusters as `Unknown-##`;
+- `xenium_annotate_03_apply_consensus.R` – adds consensus labels and PCW metadata to individual objects, makes consensus labels the active identities, writes all-cell and known-only consensus figures, and conditionally exports Unknown-cluster marker workbooks;
 - `run_xenium_annotate_03_apply_consensus.slurm` – submits all 34 consensus-label tasks, capped at three concurrent jobs;
 - `xenium_annotate_03b_plot_spatial.R` – additional consensus spatial maps;
 - `xenium_annotate_03c_plot_proportions.R` – attaches sample metadata and plots consensus cell-type proportions;
-- `xenium_annotate_03d_plot_report.R` – writes one PCW-ordered PDF page per sample, combining the global spatial map, faceted spatial map, UMAP, and marker DotPlot;
+- `xenium_annotate_03d_plot_report.R` – writes matched all-cell and known-only PCW-ordered PDF reports, with each page combining the global spatial map, faceted spatial map, UMAP, and marker DotPlot;
 - `run_xenium_annotate_03d_plot_report.slurm` – runs the combined report as one sequential job so concurrent array tasks cannot write to the same PDF;
 - `xenium_vz_rl_01b_plot_spatial.R` – consensus maps after regional refinement/QC.
 
-The consensus calculation ignores missing and `Unknown` labels and selects the
+The consensus vote ignores missing and reference-level `Unknown` labels and selects the
 most frequent label across Aldinger, Sepp, and Science majority/weighted
-results. Ties retain the existing comparison-table order. Original reference
+results. Final insufficient-support clusters are numbered `Unknown-01`,
+`Unknown-02`, and so on in numeric cluster order. Ties retain the existing
+comparison-table order. Original reference
 labels remain in the object; `consensus_label` is added without overwriting
 them. Inspect the task mapping and one task before running:
 
@@ -731,6 +1067,10 @@ Consensus objects are written to
 Consensus UMAP, spatial, and marker plots are written together under
 `outputs/xenium/annotation/03_consensus_labels/plots/`; only the separate
 proportion-summary analysis retains its `plots/proportions/` subdirectory.
+The stable filenames contain all cells, while matched `_Consensus_KnownOnly_`
+files remove every `Unknown-##` cell. Unknown marker workbooks are written under
+`03_consensus_labels/tables/unknown_markers/` whenever a sample has at least one
+Unknown cluster.
 The driver refuses to overwrite existing objects or plots unless explicitly
 given `--overwrite` or submitted with `CONSENSUS_OVERWRITE=true`. PCW is read
 from `metadata/samples_meta.xlsx` during this stage, so downstream objects
@@ -761,7 +1101,9 @@ sbatch scripts/run_xenium_annotate_03d_plot_report.slurm
 ```
 
 The job writes
-`outputs/xenium/annotation/03_consensus_labels/plots/Xenium_Consensus_All_Samples_Report.pdf`.
+`outputs/xenium/annotation/03_consensus_labels/plots/Xenium_Consensus_All_Samples_Report.pdf`
+and the matched
+`Xenium_Consensus_All_Samples_KnownOnly_Report.pdf`.
 Each of its 34 landscape pages contains one sample's global spatial map,
 faceted spatial map, UMAP, and marker DotPlot. Pages are ordered by numeric PCW,
 with `config/samples.csv` order breaking ties, and each page title includes the
@@ -1165,6 +1507,38 @@ Before submission, verify:
 4. requested memory, time, CPUs, and partition;
 5. the project and Python paths; and
 6. that the launcher invokes the intended R script.
+
+### Cheaha partition selection
+
+`config/cheaha_slurm_partitions.csv` records the Cheaha partition table
+provided on 2026-09-01. It is a dated planning reference, not a guarantee of
+future availability. Recheck current Cheaha policy before changing or
+submitting important jobs.
+
+For ordinary CPU batch jobs, choose the highest-priority partition that safely
+contains the evidence-based requested time limit:
+
+- `express`: at most 2 hours; 52 nodes; unlimited nodes per researcher;
+  priority tier 20;
+- `short`: over 2 and at most 12 hours; 52 nodes; 44 nodes per researcher;
+  priority tier 16;
+- `medium`: over 12 and at most 50 hours; 52 nodes; 44 nodes per researcher;
+  priority tier 12;
+- `long`: over 50 and at most 150 hours; 52 nodes; 5 nodes per researcher;
+  priority tier 8.
+
+Use `interactive` only for interactive work. Use `intel-dcb`, `amd-hdr100`, GPU,
+or large-memory partitions only when the workload explicitly needs that
+hardware or cannot fit ordinary CPU nodes. The project's Intel constraint is
+still required for launchers using native R packages compiled with Broadwell
+flags. A higher priority tier does not override fair-share, matching-node
+memory, hardware constraints, or per-researcher node limits.
+
+Measured job summaries belong in `slurm_resource_history.psv`; raw Slurm logs
+remain outside Git. Before creating or editing a launcher, review that file and
+recent `sacct` evidence, then keep `--time` safely above expected runtime while
+placing the job on the narrowest valid partition. Do not reduce a justified
+time limit solely to qualify for a higher-priority partition.
 
 ## Output conventions
 
