@@ -78,9 +78,10 @@ XeniumFCProject/
 For each Xenium sample, `cerebellum_cells_stats.csv` must contain a `Cell ID` column. An area column named `cell_area`, `Area`, or another name containing `area` is preferred.
 
 The files in `config/` record project paths, plotting defaults, biological
-samples, and the six multi-sample slide directories. They are currently
-validated metadata scaffolding; not every analysis script reads them yet. From
-the project root, validate their structure and referenced input files with:
+samples, the six multi-sample slide directories, and the approved resolution-5
+whole-tissue production source used by downstream VZ/RL work. Not every
+analysis script reads configuration yet. From the project root, validate its
+structure and referenced input files with:
 
 ```bash
 Rscript scripts/validate_config.R --check-files
@@ -637,7 +638,7 @@ and cluster membership without changing any Seurat object. It writes per-cell
 agreement status, pairwise label agreement and Cohen's kappa, cluster ARI/NMI,
 per-label Jaccard/retention, label and cluster transition tables, UMAP/spatial
 agreement plots, and PDF reports beneath
-`outputs/xenium/preprocess/03f_resolution_consistency/weighted_2of3/`.
+`outputs/validation/resolution_selection/weighted_2of3/`.
 
 Inspect and submit the three-sample array:
 
@@ -787,13 +788,75 @@ moderate confidence.
 
 #### Resolution-5 analysis for all 34 samples, start to finish
 
-This isolated workflow changes only the whole-tissue clustering resolution from
-4 to 5. It retains the saved SNN graph, three reference-transfer settings,
-weighted 2-of-3 consensus rules, seeds, marker sets, and fixed DotPlot scales.
+The current production workflow uses the complete Aldinger, Sepp, and Science
+references. Each reference contributes one cluster-level weighted vote only
+when its winning mean score is at least 0.4 and exceeds the runner-up mean score
+by at least 0.05. Consensus remains an equal, unique two-of-three vote; a
+cluster without that support becomes `Unknown-##`. Seed 42, RPCA dimensions
+1:30, `k.anchor = 20`, `k.score = 30`, `k.weight = 50`, marker sets, and fixed
+DotPlot scales are unchanged. These approved production settings are recorded
+under `label_transfer.resolution5_all_samples` in `config/config.yml`.
 Clustering outputs are written beneath
-`outputs/xenium/preprocess/03i_resolution5_all_samples/`; annotation and report
-outputs are written beneath `outputs/xenium/annotation/resolution5_all_samples/`.
+`outputs/xenium/preprocess/04_resolution5_clustered/`; annotation and report
+outputs are written directly beneath `outputs/xenium/annotation/` because
+resolution 5 is the only active whole-tissue annotation workflow.
 Existing resolution-1.5, resolution-4, and pilot results are not replaced.
+The `production` section of `config/config.yml` designates these resolution-5
+weighted two-of-three consensus objects as the sole whole-tissue source for
+downstream spatial plotting, VZ extraction, RL extraction, and output
+validation.
+
+The apparently resolution-neutral directories `01_cropped`, `02_qc`, and
+`03_clustered`, plus the current Aldinger, Sepp, and Science reference objects,
+remain required to reproduce the resolution-5 outputs. They must not be
+removed as part of legacy-resolution cleanup.
+
+For installations that still use the historical
+`03i_resolution5_all_samples` directory name, validate and perform the one-time
+rename before running any current production or cleanup script:
+
+```bash
+cd /home/acflint/R/Projects/XeniumFCProject
+bash scripts/rename_resolution5_preprocess_output.sh --dry-run
+bash scripts/rename_resolution5_preprocess_output.sh --move
+```
+
+The utility checks every sample in `config/samples.csv`, requires exactly 34
+nonempty resolution-5 clustering RDS files, refuses to merge with an existing
+target, and then renames the directory to `04_resolution5_clustered`. The move
+does not rewrite any RDS, table, or plot. On the same filesystem it should take
+seconds; this estimate excludes time spent checking directory entries and is
+high confidence for a normal metadata-only rename.
+
+To replace the existing resolution-5 annotation while reusing the completed
+34 clustering objects, first run the path-only preflight:
+
+```bash
+cd /home/acflint/R/Projects/XeniumFCProject
+bash \
+  scripts/submit_xenium_resolution5_all_samples_full_reference_margin005.sh \
+  --dry-run
+```
+
+After reviewing the 34-row mapping and existing output counts, explicitly
+authorize replacement of the resolution-5 transfer, consensus, per-sample
+plot, report-page, and merged-report outputs:
+
+```bash
+bash \
+  scripts/submit_xenium_resolution5_all_samples_full_reference_margin005.sh \
+  --overwrite
+```
+
+This annotation-only submission does not rewrite the resolution-5 clustering
+RDS files. It submits three 34-task full-reference arrays followed by consensus
+construction, consensus application, report pages, and report merge with
+`afterok` dependencies. No production launcher overwrites by default; the
+helper propagates overwrite permission only when invoked with `--overwrite`.
+Each reference table now includes the pre-abstention winner, runner-up, mean
+scores, top-two margin, failed-rule flags, sampling mode, transfer parameters,
+and seed. Matching per-task reference-class balance and transfer-provenance
+CSVs are written beside the established comparison and cell-count tables.
 
 After reviewing the 34-row mapping, this single shell block submits the complete
 workflow with `afterok` dependencies:
@@ -811,14 +874,14 @@ for task_id in $(seq 1 34); do
 done
 
 cluster_submit=$(sbatch --parsable \
-  scripts/run_xenium_preprocess_03i_resolution5_all_samples.slurm)
+  scripts/run_xenium_preprocess_04_resolution5_clustered.slurm)
 cluster_job=${cluster_submit%%;*}
 
 transfer_jobs=()
 for reference in Aldinger Sepp Science; do
   transfer_submit=$(sbatch --parsable \
     --dependency="afterok:${cluster_job}" \
-    --array="1-34%6" \
+    --array="1-34%3" \
     --job-name="Xen_res5_all_${reference}" \
     --export=ALL,REFERENCE="${reference}" \
     scripts/run_xenium_annotate_01_transfer_resolution5_all_samples.slurm)
@@ -854,12 +917,69 @@ printf 'clustering=%s\ntransfers=%s\nbuild=%s\napply=%s\npages=%s\nmerge=%s\n' \
 Every production launcher repeats its relevant path-only `--dry-run` after its
 upstream dependency succeeds. No launcher enables overwrite by default. The
 all-cell final report is
-`outputs/xenium/annotation/resolution5_all_samples/03_consensus_labels_weighted_2of3/plots/Xenium_Consensus_Res5_Weighted2of3_All_Samples_Report.pdf`.
+`outputs/xenium/annotation/03_consensus_labels_weighted_2of3/plots/Xenium_Consensus_Res5_Weighted2of3_All_Samples_Report.pdf`.
 A matched report with every `Unknown-##` cell removed is written as
 `Xenium_Consensus_Res5_Weighted2of3_All_Samples_KnownOnly_Report.pdf` in the
 same directory.
 Report facet panels use point size 0.01, a one-pixel glyph, and alpha 0.55 to
 make reduced overplotting visible after rasterization.
+
+Validate the completed resolution-5 production chain with:
+
+```bash
+Rscript scripts/validate_outputs_through_consensus.R
+```
+
+The validator reads the 34 resolution-5 clustering objects, three annotated
+objects per sample, final consensus objects, and their tables and plots. It
+writes reports under `outputs/validation/resolution5_through_consensus/`.
+Expect approximately 1-4 hours on HPC, excluding queue wait (low confidence,
+based on static inspection and the volume of RDS data read sequentially).
+
+After the resolution-5 replacement set is complete, inspect the exact legacy
+cleanup set without moving anything:
+
+```bash
+bash scripts/cleanup_non_resolution5_outputs.sh --dry-run
+```
+
+The script requires all 34 resolution-5 clustering objects, all three complete
+34-sample transfer sets and their provenance tables, all 34 consensus tables,
+all 34 consensus objects, and the current three reference objects. Only after
+that preflight passes can `--quarantine` move the enumerated resolution-1.5,
+resolution-2/3/4, superseded `_old`, smoke-test, historical, and pilot paths to
+`quarantine_non_resolution5_2026-09-29/`. It deliberately retains
+`01_cropped`, `02_qc`, `03_clustered`, current references, the full 34-sample
+resolution-5 tree, and the small cross-resolution comparison summary. A
+separate confirmation token is required for permanent quarantine deletion.
+
+Completed resolution-selection and method-development evidence is kept outside
+the production trees. Preview or apply the one-time structural move with:
+
+```bash
+bash scripts/reorganize_resolution5_validation_outputs.sh --dry-run
+bash scripts/reorganize_resolution5_validation_outputs.sh --move
+```
+
+The move places the cross-resolution comparison beneath
+`outputs/validation/resolution_selection/` and the transfer-threshold,
+reference-sampling, k-anchor, and transfer-diagnostic studies beneath
+`outputs/validation/resolution5_method_development/`. Production preprocessing
+then ends at `04_resolution5_clustered`, while the annotation directory
+contains only numbered production stages 01 through 03.
+
+After that method-development move, remove the redundant resolution-5 wrapper
+without rewriting any analysis file:
+
+```bash
+bash scripts/flatten_resolution5_annotation.sh --dry-run
+bash scripts/flatten_resolution5_annotation.sh --move
+```
+
+The utility requires all 34 transfer, consensus-table, and consensus-RDS
+outputs, refuses collisions or unexpected wrapper contents, moves the three
+production stage directories to `outputs/xenium/annotation/`, and records the
+old-to-new mappings under `outputs/validation/`.
 
 Final insufficient-support clusters are retained as distinct downstream
 identities. They are numbered in numeric `seurat_clusters` order within each
@@ -876,19 +996,42 @@ from the normalized `Xenium` assay (`only.pos=TRUE`, `logfc.threshold=0.1`,
 `min.pct=0.01`), ranked by average log2 fold change, adjusted P value, and gene,
 then limited to 20 rows. A sample with only `Unknown-01` therefore receives a
 one-sheet workbook; only samples with no Unknown clusters receive no workbook.
+During an explicit overwrite rerun, a pre-existing workbook for a sample that
+now has no Unknown clusters is renamed with a
+`.superseded_no_unknown_<timestamp>_<process-id>` suffix so it cannot be
+mistaken for a current result and remains recoverable.
 This conditional output requires `writexl` in the active project `renv`; the
 production script never installs it.
 
+The resolution-5 all-sample application and parallel report-page launchers
+start R with `--max-ppsize=500000`, the R-supported maximum
+pointer-protection-stack size, because marker calculations and report rendering
+for larger samples can overflow R's default stack. This runtime safeguard does
+not alter the marker comparison, report content, or outputs.
+
+The saved Aldinger resolution-5 transfer figures can be assembled without
+recomputing label transfer by running
+`xenium_annotate_01b_build_aldinger_resolution5_plot_report.R`. It validates all
+34 manifest samples and all nine unique TIFFs per sample, then produces one
+3-by-3 landscape page per sample at
+`01_label_transfer/aldinger/plots/Xenium_Aldinger_Res5_All_Samples_Plot_Report.pdf`.
+The TIFF versions are used so the three PDF companions are not duplicated.
+The report requires `tiff` in the project `renv`; the script and Slurm job never
+install packages. Inspect paths with `--list` and `--dry-run`, then submit
+`run_xenium_annotate_01b_build_aldinger_resolution5_plot_report.slurm`.
+
 Expected runtime per clustering task is 4-10 minutes and approximately 35-90
-minutes total at concurrency four. Across 170 completed resolution-5 transfer
-tasks from jobs 39875880-39875882, 39912562, and 39943655, observed task times
-were 7.3-47.3 minutes with per-array means of 18.7-19.8 minutes. Aldinger,
-Sepp, and Science are each capped at six concurrent tasks; each array should
-finish in approximately 2-3 hours and all three may do so concurrently when
-all 18 tasks can be scheduled. At maximum simultaneous use, the transfer
-arrays can reserve up to 1,152 GB cluster-wide. Observed maximum RSS was
-49.28 GB, consistently peaking for manifest task 6 (`GZFB4_X_G`), so the
-64-GB per-task request is retained.
+minutes total at concurrency four. In full-reference sensitivity job 40474781,
+the nine full-reference tasks completed in 9.1-12.8 minutes and used at most
+24.65 GB, but those selected-sample tasks did not render the complete
+production output set. Across the prior 170 capped production transfers,
+observed times were 7.3-47.3 minutes and maximum RSS was 49.28 GB for manifest
+task 6 (`GZFB4_X_G`). Combining those measurements, full-reference production
+is estimated at 15-75 minutes per task and approximately 3-15 hours per
+34-task reference array at concurrency three, excluding queue wait. This is a
+moderate-confidence estimate. Each transfer requests 4 hours, 1 CPU, and 96 GB
+on `short`; all three arrays can reserve at most 864 GB when their nine tasks
+run simultaneously.
 Consensus-table construction should take under 2 minutes. Consensus
 application, paired plot sets, and conditional Unknown marker tests are
 expected to take 15-90 minutes per task and approximately 1.5-9 hours total at
@@ -897,10 +1040,381 @@ task and approximately 2-9 hours total at concurrency six; merging both reports
 should take under 15 minutes. These revised estimates are low confidence and
 come from prior single-version plotting history plus static inspection of the
 new doubled plotting and marker workload; the next `sacct` results should be
-used to refine them. Requested limits remain 1 hour for
-clustering, 4 hours per transfer, 30
-minutes for table construction, 2 hours per consensus/report-page task, and 30
-minutes for the merge.
+used to refine them. Requested limits remain 1 hour for clustering, 4 hours per
+transfer, 30 minutes for table construction, 2 hours per
+consensus/report-page task, and 30 minutes for the merge.
+
+Because broad consensus labels determine VZ and RL cell inclusion, existing
+VZ/RL subset, integration, QC, subclustering, and relabeling outputs become
+stale after this production annotation replacement. Review the new broad-label
+summary and Unknown clusters before regenerating either regional branch.
+
+##### Compact audit of reviewed resolution-5 cluster mislabels
+
+`config/reviewed_annotation_clusters.csv` records the five currently reviewed
+cluster/expected-label pairs. The non-mutating audit
+`xenium_annotate_00c_audit_reviewed_clusters.R` reads the existing Aldinger,
+Sepp, and Science transfer RDS files for those samples and writes one row per
+reviewed cluster/reference combination. The table reports reference-level
+majority and weighted labels, mean RL/Granule/Glia/VZ scores, the top-two
+margin, expected-versus-current score difference, cell-level prediction
+fractions, and the fraction above the legacy 0.4 maximum-score threshold. It
+never writes an RDS or modifies a label, threshold, or consensus table.
+
+Inspect the reviewed rows and nine required RDS paths without loading an
+analysis object:
+
+```bash
+Rscript scripts/xenium_annotate_00c_audit_reviewed_clusters.R --list
+Rscript scripts/xenium_annotate_00c_audit_reviewed_clusters.R --dry-run
+```
+
+Submit the sequential audit on Cheaha with:
+
+```bash
+sbatch scripts/run_xenium_annotate_00c_audit_reviewed_clusters.slurm
+```
+
+The compact result is written to
+`outputs/validation/resolution5_method_development/04_transfer_threshold_calibration_audit/reviewed_clusters/tables/Reviewed_cluster_reference_score_audit.csv`.
+The path-only dry-run should take under 10 seconds. The full audit is expected
+to take approximately 20-90 minutes because it sequentially loads nine
+full-size Seurat objects; this is a low-confidence estimate based on RDS I/O
+and the observed 7.3-47.3-minute complete transfer-task history. The launcher
+requests 2 hours and 64 GB on `express`; collect `Elapsed` and `MaxRSS` with
+`sacct` after the first run to refine both requests.
+
+##### Focused reference-sampling and abstention sensitivity at resolution 5
+
+`xenium_annotate_01c_reference_sampling_abstention_sensitivity.R` isolates two
+questions without changing production annotations:
+
+- Does using each complete reference instead of the production cap of 1,000
+  cells per `clusters_refined` identity change the reference or consensus label?
+- How many additional clusters become unresolved when a reference must meet a
+  score-margin or cell-support requirement before casting its equal vote?
+
+The three query samples are derived from the unique sample IDs in
+`config/reviewed_annotation_clusters.csv`. Each is mapped to Aldinger, Sepp,
+and Science under `cap1000` and `full`, producing 18 isolated tasks. Both
+sampling modes retain the production RPCA settings: seed 42, 3,000 reference
+variable features, dimensions 1:30, `k.anchor = 20`, `k.score = 30`,
+`k.weight = 50`, and the 0.4 winning-score threshold. The only transfer-stage
+change is the set of reference cells retained. Seed 42 is reset before
+reference sampling, each PCA, and anchor finding so stochastic state does not
+become a second difference between the two sampling modes.
+
+Each transfer is evaluated with four prespecified sensitivity rules:
+
+1. `production_score`: winning mean class score at least 0.4;
+2. `score_margin_0.05`: production score plus a top-two mean-score margin of
+   at least 0.05;
+3. `score_margin_0.10`: production score plus a margin of at least 0.10; and
+4. `score_margin_0.05_cell_support_0.60`: production score, margin at least
+   0.05, and at least 60% of cluster cells individually predicted as the
+   weighted winner.
+
+These candidate cutoffs are sensitivity conditions, not assumed published
+standards. The reviewed expected labels are never used during transfer or to
+construct a vote; they are joined only into the final review table. Each
+reference still contributes at most one vote, and every combined non-Unknown
+label still requires agreement from at least two references.
+
+On Cheaha, inspect all mappings and input paths without loading an RDS object:
+
+```bash
+cd /home/acflint/R/Projects/XeniumFCProject
+
+Rscript \
+  scripts/xenium_annotate_01c_reference_sampling_abstention_sensitivity.R \
+  --list
+
+bash \
+  scripts/submit_xenium_annotate_01c_reference_sampling_abstention_sensitivity.sh \
+  --dry-run
+```
+
+Submit the array and its `afterok` combine job with:
+
+```bash
+bash \
+  scripts/submit_xenium_annotate_01c_reference_sampling_abstention_sensitivity.sh
+```
+
+Compact task tables and combined summaries are written beneath
+`outputs/validation/resolution5_method_development/reference_sampling_abstention_sensitivity/`.
+The most direct review files in `combined_tables/` are:
+
+- `sampling_abstention_consensus_results.csv`, containing every equal
+  two-of-three result;
+- `sampling_abstention_unknown_summary.csv`, reporting cluster and cell
+  coverage under each abstention rule;
+- `sampling_abstention_reviewed_cluster_results.csv`, showing the outcomes for
+  the five reviewed clusters; and
+- `sampling_abstention_sampling_comparison.csv`, identifying labels changed by
+  full-reference sampling.
+
+No RDS object, production transfer table, consensus label, or downstream VZ/RL
+output is written or replaced. Based on the completed capped-reference jobs,
+`cap1000` tasks are expected to take approximately 8-50 minutes each. The full
+reference tasks are estimated at approximately 20-120 minutes each, with low
+confidence because their memory and anchor costs have not yet been measured.
+At array concurrency three, all 18 tasks should take approximately 2-8 hours
+total, excluding queue wait. The task launcher requests 4 hours, 1 CPU, and
+128 GB on `short`; the combine job should take under 2 minutes but requests 15
+minutes and 4 GB on `express`. After completion, collect `JobID`, `Elapsed`,
+`State`, `MaxRSS`, `ReqMem`, `AllocCPUS`, and `ExitCode` with `sacct` before
+changing these requests or applying either sensitivity condition to production.
+
+##### Age/stage-stratified reference sampling sensitivity at resolution 5
+
+`xenium_annotate_01d_stratified_sampling_sensitivity.R` adds a third,
+isolated sampling mode to the completed `cap1000` versus `full` experiment.
+`stratified_cap1000` retains at most 1,000 cells per `clusters_refined`
+identity, but distributes that identity-specific allowance as evenly as
+possible across developmental age/stage levels. If a small stratum is
+exhausted, its unused allowance is redistributed among the remaining strata.
+Ties and cell selection are reproducible with seed 42.
+
+The test uses the same three reviewed query samples, Aldinger/Sepp/Science
+references, RPCA settings, four abstention rules, and equal two-of-three
+consensus as the preceding sensitivity analysis. It therefore changes only
+which cells are retained within each capped reference identity. It does not
+write an RDS or modify a production label, threshold, consensus result, or
+the existing `combined_tables/` results.
+
+A required preflight loads all three references and selects one complete,
+informative developmental field for each reference. It prioritizes the known
+Aldinger `age` and Sepp `Stage` fields and common Science PCW/age/stage field
+names. A field must have no missing values and 2-50 distinct levels. The run
+stops before label transfer if any reference cannot meet those safeguards.
+The selected fields and level counts are recorded in
+`stratified_preflight/reference_age_stage_strata.csv`.
+
+On Cheaha, inspect the task mapping and reference paths without loading an RDS
+object or submitting a job:
+
+```bash
+cd /home/acflint/R/Projects/XeniumFCProject
+
+bash \
+  scripts/submit_xenium_annotate_01d_stratified_sampling_sensitivity.sh \
+  --dry-run
+```
+
+Submit the preflight, nine-task array, and dependent three-mode combine job:
+
+```bash
+bash \
+  scripts/submit_xenium_annotate_01d_stratified_sampling_sensitivity.sh
+```
+
+New task tables are written under `stratified_cap1000/`. The most useful
+three-mode summaries are written to `stratified_combined_tables/`:
+
+- `three_mode_sampling_comparison.csv` compares the consensus label from
+  `cap1000`, `stratified_cap1000`, and `full` for every cluster and rule;
+- `three_mode_reviewed_cluster_results.csv` isolates the five reviewed
+  clusters and reports agreement with the reviewed expected label;
+- `three_mode_unknown_summary.csv` compares Unknown cluster and cell fractions;
+  and
+- `stratified_reference_strata_balance.csv` records the full and retained cell
+  count for every reference class-by-stage combination.
+
+The preflight is expected to take approximately 5-30 minutes and requests 1
+hour, 1 CPU, and 64 GB on `express`; this estimate is low confidence because
+reference RDS read times have not been measured separately. Based on the
+observed 7.3-47.3-minute capped production transfers and 44.5-49.3 GB peak
+memory, each stratified task is expected to take approximately 8-50 minutes
+and requests 2 hours, 1 CPU, and 64 GB on `express`. At concurrency three, the
+nine tasks should take approximately 25-150 minutes total, excluding queue
+wait. The combine step should take under 2 minutes and requests 15 minutes and
+4 GB on `express`. Collect `sacct` evidence after completion before changing
+these requests or considering this sampling mode for production.
+
+##### Reference-cap convergence screen at resolution 5
+
+`xenium_annotate_01e_reference_cap_convergence.R` tests whether an
+intermediate per-identity reference cap can reproduce the completed
+full-reference results without requiring full-reference computation for every
+sample. It runs caps of 2,500, 5,000, and 10,000 cells for the same three
+reviewed query samples and Aldinger/Sepp/Science references. The transfer
+settings, seed 42, four abstention rules, and equal two-of-three consensus are
+unchanged from the preceding sampling analysis. The combine step reuses its
+completed `cap1000` and `full` tables, yielding a five-mode comparison.
+
+This is an isolated sensitivity screen. It writes compact CSV tables only and
+does not change a production cap, threshold, reference, consensus label, RDS
+object, or downstream VZ/RL result. The intended decision is the smallest cap
+whose labels and confidence measures have plateaued toward the full-reference
+result. Before adopting that cap, repeat the selected cap with additional
+random seeds to confirm that the result is not specific to seed 42.
+
+On Cheaha, first inspect all paths and the exact 27-task mapping without
+loading the large RDS objects:
+
+```bash
+cd /home/acflint/R/Projects/XeniumFCProject
+
+bash scripts/submit_xenium_annotate_01e_reference_cap_convergence.sh \
+  --dry-run
+```
+
+Submit the 27-task array and its dependent combine job:
+
+```bash
+bash scripts/submit_xenium_annotate_01e_reference_cap_convergence.sh
+```
+
+Intermediate task tables are written under `cap2500/`, `cap5000/`, and
+`cap10000/` within
+`outputs/validation/resolution5_method_development/reference_sampling_abstention_sensitivity/`.
+The combined decision tables are written to `cap_convergence_screen_tables/`:
+
+- `cap_convergence_to_full_summary.csv` reports cluster- and cell-weighted
+  agreement with full-reference consensus, Unknown burden, consensus support,
+  and reviewed-cluster accuracy for every cap and abstention rule;
+- `cap_convergence_cluster_comparison.csv` identifies the exact clusters and
+  labels that differ from full-reference results;
+- `cap_convergence_reviewed_cluster_results.csv` shows all five reviewed
+  clusters across the five sampling modes and four rules;
+- `cap_convergence_reference_vote_summary.csv` determines whether remaining
+  disagreement is concentrated in Aldinger, Sepp, or Science; and
+- `cap_convergence_unknown_summary.csv` and
+  `cap_convergence_reference_class_balance.csv` document coverage and the
+  exact number of reference cells retained.
+
+Based on the observed 7.3-47.3-minute capped transfers and increasing retained
+reference sizes, estimated runtimes are 10-60 minutes per `cap2500` task,
+15-90 minutes per `cap5000` task, and 20-120 minutes per `cap10000` task. These
+are low-confidence estimates until this screen supplies direct `sacct`
+measurements. At concurrency three, the 27 tasks are expected to take roughly
+2.25-13.5 hours total, excluding queue wait. Each task requests 4 hours, 1 CPU,
+and 128 GB on `short`; the combine job should take under 2 minutes but requests
+15 minutes and 4 GB on `express`. After completion, collect `JobID`, `Elapsed`,
+`State`, `MaxRSS`, `ReqMem`, `AllocCPUS`, and `ExitCode` with `sacct`.
+
+##### Focused `k.anchor` sensitivity at resolution 5
+
+`xenium_annotate_01a_k_anchor_sensitivity.R` runs only
+`GZFB_9_X_G_1`, `GZFB_20_X_G_1`, and `GZFB_22_X_G_3` against Aldinger,
+Sepp, and Science with `k.anchor = 5` and `k.anchor = 10`. This is an
+18-task isolated sensitivity analysis. It preserves the production RPCA
+settings (`k.score = 30`, `k.weight = 50`, dimensions 1:30, 3,000 variable
+features, at most 1,000 reference cells per identity, seed 42, and the legacy
+0.4 reporting threshold) and changes only `k.anchor`. It writes compact score,
+prediction-count, and provenance tables; it does not write an RDS or modify
+production transfer or consensus outputs.
+
+Inspect the exact task mapping before submission:
+
+```bash
+Rscript scripts/xenium_annotate_01a_k_anchor_sensitivity.R --list
+for task_id in $(seq 1 18); do
+  Rscript scripts/xenium_annotate_01a_k_anchor_sensitivity.R \
+    --dry-run "${task_id}"
+done
+```
+
+The dry-run checks paths and task/manifest mapping without loading the large
+RDS objects. On Cheaha, submit the array and then its dependent combine job:
+
+```bash
+array_submit=$(sbatch --parsable \
+  scripts/run_xenium_annotate_01a_k_anchor_sensitivity.slurm)
+array_job=${array_submit%%;*}
+sbatch --dependency="afterok:${array_job}" \
+  scripts/run_xenium_annotate_01a_k_anchor_sensitivity_combine.slurm
+```
+
+Per-task outputs are written below
+`outputs/validation/resolution5_method_development/k_anchor_sensitivity/k_anchor_<5-or-10>/<reference>/tables/`.
+The compact comparison table is
+`outputs/validation/resolution5_method_development/k_anchor_sensitivity/combined_tables/k_anchor_5_10_combined_cluster_score_summary.csv`.
+Based on the existing 7.3-47.3-minute full transfer-task history and the
+omission of UMAP, plots, and RDS output here, expect approximately 5-40 minutes
+per task and approximately 15-120 minutes total at concurrency six. This is a
+moderate-to-low-confidence estimate; the launcher requests 2 hours per task,
+and the combine job should take under 1 minute while requesting 15 minutes.
+Use `sacct` to collect `Elapsed` and `MaxRSS` after completion.
+
+##### Minimal transfer-source diagnostic at resolution 5
+
+`xenium_annotate_01b_transfer_diagnostics.R` tests the highest-priority
+non-reference explanations for the reviewed RL/Granule/Glia/VZ discrepancies
+without changing production labels. It uses only `GZFB_9_X_G_1`,
+`GZFB_20_X_G_1`, and `GZFB_22_X_G_3`, all three references, resolution 5,
+`k.anchor = 10`, `k.score = 30`, dimensions 1:30, at most 1,000 reference
+cells per broad identity, seed 42, and the existing 0.4 reporting threshold.
+It compares:
+
+- `baseline_rpca`: the normalized data already stored in each object;
+- `norm10k_rpca`: reference and query both re-normalized with LogNormalize and
+  `scale.factor = 10000`;
+- `norm10k_cca`: the same matched 10k normalization followed by CCA instead of
+  RPCA.
+
+Each AnchorSet is reused for `k.weight = 25` and 50. The resulting tables test
+normalization compatibility, cross-platform reduction choice, transfer-neighbor
+smoothing, anchor-label composition and coverage, RPCA mapping quality,
+reference class/age/donor/subtype balance, marker-feature availability, and
+cell-level score entropy and margins. CCA mapping scores are intentionally `NA`
+because Seurat's `MappingScore` diagnostic is RPCA-specific. The focused
+clusters and reasons for inclusion are declared in
+`config/transfer_diagnostic_clusters.csv`; this manifest records review targets
+but does not force an expected identity. The driver prefers this project-root
+location on Cheaha and retains `scripts/config/` as a local-layout fallback.
+
+Inspect the exact 27-task mapping and run path-only checks with:
+
+```bash
+Rscript scripts/xenium_annotate_01b_transfer_diagnostics.R --list
+for task_id in $(seq 1 27); do
+  Rscript scripts/xenium_annotate_01b_transfer_diagnostics.R \
+    --dry-run "${task_id}" || exit 1
+done
+```
+
+The dry-run checks input/output paths, sample-manifest membership, target
+clusters, and fixed settings without loading the large RDS objects; expect
+under 10 seconds per invocation. Submit the two arrays and one combine job on
+Cheaha with:
+
+```bash
+rpca_submit=$(sbatch --parsable \
+  scripts/run_xenium_annotate_01b_transfer_diagnostics_rpca.slurm)
+rpca_job=${rpca_submit%%;*}
+
+cca_submit=$(sbatch --parsable \
+  scripts/run_xenium_annotate_01b_transfer_diagnostics_cca.slurm)
+cca_job=${cca_submit%%;*}
+
+sbatch --dependency="afterok:${rpca_job}:${cca_job}" \
+  scripts/run_xenium_annotate_01b_transfer_diagnostics_combine.slurm
+```
+
+All three launchers use the literal email `acflint@uab.edu`. Arrays email on
+failure; the dependent combine job emails on completion, failure, or an
+invalid dependency. They also explicitly request Slurm account `acflint` and
+QoS `normal` because those authorized values may not currently be inferred as
+defaults. Outputs are isolated below
+`outputs/validation/resolution5_method_development/transfer_diagnostics_k10/`.
+The fastest review table is
+`combined_tables/diagnostic_target_cluster_cross_reference_summary.csv`, with
+per-cell cross-reference scores in
+`combined_tables/diagnostic_target_cells_cross_reference.csv`.
+
+Based on the observed 7.3-47.3-minute RPCA transfer history, expect roughly
+10-60 minutes per RPCA task and 30 minutes to 2 hours per CCA task. At the
+configured concurrency, the 18-task RPCA array should take about 30 minutes to
+3 hours and the 9-task CCA array about 1.5-6 hours; because the arrays can run
+concurrently, the expected end-to-end wall time is approximately 1.5-6 hours,
+excluding queue wait. The RPCA estimate is moderate confidence; the CCA
+estimate is low confidence because there is no project-specific CCA history.
+The launchers request 2 hours/64 GB on `express` for RPCA, 4 hours/128 GB on
+`short` for CCA, and 15 minutes/4 GB on `express` for the combine step. After
+completion, collect `JobID`, `Elapsed`, `State`, `MaxRSS`, `ReqMem`,
+`AllocCPUS`, and `ExitCode` with `sacct` to refine these requests.
 
 To propagate a reviewed Sepp panel-reference update without rerunning Xenium
 clustering or the unchanged Aldinger and Science transfers, use the dedicated
@@ -921,6 +1435,26 @@ bash scripts/submit_sepp_reference_resolution5_consensus.sh \
   --downstream-only
 ```
 
+For a focused review after `sepp_02_subset_gene_panel.R` has already been
+rerun, propagate the updated Sepp reference through only `GZFB_9_X_G_1`,
+`GZFB_20_X_G_1`, and `GZFB_22_X_G_3`:
+
+```bash
+bash scripts/submit_sepp_reference_resolution5_three_sample_consensus.sh --dry-run
+bash scripts/submit_sepp_reference_resolution5_three_sample_consensus.sh
+```
+
+The submitter resolves and verifies manifest task IDs 9, 17, and 31, reruns
+only those three Sepp transfers, rebuilds only their three weighted 2-of-3
+consensus tables, and replaces only their consensus objects and per-sample
+plots. Existing Aldinger and Science transfers are reused. It does not rebuild
+the 34-sample report PDFs. Expect approximately 8-41 minutes per Sepp transfer
+and about the same transfer wall time at concurrency three, under 2 minutes for
+the consensus merge, and approximately 1-4 minutes per consensus-application
+task. The expected end-to-end active wall time is about 10-50 minutes,
+excluding queue wait; these estimates are based on completed resolution-5
+transfer history and the measured all-sample consensus workflow.
+
 The dry-run validates the 34-row manifest and all Sepp transfer input paths but
 does not load large RDS objects. The full workflow explicitly replaces the 34
 Sepp transfer outputs, weighted 2-of-3 tables, consensus objects, paired plots,
@@ -940,6 +1474,9 @@ the failed stage and confirms whether any jobs were submitted. The
 on disk and does not itself indicate failure. The submitter suppresses repeated
 `renv` synchronization notices during its 34 path checks without changing the
 environment; inspect it once with `renv::status()` before production.
+The preflight also requires `writexl` in the active project library before any
+Slurm jobs are submitted because consensus application uses it for all
+Unknown-cluster marker workbooks.
 
 To propagate a reviewed Science-reference update without rerunning unchanged
 Xenium clustering or the unchanged Aldinger and Sepp transfers, run this
@@ -1004,15 +1541,24 @@ hours, excluding queue wait. Transfer estimates are high confidence; the
 revised downstream estimates are low confidence and should be refined with
 `sacct` after completion.
 
-### 5. Reference-based annotation
+### 5. Annotation implementation and retired resolution-1.5 default mode
+
+The implementation described here also powers resolution-5 production, but
+the unflagged/default commands and `outputs/xenium/annotation/legacy_resolution1_5/` paths
+below are retired resolution-1.5 workflow details. Do not run those default
+launchers for new production work. Use the explicit resolution-5 commands in
+the preceding section. The generic resolution-1.5 outputs may be removed once
+the resolution-5 validation report passes.
 
 `xenium_annotate_01_label_transfer_rpca.R` is the primary label-transfer implementation. It:
 
-- balances the reference by downsampling to at most 1,000 cells per reference identity;
+- uses the complete reference for `--all-samples-res5`; legacy/default modes
+  retain their prior cap of at most 1,000 cells per reference identity;
 - finds genes shared by the reference and Xenium object;
 - builds reciprocal-PCA transfer anchors over 30 dimensions;
 - transfers `clusters_refined` labels;
-- applies a default prediction-score threshold of 0.4; and
+- applies a winner mean-score threshold of 0.4 and, for resolution-5
+  production, a top-two mean-score margin of 0.05; and
 - derives cluster-level majority and weighted-vote labels.
 
 The reference and sample are selected explicitly from the command line. The
@@ -1035,8 +1581,9 @@ sbatch --job-name=Xen_ABT_Science --export=ALL,REFERENCE=Science scripts/run_xen
 The driver refuses to replace any existing annotation output unless called
 with `--overwrite`, or submitted with `ABT_OVERWRITE=true` after review.
 For each reference, RDS objects, plots, and tables are written beneath
-`outputs/xenium/annotation/01_label_transfer/<reference>/`. Combined voting
-tables are written to `outputs/xenium/annotation/02_consensus/tables/`.
+`outputs/xenium/annotation/legacy_resolution1_5/01_label_transfer/<reference>/`.
+Combined voting tables are written to
+`outputs/xenium/annotation/legacy_resolution1_5/02_consensus/tables/`.
 
 Related scripts:
 
@@ -1063,9 +1610,9 @@ Rscript scripts/xenium_annotate_03_apply_consensus.R --dry-run 1
 ```
 
 Consensus objects are written to
-`outputs/xenium/annotation/03_consensus_labels/rds/<sample>_Consensus_annotated.rds`.
+`outputs/xenium/annotation/legacy_resolution1_5/03_consensus_labels/rds/<sample>_Consensus_annotated.rds`.
 Consensus UMAP, spatial, and marker plots are written together under
-`outputs/xenium/annotation/03_consensus_labels/plots/`; only the separate
+`outputs/xenium/annotation/legacy_resolution1_5/03_consensus_labels/plots/`; only the separate
 proportion-summary analysis retains its `plots/proportions/` subdirectory.
 The stable filenames contain all cells, while matched `_Consensus_KnownOnly_`
 files remove every `Unknown-##` cell. Unknown marker workbooks are written under
@@ -1101,7 +1648,7 @@ sbatch scripts/run_xenium_annotate_03d_plot_report.slurm
 ```
 
 The job writes
-`outputs/xenium/annotation/03_consensus_labels/plots/Xenium_Consensus_All_Samples_Report.pdf`
+`outputs/xenium/annotation/legacy_resolution1_5/03_consensus_labels/plots/Xenium_Consensus_All_Samples_Report.pdf`
 and the matched
 `Xenium_Consensus_All_Samples_KnownOnly_Report.pdf`.
 Each of its 34 landscape pages contains one sample's global spatial map,
@@ -1119,6 +1666,18 @@ launcher requests 8 hours. A measured per-page time from the first run would
 substantially improve this estimate.
 
 ### 6. VZ analysis
+
+The VZ branch now reads all 34 whole-tissue inputs from
+`outputs/xenium/annotation/03_consensus_labels_weighted_2of3/rds/`,
+as selected by the `production` configuration. This changes the upstream broad
+identities from the retired resolution-1.5 annotation to the approved
+resolution-5 weighted consensus. Consequently, any VZ/RL objects previously
+derived from resolution-1.5 whole-tissue inputs are stale and must be
+regenerated.
+
+Names such as `Xenium_VZ_Res1.5.rds` below refer to the independently reviewed
+regional VZ clustering resolution; they do not indicate use of the retired
+whole-tissue resolution-1.5 source and remain unchanged.
 
 The VZ branch generally follows this order:
 

@@ -79,7 +79,7 @@ pilot_stage <- if (selected_sample_mode) {
 } else if (all_samples_res4) {
   "03g_resolution4_all_samples"
 } else if (all_samples_res5) {
-  "03i_resolution5_all_samples"
+  "04_resolution5_clustered"
 } else if (pilot_res5) {
   "03e_resolution5_pilot"
 } else if (pilot_res4) {
@@ -179,13 +179,13 @@ output_root <- here(config$project$outputs_dir)
 annotation_root <- if (all_samples_res4) {
   file.path(output_root, "xenium", "annotation", "resolution4_all_samples")
 } else if (all_samples_res5) {
-  file.path(output_root, "xenium", "annotation", "resolution5_all_samples")
+  file.path(output_root, "xenium", "annotation")
 } else if (pilot_mode) {
   file.path(
     output_root, "xenium", "preprocess", pilot_stage, "annotation"
   )
 } else {
-  file.path(output_root, "xenium", "annotation")
+  file.path(output_root, "xenium", "annotation", "legacy_resolution1_5")
 }
 input_path <- file.path(
   annotation_root, "01_label_transfer", "aldinger", "rds",
@@ -300,6 +300,30 @@ save_unknown_marker_workbook <- function(
   unknown_levels <- order_consensus_levels(labels, celltype_order)
   unknown_levels <- unknown_levels[is_unknown_consensus_label(unknown_levels)]
   if (!length(unknown_levels)) {
+    if (file.exists(marker_workbook_path)) {
+      if (!overwrite) {
+        stop(
+          "An existing Unknown marker workbook is stale because no Unknown clusters ",
+          "were found: ", marker_workbook_path,
+          "\nUse --overwrite only after reviewing it."
+        )
+      }
+      superseded_path <- paste0(
+        marker_workbook_path,
+        ".superseded_no_unknown_",
+        format(Sys.time(), "%Y%m%dT%H%M%S"),
+        "_", Sys.getpid()
+      )
+      if (!file.rename(marker_workbook_path, superseded_path)) {
+        stop(
+          "Could not preserve the stale Unknown marker workbook as: ",
+          superseded_path
+        )
+      }
+      message(
+        "Preserved stale Unknown marker workbook as: ", superseded_path
+      )
+    }
     message(
       "Skipping Unknown marker workbook for ", sample_name,
       ": no Unknown clusters were found."
@@ -626,9 +650,14 @@ if (dry_run) {
     ),
     inputs = input_checks$input,
     outputs = c(expected_outputs, marker_workbook_path),
-    checks = setNames(input_checks$exists, input_checks$input_type)
+    checks = c(
+      setNames(input_checks$exists, input_checks$input_type),
+      `writexl package available` = requireNamespace("writexl", quietly = TRUE)
+    )
   )
-  quit(save = "no", status = if (all(input_checks$exists)) 0L else 1L)
+  dry_run_ready <- all(input_checks$exists) &&
+    requireNamespace("writexl", quietly = TRUE)
+  quit(save = "no", status = if (dry_run_ready) 0L else 1L)
 }
 
 if (pilot_mode && !selected_sample_mode) {
@@ -713,6 +742,13 @@ if (weighted_2of3) {
     "consensus_status", "consensus_method"
   )
 }
+if (all_samples_res5 && weighted_2of3) {
+  required_columns <- c(
+    required_columns, "production_reference_sampling",
+    "production_prediction_score_threshold",
+    "production_min_top2_mean_score_margin", "production_random_seed"
+  )
+}
 if (!all(required_columns %in% names(comparison))) {
   stop("Consensus table must contain: ", paste(required_columns, collapse = ", "))
 }
@@ -720,6 +756,39 @@ if (weighted_2of3) {
   table_methods <- unique(as.character(comparison$consensus_method))
   if (!identical(table_methods, "weighted_2of3")) {
     stop("Consensus table was not produced by the weighted_2of3 method: ", comparison_path)
+  }
+}
+if (all_samples_res5 && weighted_2of3) {
+  expected_settings <- config$label_transfer$resolution5_all_samples
+  table_sampling <- unique(trimws(as.character(
+    comparison$production_reference_sampling
+  )))
+  table_threshold <- unique(suppressWarnings(as.numeric(
+    comparison$production_prediction_score_threshold
+  )))
+  table_margin <- unique(suppressWarnings(as.numeric(
+    comparison$production_min_top2_mean_score_margin
+  )))
+  table_seed <- unique(suppressWarnings(as.integer(
+    comparison$production_random_seed
+  )))
+  if (!identical(
+        table_sampling,
+        tolower(trimws(as.character(expected_settings$reference_sampling)))
+      ) ||
+      !identical(
+        table_threshold,
+        as.numeric(config$label_transfer$prediction_score_threshold)
+      ) ||
+      !identical(
+        table_margin,
+        as.numeric(expected_settings$min_top2_mean_score_margin)
+      ) ||
+      !identical(table_seed, as.integer(config$runtime$random_seed))) {
+    stop(
+      "Resolution-5 production consensus provenance does not match config.yml: ",
+      comparison_path
+    )
   }
 }
 if (anyDuplicated(as.character(comparison$seurat_clusters))) {
@@ -746,7 +815,7 @@ if (length(unknown_label_counts) && any(unknown_label_counts != 1L)) {
 if (length(unknown_table_labels) >= 1L && !requireNamespace("writexl", quietly = TRUE)) {
   stop(
     "The 'writexl' package is required because ", sample_name, " contains ",
-    length(unknown_table_labels), " Unknown clusters. Restore it through the project ",
+    length(unknown_table_labels), " Unknown cluster(s). Restore it through the project ",
     "renv environment before rerunning this stage."
   )
 }

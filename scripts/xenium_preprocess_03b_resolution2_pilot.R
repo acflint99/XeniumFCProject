@@ -160,7 +160,7 @@ pilot_stage <- if (selected_sample_mode) {
 } else if (all_samples_res4) {
   "03g_resolution4_all_samples"
 } else if (all_samples_res5) {
-  "03i_resolution5_all_samples"
+  "04_resolution5_clustered"
 } else if (resolution5_pilot) {
   "03e_resolution5_pilot"
 } else if (resolution4_pilot) {

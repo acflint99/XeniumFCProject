@@ -27,14 +27,14 @@ for task_id in $(seq 1 "${manifest_count}"); do
 done
 
 cluster_submit=$(sbatch --parsable \
-  scripts/run_xenium_preprocess_03i_resolution5_all_samples.slurm)
+  scripts/run_xenium_preprocess_04_resolution5_clustered.slurm)
 cluster_job=${cluster_submit%%;*}
 
 transfer_jobs=()
 for reference in Aldinger Sepp Science; do
   transfer_submit=$(sbatch --parsable \
     --dependency="afterok:${cluster_job}" \
-    --array="1-${manifest_count}%6" \
+    --array="1-${manifest_count}%3" \
     --job-name="Xen_res5_all_${reference}" \
     --export=ALL,REFERENCE="${reference}" \
     scripts/run_xenium_annotate_01_transfer_resolution5_all_samples.slurm)

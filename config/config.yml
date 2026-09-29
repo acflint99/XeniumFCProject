@@ -11,6 +11,14 @@ project:
   logs_dir: "logs"
   scripts_dir: "scripts"
 
+# Approved whole-tissue production source for all downstream regional work.
+# The VZ/RL stages retain their own independently reviewed clustering settings.
+production:
+  whole_tissue_resolution: 5
+  preprocessing_stage: "04_resolution5_clustered"
+  consensus_table_stage: "02_consensus_weighted_2of3"
+  consensus_label_stage: "03_consensus_labels_weighted_2of3"
+
 manifests:
   samples: "config/samples.csv"
   slides: "config/slides.csv"
@@ -62,6 +70,10 @@ label_transfer:
   prediction_score_threshold: 0.4
   k_anchor: 20
   k_score: 30
+  k_weight: 50
+  resolution5_all_samples:
+    reference_sampling: "full"
+    min_top2_mean_score_margin: 0.05
 
 regional_subsets:
   vz_broad_labels:
