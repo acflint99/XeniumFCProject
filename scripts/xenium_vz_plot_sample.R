@@ -97,7 +97,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     ggtitle(paste(sample_id, "VZ Subclusters"))
   
   Cairo::CairoTIFF(
-    filename = file.path(sample_plot_dir, paste0(sample_id, "_Global_Spatial1.5.tif")),
+    filename = file.path(sample_plot_dir, paste0(sample_id, "_Global_Spatial_pt1.5.tif")),
     width = 10,
     height = 8,
     units = "in",
@@ -108,11 +108,11 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   
   # B. Group Highlights
   save_highlight(obj, c("VZPs", "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs"),
-                 "Purkinje_Lineage", paste0(sample_id, "_Purkinje_Spatial1.5.tif"))
+                 "Purkinje_Lineage", paste0(sample_id, "_Purkinje_Spatial_pt1.5.tif"))
   save_highlight(obj, c("VZPs", "RG Progenitors", "BG", "Astrocytes/Ependyma"),
-                 "Glia_Lineage", paste0(sample_id, "_Glia_Spatial1.5.tif"))
+                 "Glia_Lineage", paste0(sample_id, "_Glia_Spatial_pt1.5.tif"))
   save_highlight(obj, c("VZPs", "GABA Progenitors", "Golgi Cells", "MLIs", "iCN"),
-                 "GABA_Lineage", paste0(sample_id, "_GABA_Spatial1.5.tif"))
+                 "GABA_Lineage", paste0(sample_id, "_GABA_Spatial_pt1.5.tif"))
   
   #C. Faceted Spatial
   coords <- GetTissueCoordinates(obj, type = "Xenium")
@@ -138,7 +138,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     )
   
   Cairo::CairoTIFF(
-    filename = file.path(sample_plot_dir, paste0(sample_id, "_Faceted_Clusters0.3.tif")),
+    filename = file.path(sample_plot_dir, paste0(sample_id, "_Faceted_Clusters_pt0.3.tif")),
     width = 12,
     height = 10,
     units = "in",

@@ -35,13 +35,13 @@ sample_id <- sample_ids[[task_id]]
 output_root <- here(config$project$outputs_dir)
 input_path <- file.path(
   output_root, "xenium", "vz", "07_mapped", "rds",
-  paste0(sample_id, "_Ald_VZ_QC_Subclusters.rds")
+  paste0(sample_id, "_VZ_QC_Subclusters.rds")
 )
 output_base <- file.path(output_root, "xenium", "vz", "08_sample_reports")
 sample_dir <- file.path(output_base, sample_id)
 output_suffixes <- c(
-  "_cluster_counts.csv", "_Global_Spatial1.5.tif", "_Purkinje_Spatial1.5.tif",
-  "_Glia_Spatial1.5.tif", "_GABA_Spatial1.5.tif", "_Faceted_Clusters0.3.tif",
+  "_cluster_counts.csv", "_Global_Spatial_pt1.5.tif", "_Purkinje_Spatial_pt1.5.tif",
+  "_Glia_Spatial_pt1.5.tif", "_GABA_Spatial_pt1.5.tif", "_Faceted_Clusters_pt0.3.tif",
   "_Markers_DotPlot.tif", "_Markers_DotPlot.pdf"
 )
 output_paths <- file.path(sample_dir, paste0(sample_id, output_suffixes))

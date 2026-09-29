@@ -45,7 +45,7 @@ if (remove_supplied && !identical(tolower(trimws(remove_value)), "none")) {
 }
 
 output_root <- here(config$project$outputs_dir)
-merged_path <- file.path(output_root, "xenium", "vz", "03_integrated", "rds", "Xenium_VZ_Res1.5.rds")
+merged_path <- file.path(output_root, "xenium", "vz", "03_integrated", "rds", "Xenium_VZ_integrated.rds")
 input_dir <- production_paths$consensus_rds_dir
 output_dir <- file.path(output_root, "xenium", "vz", "04_qc", "rds")
 plot_dir <- file.path(output_root, "xenium", "vz", "04_qc", "plots")
@@ -53,13 +53,13 @@ table_dir <- file.path(output_root, "xenium", "vz", "04_qc", "tables")
 
 input_names <- paste0(sample_ids, "_Consensus_annotated.rds")
 input_paths <- file.path(input_dir, input_names)
-output_names <- paste0(sample_ids, "_Ald_VZ_QC.rds")
+output_names <- paste0(sample_ids, "_VZ_QC.rds")
 output_paths <- file.path(output_dir, output_names)
-summary_path <- file.path(table_dir, "XenAld_VZ_RawSubcluster_QC_Summary.csv")
+summary_path <- file.path(table_dir, "Xenium_VZ_RawSubcluster_QC_Summary.csv")
 marker_path <- file.path(table_dir, "VZ_RawSubcluster_top10_Markers_Res0.8.csv")
-review_path <- file.path(table_dir, "XenAld_VZ_QC_review_manifest.csv")
-pdf_path <- file.path(plot_dir, "XenAld_VZ_RawSubcluster_QC_Violins.pdf")
-removal_path <- file.path(table_dir, "XenAld_VZ_QC_removal_manifest.csv")
+review_path <- file.path(table_dir, "Xenium_VZ_QC_review_manifest.csv")
+pdf_path <- file.path(plot_dir, "Xenium_VZ_RawSubcluster_QC_Violins.pdf")
+removal_path <- file.path(table_dir, "Xenium_VZ_QC_removal_manifest.csv")
 qc_outputs <- c(summary_path, marker_path, review_path, pdf_path)
 removal_outputs <- c(output_paths, removal_path)
 

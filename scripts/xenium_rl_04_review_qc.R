@@ -1,7 +1,8 @@
 #!/usr/bin/env Rscript
 
 # Review merged RL clusters, then explicitly apply the reviewed cell removal
-# decision to every manifest-defined VZ-labelled whole-tissue object.
+# decision to each approved whole-tissue consensus object. RL remains
+# independent of the VZ mapping branch until the combined-label stage.
 
 rm(list = ls())
 
@@ -17,6 +18,7 @@ source(here("scripts", "R", "config.R"))
 
 config <- load_pipeline_config()
 sample_ids <- load_sample_manifest(config)$sample_id
+production_paths <- get_production_output_paths(config)
 cluster_column <- "Xenium_snn_res.0.8"
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -42,21 +44,21 @@ if (remove_supplied && !identical(tolower(trimws(remove_value)), "none")) {
 }
 
 output_root <- here(config$project$outputs_dir)
-merged_path <- file.path(output_root, "xenium", "rl", "03_integrated", "rds", "Xenium_RL_Res1.5.rds")
-input_dir <- file.path(output_root, "xenium", "vz", "07_mapped", "rds")
+merged_path <- file.path(output_root, "xenium", "rl", "03_integrated", "rds", "Xenium_RL_integrated.rds")
+input_dir <- production_paths$consensus_rds_dir
 output_dir <- file.path(output_root, "xenium", "rl", "04_qc", "rds")
 plot_dir <- file.path(output_root, "xenium", "rl", "04_qc", "plots")
 table_dir <- file.path(output_root, "xenium", "rl", "04_qc", "tables")
 
-input_names <- paste0(sample_ids, "_Ald_VZ_QC_Subclusters.rds")
+input_names <- paste0(sample_ids, "_Consensus_annotated.rds")
 input_paths <- file.path(input_dir, input_names)
-output_names <- paste0(sample_ids, "_Ald_VZsub_RL_QC.rds")
+output_names <- paste0(sample_ids, "_RL_QC.rds")
 output_paths <- file.path(output_dir, output_names)
-summary_path <- file.path(table_dir, "XenAld_RL_RawSubcluster_QC_Summary.csv")
+summary_path <- file.path(table_dir, "Xenium_RL_RawSubcluster_QC_Summary.csv")
 marker_path <- file.path(table_dir, "RL_RawSubcluster_top10_Markers_Res0.8.csv")
-review_path <- file.path(table_dir, "XenAld_RL_QC_review_manifest.csv")
-pdf_path <- file.path(plot_dir, "XenAld_RL_RawSubcluster_QC_Violins.pdf")
-removal_path <- file.path(table_dir, "XenAld_RL_QC_removal_manifest.csv")
+review_path <- file.path(table_dir, "Xenium_RL_QC_review_manifest.csv")
+pdf_path <- file.path(plot_dir, "Xenium_RL_RawSubcluster_QC_Violins.pdf")
+removal_path <- file.path(table_dir, "Xenium_RL_QC_removal_manifest.csv")
 qc_outputs <- c(summary_path, marker_path, review_path, pdf_path)
 removal_outputs <- c(output_paths, removal_path)
 
@@ -184,7 +186,7 @@ dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 rows <- future_lapply(seq_along(sample_ids), function(i) {
   sample_id <- sample_ids[[i]]
   temp_obj <- readRDS(input_paths[[i]])
-  required_metadata <- c("consensus_label", "PCW", "VZ_subcluster")
+  required_metadata <- c("consensus_label", "PCW")
   missing_metadata <- setdiff(required_metadata, colnames(temp_obj[[]]))
   if (length(missing_metadata)) stop(sample_id, " lacks metadata: ", paste(missing_metadata, collapse = ", "))
   integrated_barcodes <- paste0(sample_id, "_", colnames(temp_obj))

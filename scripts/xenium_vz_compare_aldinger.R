@@ -10,7 +10,7 @@ library(tidyr)
 library(tibble)
 library(here)
 
-xen_path <- here("outputs", "xenium", "vz", "06_subclusters", "rds", "Xenium_VZ_subclusters_Res1.5.rds")
+xen_path <- here("outputs", "xenium", "vz", "06_subclusters", "rds", "Xenium_VZ_subclusters.rds")
 xenium_merged <- readRDS(xen_path)
 
 sn_path <- here("outputs", "references", "aldinger", "vz", "rds", "Aldinger_VZ_4126.rds")
@@ -83,7 +83,7 @@ p1 <- pheatmap(
 )
 
 Cairo::CairoTIFF(
-  filename = file.path(plot_dir, paste0("XenAld_VZ_CorrPlot.tif")),
+  filename = file.path(plot_dir, paste0("Xenium_Aldinger_VZ_CorrPlot.tif")),
   width = 10,
   height = 10,
   units = "in",
@@ -91,7 +91,7 @@ Cairo::CairoTIFF(
 )
 print(p1)
 grDevices::dev.off()
-ggplot2::ggsave(file.path(plot_dir, "XenAld_VZ_CorrPlot.pdf"), p1,
+ggplot2::ggsave(file.path(plot_dir, "Xenium_Aldinger_VZ_CorrPlot.pdf"), p1,
                 device = grDevices::cairo_pdf, width = 10, height = 10)
 
 # --- 4. Optional: Save the matrix ---
@@ -141,7 +141,7 @@ for (clust in cluster_names) {
   # 4. Save or Print the plot
   print(p) 
   Cairo::CairoTIFF(
-    filename = file.path(plot_dir, paste0("XenAld_VZ_", clust, "_Sign_UMAP.tif")),
+    filename = file.path(plot_dir, paste0("Xenium_Aldinger_VZ_", clust, "_Sign_UMAP.tif")),
     width = 10,
     height = 10,
     units = "in",
@@ -200,7 +200,7 @@ p_sig <- pheatmap(
 
 # Save the plot
 Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "XenAld_VZ_Signature_Heatmap.tif"),
+  filename = file.path(plot_dir, "Xenium_Aldinger_VZ_Signature_Heatmap.tif"),
   width = 12,
   height = 10,
   units = "in",
@@ -208,5 +208,5 @@ Cairo::CairoTIFF(
 )
 print(p_sig)
 grDevices::dev.off()
-ggplot2::ggsave(file.path(plot_dir, "XenAld_VZ_Signature_Heatmap.pdf"), p_sig,
+ggplot2::ggsave(file.path(plot_dir, "Xenium_Aldinger_VZ_Signature_Heatmap.pdf"), p_sig,
                 device = grDevices::cairo_pdf, width = 12, height = 10)

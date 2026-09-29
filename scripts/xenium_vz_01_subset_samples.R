@@ -8,6 +8,7 @@ suppressPackageStartupMessages({
 })
 
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "consensus_labels.R"))
 config <- load_pipeline_config()
 samples <- load_sample_manifest(config)
 production_paths <- get_production_output_paths(config)
@@ -47,7 +48,12 @@ if (dry_run) {
   compact_dry_run(
     paste0("VZ subset task ", task_id, "/", nrow(samples), " [", current_sample, "]"),
     inputs = input_path,
-    outputs = output_path
+    outputs = output_path,
+    checks = c(
+      include_unknown_in_both_branches = identical(
+        config$regional_subsets$include_unknown_in_both_branches, TRUE
+      )
+    )
   )
   quit(save = "no", status = 0L)
 }
@@ -69,7 +75,16 @@ if (length(missing_clusters)) {
   warning("VZ labels absent from ", current_sample, ": ", paste(missing_clusters, collapse = ", "))
 }
 
-obj_subset <- subset(obj, idents = existing_clusters)
+if (!identical(config$regional_subsets$include_unknown_in_both_branches, TRUE)) {
+  stop("Configuration must include unresolved identities in both regional branches.")
+}
+unknown_clusters <- levels(Idents(obj))[is_unknown_consensus_label(levels(Idents(obj)))]
+subset_clusters <- unique(c(existing_clusters, unknown_clusters))
+obj_subset <- subset(obj, idents = subset_clusters)
+unknown_cells <- is_unknown_consensus_label(obj_subset$consensus_label)
+obj_subset$VZ_subset_reason <- ifelse(
+  unknown_cells, "shared_unknown", "configured_broad_label"
+)
 Idents(obj_subset) <- "consensus_label"
 input_info <- file.info(input_path)
 obj_subset@misc$whole_tissue_production_source <- list(
@@ -79,6 +94,18 @@ obj_subset@misc$whole_tissue_production_source <- list(
   input_size = as.numeric(input_info$size),
   input_mtime = as.numeric(input_info$mtime)
 )
+obj_subset@misc$regional_subset_provenance <- list(
+  branch = "VZ",
+  configured_broad_labels = target_clusters,
+  included_unknown_identities = unknown_clusters,
+  configured_broad_cells = sum(!unknown_cells),
+  shared_unknown_cells = sum(unknown_cells),
+  include_unknown_in_both_branches = TRUE
+)
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 saveRDS(obj_subset, output_path, compress = FALSE)
-message("Saved VZ consensus subset for ", current_sample, ": ", output_path)
+message(
+  "Saved VZ consensus subset for ", current_sample, ": ", output_path,
+  " (", sum(!unknown_cells), " configured-label cells; ",
+  sum(unknown_cells), " shared Unknown cells)."
+)

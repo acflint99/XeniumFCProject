@@ -95,7 +95,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     ggtitle(paste(sample_id, "RL Subclusters"))
   
   Cairo::CairoTIFF(
-    filename = file.path(sample_plot_dir, paste0(sample_id, "_Global_Spatial2.tif")),
+    filename = file.path(sample_plot_dir, paste0(sample_id, "_Global_Spatial_pt2.tif")),
     width = 10,
     height = 8,
     units = "in",
@@ -106,13 +106,13 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   
   # B. Group Highlights
   save_highlight(obj, c("RL VZ", "RL SVZ"),
-                 "RL_Lineage", paste0(sample_id, "_RL_Spatial.tif"))
+                 "RL_Lineage", paste0(sample_id, "_RL_Spatial_pt2.tif"))
   save_highlight(obj, c("Prolif GCPs", "Maturing GCPs", "Differentiating GCs", "Migrating GCs", "Mature GCs"),
-                 "Granule_Lineage", paste0(sample_id, "_Granule_Spatial2.tif"))
+                 "Granule_Lineage", paste0(sample_id, "_Granule_Spatial_pt2.tif"))
   save_highlight(obj, c("RL VZ", "RL SVZ", "Prolif GCPs", "Maturing GCPs", "Differentiating GCs", "Migrating GCs", "Mature GCs"),
-                 "Granule&RL_Lineage", paste0(sample_id, "_Granule&RL_Spatial2.tif"))
+                 "Granule&RL_Lineage", paste0(sample_id, "_Granule&RL_Spatial_pt2.tif"))
   save_highlight(obj, c("RL VZ", "RL SVZ", "Intermediate Progenitors", "Immature UBCs", "Mature UBCs"),
-                 "UBC_Lineage", paste0(sample_id, "_UBC_Spatial2.tif"))
+                 "UBC_Lineage", paste0(sample_id, "_UBC_Spatial_pt2.tif"))
   
   #C. Faceted Spatial
   coords <- GetTissueCoordinates(obj, type = "Xenium")
@@ -138,7 +138,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     )
   
   Cairo::CairoTIFF(
-    filename = file.path(sample_plot_dir, paste0(sample_id, "_Faceted_Clusters0.3.tif")),
+    filename = file.path(sample_plot_dir, paste0(sample_id, "_Faceted_Clusters_pt0.3.tif")),
     width = 15,
     height = 10,
     units = "in",

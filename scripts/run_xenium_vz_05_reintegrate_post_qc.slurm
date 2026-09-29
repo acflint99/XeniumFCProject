@@ -5,8 +5,10 @@
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=128G
-#SBATCH --partition=medium
+#SBATCH --partition=short
 #SBATCH --constraint=intel
+#SBATCH --mail-user=acflint@uab.edu
+#SBATCH --mail-type=END,FAIL,INVALID_DEPEND
 
 module purge
 module load rc-base

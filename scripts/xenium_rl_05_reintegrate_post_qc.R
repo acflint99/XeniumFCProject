@@ -23,15 +23,15 @@ output_root <- here(config$project$outputs_dir)
 plot_path <- file.path(output_root, "xenium", "rl", "05_post_qc", "plots")
 rds_dir <- file.path(output_root, "xenium", "rl", "05_post_qc", "rds")
 table_dir <- file.path(output_root, "xenium", "rl", "05_post_qc", "tables")
-merged_path <- file.path(output_root, "xenium", "rl", "03_integrated", "rds", "Xenium_RL_Res1.5.rds")
-removal_path <- file.path(output_root, "xenium", "rl", "04_qc", "tables", "XenAld_RL_QC_removal_manifest.csv")
-review_path <- file.path(output_root, "xenium", "rl", "04_qc", "tables", "XenAld_RL_QC_review_manifest.csv")
-output_path <- file.path(rds_dir, "Xenium_RL_postQC_Res1.5.rds")
+merged_path <- file.path(output_root, "xenium", "rl", "03_integrated", "rds", "Xenium_RL_integrated.rds")
+removal_path <- file.path(output_root, "xenium", "rl", "04_qc", "tables", "Xenium_RL_QC_removal_manifest.csv")
+review_path <- file.path(output_root, "xenium", "rl", "04_qc", "tables", "Xenium_RL_QC_review_manifest.csv")
+output_path <- file.path(rds_dir, "Xenium_RL_postQC.rds")
 provenance_path <- file.path(table_dir, "Xenium_RL_postQC_manifest.csv")
 res_list <- c(0.3, 0.5, 0.8)
 plot_paths <- c(
-  file.path(plot_path, "XenAld_RL_PostQC_OrigCluster_UMAP.tif"),
-  file.path(plot_path, paste0("XenAld_RL_PostQC_UMAP_Res_", res_list, ".tif"))
+  file.path(plot_path, "Xenium_RL_PostQC_OrigCluster_UMAP.tif"),
+  file.path(plot_path, paste0("Xenium_RL_PostQC_UMAP_Res_", res_list, ".tif"))
 )
 expected_outputs <- c(output_path, provenance_path, plot_paths)
 
@@ -191,7 +191,7 @@ p1 <- DimPlot(obj,
   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
 
 Cairo::CairoTIFF(
-  filename = file.path(plot_path, paste0("XenAld_RL_PostQC_OrigCluster_UMAP.tif")),
+  filename = file.path(plot_path, paste0("Xenium_RL_PostQC_OrigCluster_UMAP.tif")),
   width = 10,
   height = 8,
   units = "in",
@@ -229,7 +229,7 @@ for(res in res_list) {
     theme(plot.title = element_text(hjust = 0.5, face = "bold"))
   
   Cairo::CairoTIFF(
-    filename = file.path(plot_path, paste0("XenAld_RL_PostQC_UMAP_Res_", res, ".tif")),
+    filename = file.path(plot_path, paste0("Xenium_RL_PostQC_UMAP_Res_", res, ".tif")),
     width = 10,
     height = 8,
     units = "in",

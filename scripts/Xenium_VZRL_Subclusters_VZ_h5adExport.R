@@ -15,7 +15,10 @@ ad <- import("anndata")
 message("Python environment loaded for AnnData export.")
 
 # --- 2. Load the Clean Integrated Object ---
-merged_path <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS", "XenAld_VZRL_spatial_integrated.rds")
+merged_path <- here(
+  "outputs", "xenium", "vz_rl", "spatial", "02_integrated", "rds",
+  "Xenium_VZRL_spatial_integrated.rds"
+)
 message("Loading full integrated object...")
 obj <- readRDS(merged_path)
 
@@ -60,7 +63,10 @@ spatial_list <- list()
 
 for (samp in all_samples) {
   message(" -> Harvesting coordinates for: ", samp)
-  raw_path <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS", paste0(samp, "_Ald_VZ_RL_QC_Subclusters.rds"))
+  raw_path <- here(
+    "outputs", "xenium", "vz_rl", "01_combined_labels", "rds",
+    paste0(samp, "_VZ_RL_QC_Subclusters.rds")
+  )
   
   if (!file.exists(raw_path)) {
     stop("Raw file missing for sample: ", samp)
@@ -92,10 +98,10 @@ adata <- ad$AnnData(
   )
 )
 
-export_dir <- here("outputs", "Xenium_AldingerABT_combVZ&RLsubcluster_VZ_CellRank")
+export_dir <- here("outputs", "xenium", "vz_rl", "downstream", "cellrank")
 if (!dir.exists(export_dir)) dir.create(export_dir, recursive = TRUE)
 
-export_path <- file.path(export_dir, "XenAld_VZ_RL_QC_Subclusters_Spatial_VZ_Integrated_4-29-26.h5ad")
+export_path <- file.path(export_dir, "Xenium_VZRL_spatial_VZ_integrated.h5ad")
 adata$write(export_path)
 
 message("Export complete! VZ data successfully packaged for CellRank 2.0 at: ", export_path)

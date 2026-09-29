@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-# Apply the reviewed VZ subcluster labels and create summary figures.
+# Review post-QC VZ clusters or explicitly apply the reviewed labels.
 rm(list = ls())
 
 suppressPackageStartupMessages(library(here))
@@ -8,50 +8,107 @@ source(here("scripts", "R", "config.R"))
 
 config <- load_pipeline_config()
 args <- commandArgs(trailingOnly = TRUE)
-valid_options <- c("--dry-run", "--overwrite")
+valid_options <- c("--review-only", "--apply-reviewed-labels", "--dry-run", "--overwrite")
 unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
 if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
 if (any(!args %in% valid_options)) {
-  stop("Usage: Rscript scripts/xenium_vz_06_annotate_subclusters.R [--dry-run|--overwrite]")
+  stop(
+    "Usage: Rscript scripts/xenium_vz_06_annotate_subclusters.R ",
+    "(--review-only|--apply-reviewed-labels) [--dry-run|--overwrite]"
+  )
 }
+review_only <- "--review-only" %in% args
+apply_reviewed_labels <- "--apply-reviewed-labels" %in% args
 dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
+if (sum(c(review_only, apply_reviewed_labels)) != 1L) {
+  stop("Choose exactly one mode: --review-only or --apply-reviewed-labels.")
+}
 
 output_root <- here(config$project$outputs_dir)
 plot_path <- file.path(output_root, "xenium", "vz", "06_subclusters", "plots")
 table_path <- file.path(output_root, "xenium", "vz", "06_subclusters", "tables")
 rds_dir <- file.path(output_root, "xenium", "vz", "06_subclusters", "rds")
-merged_path <- file.path(output_root, "xenium", "vz", "05_post_qc", "rds", "Xenium_VZ_postQC_Res1.5.rds")
-output_path <- file.path(rds_dir, "Xenium_VZ_subclusters_Res1.5.rds")
+merged_path <- file.path(output_root, "xenium", "vz", "05_post_qc", "rds", "Xenium_VZ_postQC.rds")
+output_path <- file.path(rds_dir, "Xenium_VZ_subclusters.rds")
 label_manifest_path <- file.path(table_path, "Xenium_VZ_subcluster_labels.csv")
+review_marker_path <- file.path(
+  table_path, "VZ_RawSubcluster_postQC_top10_Markers_Res0.5.csv"
+)
+review_manifest_path <- file.path(table_path, "Xenium_VZ_subcluster_review_manifest.csv")
+review_umap_path <- file.path(
+  plot_path, "Xenium_VZ_RawSubcluster_postQC_UMAP_Res0.5.tif"
+)
+review_outputs <- c(review_marker_path, review_manifest_path, review_umap_path)
 expected_outputs <- c(
   output_path,
   label_manifest_path,
-  file.path(table_path, "XenAld_VZ_Subcluster_QC_Summary.csv"),
-  file.path(plot_path, "XenAld_VZ_Subcluster_QC_Violins.pdf"),
-  file.path(plot_path, "XenAld_VZ_Subcluster_UMAP.tif"),
-  file.path(plot_path, "XenAld_VZ_Subcluster_rmGCP,eCN,Cyc_UMAP.tif"),
-  file.path(plot_path, "XenAld_VZ_SubclusterMarker_DotPlot.tif"),
-  file.path(plot_path, "XenAld_VZ_SubclusterMarker_DotPlot.pdf"),
-  file.path(plot_path, "XenAld_VZ_Subcluster_Top5_Heatmap.tif"),
-  file.path(plot_path, "XenAld_VZ_Subcluster_Top5_Heatmap.pdf")
+  file.path(table_path, "Xenium_VZ_Subcluster_QC_Summary.csv"),
+  file.path(plot_path, "Xenium_VZ_Subcluster_QC_Violins.pdf"),
+  file.path(plot_path, "Xenium_VZ_Subcluster_UMAP.tif"),
+  file.path(plot_path, "Xenium_VZ_Subcluster_rmGCP,eCN,Cyc_UMAP.tif"),
+  file.path(plot_path, "Xenium_VZ_SubclusterMarker_DotPlot.tif"),
+  file.path(plot_path, "Xenium_VZ_SubclusterMarker_DotPlot.pdf"),
+  file.path(plot_path, "Xenium_VZ_Subcluster_Top5_Heatmap.tif"),
+  file.path(plot_path, "Xenium_VZ_Subcluster_Top5_Heatmap.pdf")
 )
+
+file_is_nonempty <- function(path) {
+  info <- suppressWarnings(file.info(path))
+  file.exists(path) && !is.na(info$size) && info$size > 0
+}
+
+review_manifest_matches_input_file <- function() {
+  if (!file.exists(merged_path) || !file.exists(review_manifest_path)) return(FALSE)
+  review <- tryCatch(
+    read.csv(review_manifest_path, stringsAsFactors = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(review) || nrow(review) != 1L ||
+      !all(c("input_size", "input_mtime") %in% names(review))) return(FALSE)
+  input_info <- file.info(merged_path)
+  isTRUE(all.equal(as.numeric(review$input_size), as.numeric(input_info$size))) &&
+    isTRUE(all.equal(as.numeric(review$input_mtime), as.numeric(input_info$mtime)))
+}
 
 if (dry_run) {
   compact_dry_run(
-    "VZ subcluster annotation",
-    inputs = merged_path,
-    outputs = expected_outputs
+    if (review_only) "VZ post-QC subcluster review" else "VZ reviewed-label application",
+    inputs = if (review_only) merged_path else c(merged_path, review_outputs),
+    outputs = if (review_only) review_outputs else expected_outputs,
+    checks = if (apply_reviewed_labels) {
+      c(
+        review_outputs_nonempty = all(vapply(review_outputs, file_is_nonempty, logical(1))),
+        review_manifest_matches_input = review_manifest_matches_input_file()
+      )
+    } else logical()
   )
   quit(save = "no", status = 0L)
 }
 
 if (!file.exists(merged_path)) stop("VZ post-QC input not found: ", merged_path)
-existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+if (apply_reviewed_labels) {
+  missing_review_outputs <- review_outputs[!file.exists(review_outputs)]
+  if (length(missing_review_outputs)) {
+    stop(
+      "Run --review-only and inspect its outputs before applying VZ labels. Missing:\n- ",
+      paste(missing_review_outputs, collapse = "\n- ")
+    )
+  }
+  empty_review_outputs <- review_outputs[
+    !vapply(review_outputs, file_is_nonempty, logical(1))
+  ]
+  if (length(empty_review_outputs)) {
+    stop("VZ review outputs are empty:\n- ", paste(empty_review_outputs, collapse = "\n- "))
+  }
+}
+mode_outputs <- if (review_only) review_outputs else expected_outputs
+existing_outputs <- mode_outputs[file.exists(mode_outputs)]
 if (length(existing_outputs) && !overwrite) {
   stop(
-    "Refusing to overwrite existing VZ subcluster outputs:\n- ",
+    "Refusing to overwrite existing VZ ",
+    if (review_only) "review" else "subcluster", " outputs:\n- ",
     paste(existing_outputs, collapse = "\n- "),
     "\nUse --overwrite only after reviewing them."
   )
@@ -100,46 +157,95 @@ if (!"umap_clean" %in% Reductions(obj)) stop("VZ post-QC input lacks the umap_cl
 if (!"Xenium" %in% Assays(obj)) stop("VZ post-QC input lacks the Xenium assay.")
 if (ncol(obj) == 0L) stop("VZ post-QC input contains zero cells.")
 
-# 2. SET THE IDENTITY
-# Ensure we are looking at the resolution you liked best (e.g., 0.3)
-Idents(obj) <- "Xenium_snn_res.0.5"
+cluster_column <- "Xenium_snn_res.0.5"
+Idents(obj) <- cluster_column
+current_clusters <- levels(Idents(obj))
 
-check_mem("STARTING FINDALLMARKERS")
+if (review_only) {
+  DefaultAssay(obj) <- "Xenium"
+  check_mem("STARTING POST-QC SUBCLUSTER REVIEW")
+  message(Sys.time(), ": identifying raw VZ cluster markers for review...")
+  all_markers <- with_future_workers(
+    FindAllMarkers(
+      obj,
+      only.pos = TRUE,
+      min.pct = 0.25,
+      logfc.threshold = 0.25,
+      test.use = "wilcox",
+      max.cells.per.ident = 1000,
+      random.seed = config$runtime$random_seed
+    )
+  )
+  if (!nrow(all_markers)) stop("No VZ post-QC markers were returned for review.")
+  top10_markers <- all_markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 10, order_by = avg_log2FC, with_ties = FALSE) %>%
+    ungroup()
+  write.csv(top10_markers, review_marker_path, row.names = FALSE)
 
-# # 3. RUN FINDALLMARKERS (The Optimized Way)
-# message(Sys.time(), ": Starting Marker Identification...")
-# 
-# all_markers <- FindAllMarkers(
-#   obj,
-#   only.pos = TRUE,          # Only look for upregulated genes (standard for cell types)
-#   min.pct = 0.25,           # Gene must be in 25% of the cluster
-#   logfc.threshold = 0.25,   # Minimum 1.28x fold change
-#   test.use = "wilcox",      # Standard fast test
-# 
-#   # --- THE SPEED TRICK ---
-#   # Downsampling to 1000 cells per cluster gives 99% the same results
-#   # but runs 5x faster on massive Xenium datasets.
-#   max.cells.per.ident = 1000
-# )
-# 
-# check_mem("MARKERS COMPLETE")
-# 
-# # 4. FILTER & SAVE TOP 10
-# top10_markers <- all_markers %>%
-#   group_by(cluster) %>%
-#   slice_max(n = 10, order_by = avg_log2FC)
-# 
-# write.csv(top10_markers,
-#           file.path(table_path, "VZ_RawSubcluster_postQC_top10_Markers_Res0.5.csv"),
-#           row.names = FALSE)
-# 
-# message("Marker analysis complete! Results saved to CSV.")
+  p_review <- DimPlot(
+    obj,
+    reduction = "umap_clean",
+    group.by = cluster_column,
+    label = TRUE,
+    label.size = 4,
+    repel = TRUE,
+    raster = TRUE
+  ) +
+    ggtitle("VZ post-QC raw clusters - resolution 0.5") +
+    theme_classic()
+  Cairo::CairoTIFF(
+    filename = review_umap_path,
+    width = 12,
+    height = 9,
+    units = "in",
+    res = 600
+  )
+  print(p_review)
+  grDevices::dev.off()
 
+  input_info <- file.info(merged_path)
+  write.csv(
+    data.frame(
+      input_rds = normalizePath(merged_path, mustWork = TRUE),
+      input_size = as.numeric(input_info$size),
+      input_mtime = as.numeric(input_info$mtime),
+      cells = ncol(obj),
+      cluster_column = cluster_column,
+      clusters = paste(current_clusters, collapse = "|"),
+      random_seed = config$runtime$random_seed,
+      min_pct = 0.25,
+      logfc_threshold = 0.25,
+      max_cells_per_ident = 1000,
+      stringsAsFactors = FALSE
+    ),
+    review_manifest_path,
+    row.names = FALSE
+  )
+  message("VZ post-QC review outputs are ready. No subcluster labels were applied.")
+  quit(save = "no", status = 0L)
+}
 
-####input markers into Gemini####
-
-# Ensure we are looking at the resolution you liked best (e.g., 0.3)
-Idents(obj) <- "Xenium_snn_res.0.5"
+review <- read.csv(review_manifest_path, stringsAsFactors = FALSE)
+required_review_columns <- c(
+  "input_rds", "input_size", "input_mtime", "cells", "cluster_column", "clusters",
+  "random_seed"
+)
+if (nrow(review) != 1L || !all(required_review_columns %in% names(review))) {
+  stop("VZ review manifest is invalid; rerun --review-only.")
+}
+input_info <- file.info(merged_path)
+review_is_current <-
+  identical(as.character(review$input_rds), normalizePath(merged_path, mustWork = TRUE)) &&
+  isTRUE(all.equal(as.numeric(review$input_size), as.numeric(input_info$size))) &&
+  isTRUE(all.equal(as.numeric(review$input_mtime), as.numeric(input_info$mtime))) &&
+  identical(as.integer(review$cells), as.integer(ncol(obj))) &&
+  identical(as.character(review$cluster_column), cluster_column) &&
+  identical(as.character(review$clusters), paste(current_clusters, collapse = "|")) &&
+  identical(as.integer(review$random_seed), as.integer(config$runtime$random_seed))
+if (!review_is_current) {
+  stop("VZ post-QC input or clusters changed after review; rerun --review-only.")
+}
 
 # 1. Create a named vector for the mapping
 # The names (0, 1, 2...) must match your current cluster IDs exactly
@@ -163,10 +269,9 @@ new_labels <- c(
   "16" = "MLIs",
   "17" = "eCN",
   "18" = "Maturing PCs"
-  
+
 )
 
-current_clusters <- levels(Idents(obj))
 missing_label_mappings <- setdiff(current_clusters, names(new_labels))
 unused_label_mappings <- setdiff(names(new_labels), current_clusters)
 if (length(missing_label_mappings) || length(unused_label_mappings)) {
@@ -216,8 +321,8 @@ merged_qc_stats <- obj@meta.data %>%
     .groups = 'drop'
   )
 
-write.csv(merged_qc_stats, 
-          file.path(table_path, "XenAld_VZ_Subcluster_QC_Summary.csv"), 
+write.csv(merged_qc_stats,
+          file.path(table_path, "Xenium_VZ_Subcluster_QC_Summary.csv"),
           row.names = FALSE)
 
 # QC Violin Plot
@@ -225,20 +330,20 @@ write.csv(merged_qc_stats,
 qc_features <- c("nCount_Xenium", "nFeature_Xenium")
 
 # 3. Open the PDF device
-pdf_path <- file.path(plot_path, "XenAld_VZ_Subcluster_QC_Violins.pdf")
+pdf_path <- file.path(plot_path, "Xenium_VZ_Subcluster_QC_Violins.pdf")
 grDevices::cairo_pdf(pdf_path, width = 12, height = 8)
 
 # 4. Loop through features and print each to a new page
 for (feat in qc_features) {
   message("Plotting: ", feat)
-  
+
   p <- VlnPlot(
-    obj, 
-    features = feat, 
-    group.by = "VZ_subcluster", 
-    cols = vz_palette, 
+    obj,
+    features = feat,
+    group.by = "VZ_subcluster",
+    cols = vz_palette,
     pt.size = 0      # Remove points for speed and smaller file size
-  ) + 
+  ) +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1),
       axis.title.y = element_text(size = 12, face = "bold"), # Explicitly style Y
@@ -246,7 +351,7 @@ for (feat in qc_features) {
     ) +
     ylab(feat) +
     ggtitle(paste("Xenium VZ Subcluster QC-", feat))
-  
+
   # Printing the plot inside the loop sends it to the PDF device
   print(p)
 }
@@ -257,17 +362,17 @@ dev.off()
 message("Individual QC plots saved to: ", pdf_path)
 
 # 4. UMAP WITH CONSISTENT COLORS
-p <- DimPlot(obj, 
-             reduction = "umap_clean", 
-             label = TRUE, 
-             label.size = 4, 
+p <- DimPlot(obj,
+             reduction = "umap_clean",
+             label = TRUE,
+             label.size = 4,
              repel = TRUE,
              cols = vz_palette) + # Uses your defined palette
   ggtitle("Xenium Merged VZ Subclusters") +
   theme(legend.text = element_text(size = 8))
 
 Cairo::CairoTIFF(
-  filename = file.path(plot_path, paste0("XenAld_VZ_Subcluster_UMAP.tif")),
+  filename = file.path(plot_path, paste0("Xenium_VZ_Subcluster_UMAP.tif")),
   width = 12,
   height = 9,
   units = "in",
@@ -285,17 +390,17 @@ clusters_to_remove <- c("GCPs", "eCN", "Cycling Cells")
 obj_subset <- subset(obj, idents = clusters_to_remove, invert = TRUE)
 
 # Now run your plotting code on 'obj_subset' instead of 'obj'
-p2 <- DimPlot(obj_subset, 
-              reduction = "umap_clean", 
-              label = TRUE, 
-              label.size = 4, 
+p2 <- DimPlot(obj_subset,
+              reduction = "umap_clean",
+              label = TRUE,
+              label.size = 4,
               repel = TRUE,
-              cols = vz_palette) + 
+              cols = vz_palette) +
   ggtitle("Xenium Merged VZ Subclusters (Filtered)") +
   theme(legend.text = element_text(size = 8))
 
 Cairo::CairoTIFF(
-  filename = file.path(plot_path, paste0("XenAld_VZ_Subcluster_rmGCP,eCN,Cyc_UMAP.tif")),
+  filename = file.path(plot_path, paste0("Xenium_VZ_Subcluster_rmGCP,eCN,Cyc_UMAP.tif")),
   width = 12,
   height = 9,
   units = "in",
@@ -309,18 +414,18 @@ rm(obj_subset)
 # 5. DOTPLOT WITH REVERSED ORDER
 # Create a temporary reversed factor for the Y-axis
 # (Reverse the levels of the factor to get VZP at the top)
-obj$VZ_subcluster_rev <- factor(as.character(Idents(obj)), levels = rev(vz_subcluster_order)) 
+obj$VZ_subcluster_rev <- factor(as.character(Idents(obj)), levels = rev(vz_subcluster_order))
 Idents(obj) <- "VZ_subcluster_rev"
 
 # 3. Create the Plot
 # Adding 'assay = "Xenium"' is the safest way to avoid multi-assay conflicts
 p1 <- DotPlot(obj,
-              features = vz_markers, 
+              features = vz_markers,
               assay = "Xenium",
               cols = c("lightgrey", "red"),
               dot.scale = 6,
-              cluster.idents = FALSE) + 
-  RotatedAxis() + 
+              cluster.idents = FALSE) +
+  RotatedAxis() +
   theme(
     axis.text.x = element_text(size = 8, face = "italic"),
     axis.text.y = element_text(size = 10, face = "bold")
@@ -328,7 +433,7 @@ p1 <- DotPlot(obj,
   ggtitle("Xenium Merged VZ Subcluster Markers")
 
 Cairo::CairoTIFF(
-  filename = file.path(plot_path, paste0("XenAld_VZ_SubclusterMarker_DotPlot.tif")),
+  filename = file.path(plot_path, paste0("Xenium_VZ_SubclusterMarker_DotPlot.tif")),
   width = 12,
   height = 8,
   units = "in",
@@ -337,11 +442,11 @@ Cairo::CairoTIFF(
 print(p1)
 grDevices::dev.off()
 ggplot2::ggsave(
-  file.path(plot_path, "XenAld_VZ_SubclusterMarker_DotPlot.pdf"),
+  file.path(plot_path, "Xenium_VZ_SubclusterMarker_DotPlot.pdf"),
   p1, device = grDevices::cairo_pdf, width = 12, height = 8
 )
 
-# ----------------------------------------------------------------              
+# ----------------------------------------------------------------
 # 6. GENERATE TOP 5 MARKERS HEATMAP
 # ----------------------------------------------------------------
 check_mem("STARTING HEATMAP GENERATION")
@@ -369,7 +474,7 @@ top5_markers <- heatmap_markers %>%
 
 top5_markers <- rev(top5_markers)
 
-# 3. Scale the data for the specific markers only 
+# 3. Scale the data for the specific markers only
 # (Necessary for DoHeatmap to show relative expression)
 # Just run the plot on a temporary scaled version:
 temp_obj <- ScaleData(obj, features = top5_markers, verbose = FALSE)
@@ -378,15 +483,15 @@ temp_obj <- ScaleData(obj, features = top5_markers, verbose = FALSE)
 # We downsample the plot to 100 cells per group so the labels are readable
 # 1. Prepare the plot without the default lines
 p4 <- DoHeatmap(
-  subset(temp_obj, downsample = 100), 
+  subset(temp_obj, downsample = 100),
   features = top5_markers,
   group.by = "VZ_subcluster",
   group.colors = vz_palette,
-  size = 4,          
-  angle = 45,        
+  size = 4,
+  angle = 45,
   draw.lines = TRUE,
   raster = FALSE
-) + 
+) +
   scale_fill_viridis_c(option = "viridis", name = "Z-Score", na.value = "white") +
   guides(color = "none") +
   theme(
@@ -397,13 +502,13 @@ p4 <- DoHeatmap(
 
 # 4. SAVE AS PDF
 ggplot2::ggsave(
-  file.path(plot_path, paste0("XenAld_VZ_Subcluster_Top5_Heatmap.pdf")), 
+  file.path(plot_path, paste0("Xenium_VZ_Subcluster_Top5_Heatmap.pdf")),
   p4, width = 14, height = 12, device = grDevices::cairo_pdf, useDingbats = FALSE
 )
 
 # 5. Save the Heatmap
 Cairo::CairoTIFF(
-  filename = file.path(plot_path, paste0("XenAld_VZ_Subcluster_Top5_Heatmap.tif")),
+  filename = file.path(plot_path, paste0("Xenium_VZ_Subcluster_Top5_Heatmap.tif")),
   width = 14,
   height = 12,
   units = "in",

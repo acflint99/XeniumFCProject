@@ -1675,9 +1675,34 @@ resolution-5 weighted consensus. Consequently, any VZ/RL objects previously
 derived from resolution-1.5 whole-tissue inputs are stale and must be
 regenerated.
 
-Names such as `Xenium_VZ_Res1.5.rds` below refer to the independently reviewed
-regional VZ clustering resolution; they do not indicate use of the retired
-whole-tissue resolution-1.5 source and remain unchanged.
+Regional artifacts now use semantic names such as `Xenium_VZ_integrated.rds`,
+`Xenium_VZ_postQC.rds`, and `Xenium_VZ_subclusters.rds`. The old `Ald`,
+`XenAld`, and `Res1.5` tokens are not part of the active VZ/RL filename
+contract. Numerical `Res_0.5`, `Res_0.8`, and `Res_1` plot names still describe
+the regional clustering resolutions actually evaluated by the scripts.
+
+Both regional stage-1 scripts include every configured branch label plus every
+consensus identity matching `Unknown` or `Unknown-##`. This behavior is
+explicitly enabled by
+`regional_subsets.include_unknown_in_both_branches: true`. The subsets carry
+`VZ_subset_reason` or `RL_subset_reason` metadata, and merge manifests report
+configured-label and shared-Unknown cell counts separately. Changing this flag
+would change regional cell composition and is intentionally rejected by config
+validation.
+
+Because shared Unknown cells change both regional cell sets, all existing VZ
+and RL outputs from stage 1 onward are stale, even when an early-stage filename
+did not change. Do not mix old and new stages. First run the stage-1 `--list`
+and `--dry-run` checks, then deliberately regenerate the two stage-1 arrays.
+Existing stage-1 subsets and stage-2 merges are protected, so replacement
+requires the branch's explicit `*_SUBSET_OVERWRITE=true` and
+`*_MERGE_OVERWRITE=true` launcher variables after the old files have been
+reviewed or archived. VZ and RL stages 1 through 7 can then proceed as
+independent branches. Their stage-6 review evidence and label application must
+be regenerated because the added Unknown cells can change regional neighbors,
+clusters, marker rankings, and therefore the scientifically appropriate
+cluster-to-label mapping. Combined and spatial VZ/RL outputs are stale until
+both refreshed stage-7 mappings exist.
 
 The VZ branch generally follows this order:
 
@@ -1715,8 +1740,8 @@ Rscript scripts/xenium_vz_02_merge_samples.R --dry-run
 
 The merge requires exactly the 34 manifest-defined subset files and writes
 `outputs/xenium/vz/02_merged/rds/Xenium_Merged_VZSubsets.rds` plus a CSV
-manifest under `02_merged/tables/` with each sample's input path, cell count,
-and PCW.
+manifest under `02_merged/tables/` with each sample's input path, total cell
+count, configured-label count, shared-Unknown count, and PCW.
 
 After that merge exists, inspect processing readiness without loading it:
 
@@ -1725,7 +1750,7 @@ Rscript scripts/xenium_vz_03_integrate.R --dry-run
 ```
 
 Processing writes the stable object
-`outputs/xenium/vz/03_integrated/rds/Xenium_VZ_Res1.5.rds`. The QC and
+`outputs/xenium/vz/03_integrated/rds/Xenium_VZ_integrated.rds`. The QC and
 post-QC scripts consume that name. Existing processing RDS or UMAP outputs
 require an explicit `--overwrite` rerun after review.
 
@@ -1733,8 +1758,8 @@ VZ QC is an explicit review gate. First inspect readiness, then generate the
 QC summary, combined violin PDF, marker table, and review manifest:
 
 ```bash
-Rscript scripts/xenium_vz_04_review_qc.R --dry-run
-Rscript scripts/xenium_vz_04_review_qc.R --qc-only
+Rscript scripts/xenium_vz_04_review_qc.R --qc-only --dry-run
+sbatch scripts/run_xenium_vz_04_review_qc.slurm
 ```
 
 After reviewing those outputs, record the decision explicitly. For example,
@@ -1742,7 +1767,20 @@ remove clusters 7 and 8 with `--remove-clusters=7,8`, or preserve every cell
 with `--remove-clusters=none`. The script validates all 34 whole-tissue inputs,
 protects existing outputs, and records per-sample removal counts. Post-QC
 processing reads that manifest and cannot independently choose a different
-cluster.
+cluster. Submit the reviewed decision with one of the following forms:
+
+```bash
+sbatch --export=ALL,VZ_QC_MODE=apply,VZ_QC_REMOVE_CLUSTERS=7,8 \
+  scripts/run_xenium_vz_04_review_qc.slurm
+sbatch --export=ALL,VZ_QC_MODE=apply,VZ_QC_REMOVE_CLUSTERS=none \
+  scripts/run_xenium_vz_04_review_qc.slurm
+```
+
+The launcher defaults to review mode, so it cannot apply a removal decision
+unless both `VZ_QC_MODE=apply` and an explicit comma-separated cluster list or
+the literal value `none` are supplied. It requests 8 hours, 4 CPUs, and 256 GB
+on `short`. Expected runtime is approximately 1-4 hours for either review or
+application (low confidence; static inspection only), excluding queue wait.
 
 Inspect post-QC integration without loading the merged Seurat object:
 
@@ -1751,13 +1789,34 @@ Rscript scripts/xenium_vz_05_reintegrate_post_qc.R --dry-run
 ```
 
 This stage writes the stable object
-`outputs/xenium/vz/05_post_qc/rds/Xenium_VZ_postQC_Res1.5.rds` and a provenance
-manifest. Stage 6 validates the complete cluster-to-label mapping before it
-writes `outputs/xenium/vz/06_subclusters/rds/Xenium_VZ_subclusters_Res1.5.rds`:
+`outputs/xenium/vz/05_post_qc/rds/Xenium_VZ_postQC.rds` and a provenance
+manifest. Stage 6 first generates post-QC resolution-0.5 review evidence without
+assigning subcluster identities:
 
 ```bash
-Rscript scripts/xenium_vz_06_annotate_subclusters.R --dry-run
+Rscript scripts/xenium_vz_06_annotate_subclusters.R --review-only --dry-run
+sbatch scripts/run_xenium_vz_06_annotate_subclusters.slurm
 ```
+
+Review the raw-cluster UMAP, top-10 marker table, and review manifest beneath
+`outputs/xenium/vz/06_subclusters/`. Only after approving or updating the
+cluster-to-label mapping should labels be applied:
+
+```bash
+Rscript scripts/xenium_vz_06_annotate_subclusters.R \
+  --apply-reviewed-labels --dry-run
+sbatch --export=ALL,VZ_SUBCLUSTER_MODE=apply \
+  scripts/run_xenium_vz_06_annotate_subclusters.slurm
+```
+
+Application is refused unless the review outputs are nonempty and their
+provenance matches the exact post-QC RDS, cell count, resolution-0.5 cluster
+set, and random seed. Stage 6 then validates complete cluster-to-label coverage
+before writing
+`outputs/xenium/vz/06_subclusters/rds/Xenium_VZ_subclusters.rds`.
+Review mode is expected to take approximately 1-4 hours and full annotation
+approximately 2-10 hours; both are low-confidence estimates based on static
+inspection. The launcher requests 12 hours, 4 CPUs, and 128 GB on `short`.
 
 Before mapping refined labels back to the whole-tissue objects, inspect all
 expected inputs and outputs without loading Seurat objects:
@@ -1770,7 +1829,9 @@ The mapping stage requires exactly one input for every sample in
 `config/samples.csv`, rejects unexpected RDS files in its input directory, and
 refuses to replace existing outputs unless given `--overwrite`. It verifies
 that every cell in the master VZ object maps exactly once and writes
-`Xenium_VZ_Mapping_manifest.csv` with per-sample cell counts and PCW.
+`Xenium_VZ_Mapping_manifest.csv` with per-sample cell counts, mapped
+shared-Unknown counts, and PCW. Per-sample mapped objects use the neutral name
+`<sample>_VZ_QC_Subclusters.rds`.
 
 Inspect the VZ plotting task map and one sample without creating plots:
 
@@ -1808,7 +1869,7 @@ stages.
 
 RL outputs mirror the same numbered layout under `outputs/xenium/rl/`, from
 `01_subsets` through `09_cluster_counts`. This makes corresponding VZ and RL
-stages directly comparable without changing any output filenames.
+stages directly comparable with parallel, region-specific output filenames.
 
 Inspect RL merge readiness with:
 
@@ -1818,37 +1879,82 @@ Rscript scripts/xenium_rl_02_merge_samples.R --dry-run
 
 The stable merged output is
 `outputs/xenium/rl/02_merged/rds/Xenium_Merged_RLSubsets.rds`, accompanied by
-the corresponding input/cell-count/PCW manifest under `02_merged/tables/`.
+the corresponding input, configured-label, shared-Unknown, total-cell, and PCW
+manifest under `02_merged/tables/`.
 Both merge scripts refuse partial input sets, unexpected top-level RDS files,
 and accidental output replacement.
 
-RL QC uses the same explicit review gate:
-
-```bash
-Rscript scripts/xenium_rl_04_review_qc.R --dry-run
-Rscript scripts/xenium_rl_04_review_qc.R --qc-only
-```
-
-After reviewing the RL evidence, use `--remove-clusters=<IDs>` or
-`--remove-clusters=none`. The recorded decision is applied consistently to all
-34 individual objects and the merged post-QC object.
-
-Inspect processing readiness with:
+Inspect processing readiness before stage 3:
 
 ```bash
 Rscript scripts/xenium_rl_03_integrate.R --dry-run
 ```
 
-Inspect the complete RL mapping inputs and protected outputs with:
+Stage 3 writes the stable object
+`outputs/xenium/rl/03_integrated/rds/Xenium_RL_integrated.rds`; RL QC and post-QC
+processing consume that path.
+
+RL QC uses the same explicit review gate:
+
+```bash
+Rscript scripts/xenium_rl_04_review_qc.R --qc-only --dry-run
+sbatch scripts/run_xenium_rl_04_review_qc.slurm
+```
+
+After reviewing the RL evidence, use `--remove-clusters=<IDs>` or
+`--remove-clusters=none`. RL QC now starts independently from the approved
+whole-tissue consensus objects, not from VZ-mapped objects. Therefore VZ and RL
+review/application can proceed independently after their respective stage 3
+jobs complete. Submit the RL decision with one of the following forms:
+
+```bash
+sbatch --export=ALL,RL_QC_MODE=apply,RL_QC_REMOVE_CLUSTERS=7,8 \
+  scripts/run_xenium_rl_04_review_qc.slurm
+sbatch --export=ALL,RL_QC_MODE=apply,RL_QC_REMOVE_CLUSTERS=none \
+  scripts/run_xenium_rl_04_review_qc.slurm
+```
+
+The launcher defaults to review mode and
+requests 8 hours, 4 CPUs, and 256 GB on `short`. The recorded decision is
+applied consistently to all 34 individual objects and the merged post-QC
+object. Expected runtime is approximately 1-4 hours for either mode (low
+confidence; static inspection only), excluding queue wait.
+
+Inspect the protected post-QC and subcluster stages with:
+
+```bash
+Rscript scripts/xenium_rl_05_reintegrate_post_qc.R --dry-run
+Rscript scripts/xenium_rl_06_annotate_subclusters.R --review-only --dry-run
+```
+
+After stage 5, submit `run_xenium_rl_06_annotate_subclusters.slurm` in its
+default review mode. Review the raw resolution-0.5 UMAP, top-10 markers, and
+provenance manifest before applying labels:
+
+```bash
+Rscript scripts/xenium_rl_06_annotate_subclusters.R \
+  --apply-reviewed-labels --dry-run
+sbatch --export=ALL,RL_SUBCLUSTER_MODE=apply \
+  scripts/run_xenium_rl_06_annotate_subclusters.slurm
+```
+
+Application is
+refused if the post-QC input changed after review. Review mode is expected to
+take approximately 1-4 hours and full annotation approximately 2-10 hours;
+both are low-confidence estimates from static inspection. The launcher requests
+12 hours, 4 CPUs, and 128 GB on `short`.
+
+After reviewed RL labels exist, inspect the complete mapping inputs and
+protected outputs:
 
 ```bash
 Rscript scripts/xenium_rl_07_map_to_samples.R --dry-run
 ```
 
 The RL mapping stage applies the same completeness, unexpected-file,
-overwrite, barcode-matching, and manifest checks as the VZ mapping stage. It
-also requires the VZ subcluster metadata inherited from the preceding branch
-and writes `Xenium_RL_Mapping_manifest.csv`.
+overwrite, barcode-matching, provenance, and manifest checks as the VZ mapping
+stage. It writes independent `<sample>_RL_QC_Subclusters.rds` objects and
+`Xenium_RL_Mapping_manifest.csv`; VZ labels are joined later by exact cell ID.
 
 Use `run_xenium_rl_07_map_to_samples.slurm` for mapping and
 `run_xenium_rl_08_plot_samples.slurm` for the 34-task plotting array. Inspect one
@@ -1858,19 +1964,8 @@ plotting task first with:
 Rscript scripts/xenium_rl_08_plot_samples.R --dry-run 1
 ```
 
-The stable processed object is
-`outputs/xenium/rl/03_integrated/rds/Xenium_RL_Res1.5.rds`; RL QC and post-QC
-processing consume that path.
-
-Inspect the protected post-QC and subcluster stages with:
-
-```bash
-Rscript scripts/xenium_rl_05_reintegrate_post_qc.R --dry-run
-Rscript scripts/xenium_rl_06_annotate_subclusters.R --dry-run
-```
-
-They write the stable objects `Xenium_RL_postQC_Res1.5.rds` and
-`Xenium_RL_subclusters_Res1.5.rds` in their numbered stage directories. Stage
+Stages 5 and 6 write the stable objects `Xenium_RL_postQC.rds` and
+`Xenium_RL_subclusters.rds` in their numbered stage directories. Stage
 9 intentionally uses the same focused eight-sample cohort as VZ. Inspect it
 with `Rscript scripts/xenium_rl_09_plot_counts.R --dry-run` and submit it with
 `run_xenium_rl_09_plot_counts.slurm`.
@@ -1903,9 +1998,10 @@ Rscript scripts/xenium_vz_rl_spatial_02_integrate.R --dry-run
 ```
 
 The merge requires all 34 manifest inputs and writes
-`spatial/01_merged/rds/XenAld_VZRL_spatial_merged.rds` plus a cell/image-count
-manifest under `spatial/01_merged/tables/`. Sketch-based Harmony processing
-writes `spatial/02_integrated/rds/XenAld_VZRL_spatial_integrated.rds`. UMAPs
+`spatial/01_merged/rds/Xenium_VZRL_spatial_merged.rds` plus a cell/image and
+regional-assignment count manifest under `spatial/01_merged/tables/`.
+Sketch-based Harmony processing
+writes `spatial/02_integrated/rds/Xenium_VZRL_spatial_integrated.rds`. UMAPs
 are TIFF-only. Giotto, h5ad export, and SpaTrack scripts remain outside the
 current scope and still require path review before they are reactivated.
 Submit these stages with `run_xenium_vz_rl_spatial_01_merge.slurm` and then
@@ -1918,10 +2014,15 @@ tables, inspect input completeness and existing outputs with:
 Rscript scripts/xenium_vz_rl_01_combine_labels.R --dry-run
 ```
 
-This stage reads sample IDs from `config/samples.csv`, requires all 34 mapped
-inputs, and refuses to replace any existing output unless given `--overwrite`.
-Combined identities use VZ subclusters first, RL subclusters second, and the
-broad consensus label for all remaining cells.
+This stage reads sample IDs from `config/samples.csv`, requires the 34 approved
+whole-tissue consensus objects plus all 34 independently mapped VZ and RL
+objects, and refuses to replace any existing output unless given `--overwrite`.
+It validates all joins by exact cell ID and unchanged consensus label. Known
+regional cells receive their VZ or RL subcluster. A shared Unknown cell is
+retained only when it survived both regional reviews; its combined identity
+remains the original `Unknown-##` consensus label, so neither regional branch
+silently wins. The `regional_assignment` column and per-sample assignment table
+record VZ, RL, shared-Unknown overlap, and unassigned-consensus counts.
 Submit it with `run_xenium_vz_rl_01_combine_labels.slurm`.
 
 The subsequent clean/merge stage also requires all 34 inputs and removes
@@ -1932,8 +2033,8 @@ Rscript scripts/xenium_vz_rl_02_merge_samples.R --dry-run
 ```
 
 It writes the stable merged object
-`02_merged/rds/XenAld_VZRL_clean_merge.rds` and a per-sample cell-count/PCW
-manifest under `02_merged/tables/`. Combined integration and plotting are
+`02_merged/rds/Xenium_VZRL_merged.rds` and a per-sample cell-count, PCW, and
+regional-assignment manifest under `02_merged/tables/`. Combined integration and plotting are
 separate operations:
 
 ```bash
@@ -1943,7 +2044,7 @@ Rscript scripts/xenium_vz_rl_03_process_and_plot.R --plots-only
 ```
 
 The stable processed object is
-`03_processed/rds/XenAld_VZRL_clean_merge_processed.rds`.
+`03_processed/rds/Xenium_VZRL_processed.rds`.
 Plot-only runs verify that the input merge has not changed, and they never
 repeat normalization, PCA, Harmony, or UMAP. UMAP outputs remain TIFF-only;
 DotPlots, the marker heatmap, and violin plots are saved as TIFF and Cairo PDF.

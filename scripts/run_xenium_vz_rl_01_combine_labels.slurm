@@ -7,6 +7,8 @@
 #SBATCH --mem=128G
 #SBATCH --partition=medium
 #SBATCH --constraint=intel
+#SBATCH --mail-user=acflint@uab.edu
+#SBATCH --mail-type=END,FAIL,INVALID_DEPEND
 
 module purge
 module load rc-base

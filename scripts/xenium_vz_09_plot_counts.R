@@ -18,7 +18,7 @@ dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
-input_path <- here("outputs", "xenium", "vz", "06_subclusters", "rds", "Xenium_VZ_subclusters_Res1.5.rds")
+input_path <- here("outputs", "xenium", "vz", "06_subclusters", "rds", "Xenium_VZ_subclusters.rds")
 plot_dir <- here("outputs", "xenium", "vz", "09_cluster_counts", "plots")
 
 # 1. Define a named list of your cluster sets
@@ -34,7 +34,7 @@ target_samples <- c("FB328_1_X_G", "GZFB_12_X_G_3", "GZFB5_X_G",
                     "GZFB_1_X_G", "FB330_1_X_G", "FB78_X_G",
                     "GZFB4_X_G", "FB124_X_G") 
 
-plot_stems <- paste0("XenAld_VZ_", names(cluster_sets), "_ClusterCountPlot")
+plot_stems <- paste0("Xenium_VZ_", names(cluster_sets), "_ClusterCountPlot")
 expected_outputs <- c(
   file.path(plot_dir, paste0(plot_stems, ".tif")),
   file.path(plot_dir, paste0(plot_stems, ".pdf"))
@@ -114,7 +114,7 @@ for (set_name in names(cluster_sets)) {
     theme(panel.grid = element_blank(), axis.text = element_text(color = "black"))
   
   # Save with a dynamic filename based on the set_name
-  file_name <- paste0("XenAld_VZ_", set_name, "_ClusterCountPlot.tif")
+  file_name <- paste0("Xenium_VZ_", set_name, "_ClusterCountPlot.tif")
   
   Cairo::CairoTIFF(
     filename = file.path(plot_dir, file_name),

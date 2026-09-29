@@ -46,25 +46,25 @@ if (process_only && plots_only) stop("Choose --process-only or --plots-only, not
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
-input_path <- file.path(output_root, "xenium", "vz_rl", "02_merged", "rds", "XenAld_VZRL_clean_merge.rds")
-input_manifest_path <- file.path(output_root, "xenium", "vz_rl", "02_merged", "tables", "XenAld_VZRL_clean_merge_manifest.csv")
+input_path <- file.path(output_root, "xenium", "vz_rl", "02_merged", "rds", "Xenium_VZRL_merged.rds")
+input_manifest_path <- file.path(output_root, "xenium", "vz_rl", "02_merged", "tables", "Xenium_VZRL_merge_manifest.csv")
 rds_dir <- file.path(output_root, "xenium", "vz_rl", "03_processed", "rds")
 plot_dir <- file.path(output_root, "xenium", "vz_rl", "03_processed", "plots")
 table_dir <- file.path(output_root, "xenium", "vz_rl", "03_processed", "tables")
-processed_path <- file.path(rds_dir, "XenAld_VZRL_clean_merge_processed.rds")
-processed_manifest_path <- file.path(table_dir, "XenAld_VZRL_clean_merge_processed_manifest.csv")
+processed_path <- file.path(rds_dir, "Xenium_VZRL_processed.rds")
+processed_manifest_path <- file.path(table_dir, "Xenium_VZRL_processed_manifest.csv")
 
 plot_names <- c(
-  "XenAld_Batch_Comp_UMAP.tif",
+  "Xenium_Batch_Comp_UMAP.tif",
   "Xenium_Merged_ConsensusLabel_UMAP.tif",
-  "XenAld_Merged_consensus_label_DotPlot_markers.tif",
-  "XenAld_Merged_consensus_label_DotPlot_markers.pdf",
-  "XenAld_Purkinje_Specific_DotPlot.tif",
-  "XenAld_Purkinje_Specific_DotPlot.pdf",
-  "XenAld_Merged_Cluster_Top5_Heatmap.tif",
-  "XenAld_Merged_Cluster_Top5_Heatmap.pdf",
-  "XenAld_Signaling_Genes_dual_VlnPlot.tif",
-  "XenAld_Signaling_Genes_dual_VlnPlot.pdf"
+  "Xenium_Merged_consensus_label_DotPlot_markers.tif",
+  "Xenium_Merged_consensus_label_DotPlot_markers.pdf",
+  "Xenium_Purkinje_Specific_DotPlot.tif",
+  "Xenium_Purkinje_Specific_DotPlot.pdf",
+  "Xenium_Merged_Cluster_Top5_Heatmap.tif",
+  "Xenium_Merged_Cluster_Top5_Heatmap.pdf",
+  "Xenium_Signaling_Genes_dual_VlnPlot.tif",
+  "Xenium_Signaling_Genes_dual_VlnPlot.pdf"
 )
 plot_paths <- file.path(plot_dir, plot_names)
 
@@ -104,7 +104,11 @@ if (process_only) {
     stop("Combined input manifest must contain exactly the configured 34 samples.")
   }
   merged_obj <- readRDS(input_path)
-  required_metadata <- c("orig.ident", "comb_subcluster", "consensus_label", "VZ_subcluster", "RL_subcluster", "PCW")
+  required_metadata <- c(
+    "orig.ident", "comb_subcluster", "consensus_label", "VZ_subcluster",
+    "RL_subcluster", "VZ_subset_reason", "RL_subset_reason",
+    "regional_assignment", "PCW"
+  )
   missing_metadata <- setdiff(required_metadata, colnames(merged_obj[[]]))
   if (length(missing_metadata)) stop("Combined merge lacks metadata: ", paste(missing_metadata, collapse = ", "))
   if (ncol(merged_obj) != sum(input_manifest$cells)) {

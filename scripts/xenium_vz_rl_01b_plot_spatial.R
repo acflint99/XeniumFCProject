@@ -27,7 +27,7 @@ sample_list <- load_sample_manifest(config)$sample_id
 for (sample_name in sample_list) {
   
   # FIX: Use file.path() instead of paste0() to ensure slashes are correct
-  file_path <- file.path(input_dir, paste0(sample_name, "_Ald_VZ_RL_QC_Subclusters.rds"))
+  file_path <- file.path(input_dir, paste0(sample_name, "_VZ_RL_QC_Subclusters.rds"))
   
   # Check if the file actually exists
   if (file.exists(file_path)) {
@@ -48,7 +48,7 @@ for (sample_name in sample_list) {
     
     # Save with a specific background color to ensure ggsave doesn't add white
     Cairo::CairoTIFF(
-      filename = file.path(output_dir, paste0(sample_name, "_postQC_Consensus_GlobalSpatial_plot1.5.tif")),
+      filename = file.path(output_dir, paste0(sample_name, "_postQC_Consensus_GlobalSpatial_pt1.5.tif")),
       width = 12,
       height = 10,
       units = "in",

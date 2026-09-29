@@ -6,6 +6,7 @@ rm(list = ls())
 
 suppressPackageStartupMessages(library(here))
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "consensus_labels.R"))
 
 config <- load_pipeline_config()
 samples <- load_sample_manifest(config)
@@ -72,6 +73,8 @@ merge_manifest <- data.frame(
   sample_id = sample_ids,
   input_path = subset_paths,
   cells = integer(length(sample_ids)),
+  configured_broad_cells = integer(length(sample_ids)),
+  shared_unknown_cells = integer(length(sample_ids)),
   PCW = character(length(sample_ids)),
   stringsAsFactors = FALSE
 )
@@ -81,7 +84,7 @@ for (i in seq_along(sample_ids)) {
   sample_id <- sample_ids[[i]]
   message("Reading RL subset ", i, " of ", length(sample_ids), ": ", sample_id)
   obj <- readRDS(subset_paths[[i]])
-  required_metadata <- c("consensus_label", "PCW")
+  required_metadata <- c("consensus_label", "RL_subset_reason", "PCW")
   missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
   if (length(missing_metadata)) {
     stop(sample_id, " lacks metadata: ", paste(missing_metadata, collapse = ", "))
@@ -90,12 +93,22 @@ for (i in seq_along(sample_ids)) {
   pcw_values <- pcw_values[!is.na(pcw_values) & nzchar(pcw_values)]
   if (length(pcw_values) != 1L) stop(sample_id, " must contain exactly one nonblank PCW value.")
   if (ncol(obj) == 0L) stop(sample_id, " RL subset contains zero cells.")
+  expected_unknown <- is_unknown_consensus_label(obj$consensus_label)
+  valid_reasons <- c("configured_broad_label", "shared_unknown")
+  if (anyNA(obj$RL_subset_reason) || any(!obj$RL_subset_reason %in% valid_reasons)) {
+    stop(sample_id, " has missing or invalid RL_subset_reason values.")
+  }
+  if (!all((obj$RL_subset_reason == "shared_unknown") == expected_unknown)) {
+    stop(sample_id, " RL_subset_reason does not match its consensus Unknown identities.")
+  }
 
   obj$orig.ident <- sample_id
   Idents(obj) <- "consensus_label"
   obj@images <- list()
   obj <- RenameCells(obj, add.cell.id = sample_id)
   merge_manifest$cells[[i]] <- ncol(obj)
+  merge_manifest$configured_broad_cells[[i]] <- sum(!expected_unknown)
+  merge_manifest$shared_unknown_cells[[i]] <- sum(expected_unknown)
   merge_manifest$PCW[[i]] <- pcw_values[[1]]
 
   if (is.null(merged_obj)) {

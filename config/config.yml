@@ -76,6 +76,10 @@ label_transfer:
     min_top2_mean_score_margin: 0.05
 
 regional_subsets:
+  # Unresolved whole-tissue consensus identities are intentionally carried
+  # through both regional branches. Their overlap is preserved explicitly
+  # when VZ and RL labels are recombined; neither branch receives priority.
+  include_unknown_in_both_branches: true
   vz_broad_labels:
     - "Glia"
     - "GABA"

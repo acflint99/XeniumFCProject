@@ -97,7 +97,7 @@ for (set_name in names(cluster_sets)) {
     )
   
   # Save
-  file_name <- paste0("XenAld_CombVZ&RL_", set_name, "_ClusterCountPlot.tif")
+  file_name <- paste0("Xenium_CombVZ&RL_", set_name, "_ClusterCountPlot.tif")
   Cairo::CairoTIFF(
     filename = file.path(plot_out_dir, file_name),
     width = 10,

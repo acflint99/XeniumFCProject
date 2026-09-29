@@ -3,6 +3,7 @@ rm(list = ls())
 
 suppressPackageStartupMessages(library(here))
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "consensus_labels.R"))
 
 config <- load_pipeline_config()
 samples <- load_sample_manifest(config)
@@ -30,10 +31,10 @@ merge_manifest_path <- here(
   "Xenium_Merged_RLSubsets_manifest.csv"
 )
 res_list <- c(0.5, 0.8, 1)
-output_path <- file.path(rds_dir, "Xenium_RL_Res1.5.rds")
+output_path <- file.path(rds_dir, "Xenium_RL_integrated.rds")
 plot_paths <- c(
-  file.path(plot_dir, paste0("XenAld_RL_UMAP_Res_", res_list, ".tif")),
-  file.path(plot_dir, "XenAld_RL_Batch_Comp_UMAP.tif"),
+  file.path(plot_dir, paste0("Xenium_RL_UMAP_Res_", res_list, ".tif")),
+  file.path(plot_dir, "Xenium_RL_Batch_Comp_UMAP.tif"),
   file.path(plot_dir, "Xenium_RL_ConsensusLabel_UMAP.tif")
 )
 expected_outputs <- c(output_path, plot_paths)
@@ -46,13 +47,21 @@ manifest_values_valid <- FALSE
 if (file.exists(merge_manifest_path)) {
   merge_manifest_preview <- read.csv(merge_manifest_path, stringsAsFactors = FALSE)
   manifest_rows <- nrow(merge_manifest_preview)
-  manifest_columns_match <- all(c("sample_id", "input_path", "cells", "PCW") %in% names(merge_manifest_preview))
+  manifest_columns_match <- all(c(
+    "sample_id", "input_path", "cells", "configured_broad_cells",
+    "shared_unknown_cells", "PCW"
+  ) %in% names(merge_manifest_preview))
   manifest_ids_match <- "sample_id" %in% names(merge_manifest_preview) &&
     setequal(as.character(merge_manifest_preview$sample_id), sample_ids)
   if (manifest_columns_match) {
     manifest_cells <- suppressWarnings(as.numeric(merge_manifest_preview$cells))
     manifest_pcw <- as.character(merge_manifest_preview$PCW)
+    manifest_broad <- suppressWarnings(as.numeric(merge_manifest_preview$configured_broad_cells))
+    manifest_unknown <- suppressWarnings(as.numeric(merge_manifest_preview$shared_unknown_cells))
     manifest_values_valid <- all(is.finite(manifest_cells) & manifest_cells > 0) &&
+      all(is.finite(manifest_broad) & manifest_broad >= 0) &&
+      all(is.finite(manifest_unknown) & manifest_unknown >= 0) &&
+      all(manifest_broad + manifest_unknown == manifest_cells) &&
       all(!is.na(manifest_pcw) & nzchar(manifest_pcw))
   }
   manifest_ready <- manifest_rows == length(sample_ids) && manifest_columns_match &&
@@ -127,7 +136,7 @@ dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
 
 # 3. LOAD DATA
 obj <- readRDS(merged_path)
-required_metadata <- c("orig.ident", "consensus_label", "PCW")
+required_metadata <- c("orig.ident", "consensus_label", "RL_subset_reason", "PCW")
 missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
 if (length(missing_metadata)) stop("Merged RL input lacks metadata: ", paste(missing_metadata, collapse = ", "))
 if (!setequal(unique(as.character(obj$orig.ident)), sample_ids)) {
@@ -150,6 +159,21 @@ if (anyNA(observed_pcw) || !identical(unname(observed_pcw), unname(expected_pcw)
 }
 if (ncol(obj) != sum(expected_cells)) {
   stop("Merged RL cell count does not match its merge manifest.")
+}
+if (anyNA(obj$RL_subset_reason) || any(!obj$RL_subset_reason %in%
+    c("configured_broad_label", "shared_unknown"))) {
+  stop("Merged RL input has missing or invalid RL_subset_reason values.")
+}
+observed_unknown <- vapply(sample_ids, function(sample_id) {
+  sample_cells <- as.character(obj$orig.ident) == sample_id
+  sum(obj$RL_subset_reason[sample_cells] == "shared_unknown")
+}, integer(1))
+expected_unknown <- as.integer(merge_manifest_preview$shared_unknown_cells[manifest_order])
+if (!identical(unname(observed_unknown), unname(expected_unknown)) || !all(
+  (obj$RL_subset_reason == "shared_unknown") ==
+    is_unknown_consensus_label(obj$consensus_label)
+)) {
+  stop("Merged RL shared-Unknown provenance does not match its manifest or labels.")
 }
 Idents(obj) <- "consensus_label"
 check_mem("DATA LOADED")
@@ -230,7 +254,7 @@ for(res in res_list) {
     theme(plot.title = element_text(hjust = 0.5, face = "bold"))
   
   Cairo::CairoTIFF(
-    filename = file.path(plot_dir, paste0("XenAld_RL_UMAP_Res_", res, ".tif")),
+    filename = file.path(plot_dir, paste0("Xenium_RL_UMAP_Res_", res, ".tif")),
     width = 10,
     height = 8,
     units = "in",
@@ -253,7 +277,7 @@ p2 <- DimPlot(obj, reduction = "umap_harmony", group.by = "orig.ident", raster =
   ggtitle("Post-Harmony")
 
 Cairo::CairoTIFF(
-  filename = file.path(plot_dir, "XenAld_RL_Batch_Comp_UMAP.tif"),
+  filename = file.path(plot_dir, "Xenium_RL_Batch_Comp_UMAP.tif"),
   width = 16,
   height = 7,
   units = "in",

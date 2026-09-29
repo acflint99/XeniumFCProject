@@ -29,19 +29,19 @@ overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
-input_path <- file.path(output_root, "xenium", "vz_rl", "spatial", "01_merged", "rds", "XenAld_VZRL_spatial_merged.rds")
-input_manifest_path <- file.path(output_root, "xenium", "vz_rl", "spatial", "01_merged", "tables", "XenAld_VZRL_spatial_merged_manifest.csv")
+input_path <- file.path(output_root, "xenium", "vz_rl", "spatial", "01_merged", "rds", "Xenium_VZRL_spatial_merged.rds")
+input_manifest_path <- file.path(output_root, "xenium", "vz_rl", "spatial", "01_merged", "tables", "Xenium_VZRL_spatial_merged_manifest.csv")
 rds_dir <- file.path(output_root, "xenium", "vz_rl", "spatial", "02_integrated", "rds")
 plot_dir <- file.path(output_root, "xenium", "vz_rl", "spatial", "02_integrated", "plots")
 table_dir <- file.path(output_root, "xenium", "vz_rl", "spatial", "02_integrated", "tables")
-output_path <- file.path(rds_dir, "XenAld_VZRL_spatial_integrated.rds")
-output_manifest_path <- file.path(table_dir, "XenAld_VZRL_spatial_integrated_manifest.csv")
+output_path <- file.path(rds_dir, "Xenium_VZRL_spatial_integrated.rds")
+output_manifest_path <- file.path(table_dir, "Xenium_VZRL_spatial_integrated_manifest.csv")
 plot_paths <- file.path(
   plot_dir,
   c(
-    "XenAld_VZRL_Spatial_Integrated_SampleID_UMAP.tif",
-    "XenAld_VZRL_Spatial_Integrated_BroadClusters_UMAP.tif",
-    "XenAld_VZRL_Spatial_Integrated_Subclusters_UMAP.tif"
+    "Xenium_VZRL_Spatial_Integrated_SampleID_UMAP.tif",
+    "Xenium_VZRL_Spatial_Integrated_BroadClusters_UMAP.tif",
+    "Xenium_VZRL_Spatial_Integrated_Subclusters_UMAP.tif"
   )
 )
 expected_outputs <- c(output_path, output_manifest_path, plot_paths)
@@ -81,7 +81,11 @@ dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 
 message("Loading validated spatial merge...")
 obj <- readRDS(input_path)
-required_metadata <- c("sample_id", "orig.ident", "consensus_label", "comb_subcluster", "PCW")
+required_metadata <- c(
+  "sample_id", "orig.ident", "consensus_label", "comb_subcluster",
+  "VZ_subcluster", "RL_subcluster", "VZ_subset_reason", "RL_subset_reason",
+  "regional_assignment", "PCW"
+)
 missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
 if (length(missing_metadata)) stop("Spatial merge lacks metadata: ", paste(missing_metadata, collapse = ", "))
 if (ncol(obj) != sum(input_manifest$cells)) stop("Spatial merge cell count does not match its manifest.")

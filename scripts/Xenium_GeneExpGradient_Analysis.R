@@ -14,9 +14,10 @@ options(bitmapType = "cairo")
 library(Seurat)
 library(dplyr)
 library(ggplot2)
+library(here)
 
-# Point this to where your SEURAT objects live (from your earlier Giotto array script)
-data_dir <- "~/R/Projects/XeniumFCProject/outputs/Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_RDS/"
+# Per-sample objects produced by the active combined-label stage.
+data_dir <- here("outputs", "xenium", "vz_rl", "01_combined_labels", "rds")
 
 # 1. Define Metadata
 meta_df <- data.frame(
@@ -37,9 +38,9 @@ for (i in 1:nrow(meta_df)) {
   message("Processing Expression for: ", s_name)
   
   # Find the Seurat file
-  file_path <- list.files(data_dir, pattern = paste0("^", s_name, "_Ald_VZ_RL_QC_Subclusters\\.rds$"), full.names = TRUE)
+  file_path <- file.path(data_dir, paste0(s_name, "_VZ_RL_QC_Subclusters.rds"))
   
-  if (length(file_path) == 1) {
+  if (file.exists(file_path)) {
     # Load object
     seurat_obj <- readRDS(file_path)
     
@@ -66,7 +67,7 @@ for (i in 1:nrow(meta_df)) {
     # CRITICAL: Delete object and trigger garbage collection to free RAM
     rm(seurat_obj, expr_data); gc()
   } else {
-    warning("Could not find (or found multiple) files for: ", s_name)
+    warning("Could not find combined-label file for: ", s_name)
   }
 }
 

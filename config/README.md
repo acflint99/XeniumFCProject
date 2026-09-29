@@ -45,7 +45,10 @@ captured together. Each manually separated sample has its own
 
 `config.yml` records split-slide preprocessing paths, runtime defaults, the
 confirmed v2 reference RDS paths, and the consensus broad labels used for VZ
-and RL subsetting. It is not yet the source of truth for the full pipeline.
+and RL subsetting. `regional_subsets.include_unknown_in_both_branches` records
+the approved rule that every consensus `Unknown`/`Unknown-##` identity enters
+both regional branches with explicit provenance. It is not yet the source of
+truth for the full pipeline.
 VZ/RL integration settings still differ among scripts and should not be
 unified without checking the intended scientific workflow.
 
