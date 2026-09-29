@@ -120,7 +120,7 @@ ScienceSubset_newUMAP <- NormalizeData(ScienceSubset, normalization.method = "Lo
 # 2️⃣ Find variable features
 ScienceSubset_newUMAP <- FindVariableFeatures(ScienceSubset_newUMAP, selection.method = "vst", nfeatures = 2000)
 
-# 3️⃣ Scale data
+# 3️⃣ Scale all panel genes
 ScienceSubset_newUMAP <- ScaleData(ScienceSubset_newUMAP, features = rownames(ScienceSubset_newUMAP))
 
 # 4️⃣ Run PCA

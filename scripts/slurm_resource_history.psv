@@ -4,3 +4,4 @@ observed_date|stage|mode|reference|job_id|task_count|array_concurrency|completed
 2026-08-28|xenium_annotate_01_label_transfer_rpca|resolution5_all_samples|Science|39875882|34|3|34|0|7.70|18.08|19.31|43.13|46.36|6|GZFB4_X_G|64|1|04:00:00|medium|sacct collected 2026-09-01
 2026-08-29|xenium_annotate_01_label_transfer_rpca|resolution5_all_samples|Science|39912562|34|3|34|0|8.00|18.78|19.10|47.32|46.14|6|GZFB4_X_G|64|1|04:00:00|medium|sacct collected 2026-09-01
 2026-08-31|xenium_annotate_01_label_transfer_rpca|resolution5_all_samples|Science|39943655|34|3|34|0|10.60|19.72|19.75|43.90|46.60|6|GZFB4_X_G|64|1|04:00:00|medium|sacct collected 2026-09-01
+2026-09-24|xenium_annotate_01c_reference_sampling_abstention_sensitivity|resolution5_reviewed_samples_full_reference|All|40474781|9|3|9|0|9.07|11.23|11.20|12.83|24.65|12|GZFB_9_X_G_3_Science|128|1|04:00:00|short|sacct supplied 2026-09-28; full-reference even array tasks only

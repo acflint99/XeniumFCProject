@@ -62,8 +62,12 @@ SeppSubset_newUMAP <- NormalizeData(SeppSubset, normalization.method = "LogNorma
 # 2️⃣ Find variable features
 SeppSubset_newUMAP <- FindVariableFeatures(SeppSubset_newUMAP, selection.method = "vst", nfeatures = 2000)
 
-# 3️⃣ Scale data
-SeppSubset_newUMAP <- ScaleData(SeppSubset_newUMAP, features = rownames(SeppSubset_newUMAP))
+# 3️⃣ Scale all panel genes, using smaller processing blocks to reduce peak memory.
+SeppSubset_newUMAP <- ScaleData(
+  SeppSubset_newUMAP,
+  features = rownames(SeppSubset_newUMAP),
+  block.size = 250
+)
 
 # 4️⃣ Run PCA
 SeppSubset_newUMAP <- RunPCA(SeppSubset_newUMAP, features = VariableFeatures(SeppSubset_newUMAP))

@@ -17,6 +17,7 @@ source(here("scripts", "R", "config.R"))
 
 config <- load_pipeline_config()
 sample_ids <- load_sample_manifest(config)$sample_id
+production_paths <- get_production_output_paths(config)
 cluster_column <- "Xenium_snn_res.0.8"
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -45,9 +46,7 @@ if (remove_supplied && !identical(tolower(trimws(remove_value)), "none")) {
 
 output_root <- here(config$project$outputs_dir)
 merged_path <- file.path(output_root, "xenium", "vz", "03_integrated", "rds", "Xenium_VZ_Res1.5.rds")
-input_dir <- file.path(
-  output_root, "xenium", "annotation", "03_consensus_labels", "rds"
-)
+input_dir <- production_paths$consensus_rds_dir
 output_dir <- file.path(output_root, "xenium", "vz", "04_qc", "rds")
 plot_dir <- file.path(output_root, "xenium", "vz", "04_qc", "plots")
 table_dir <- file.path(output_root, "xenium", "vz", "04_qc", "tables")

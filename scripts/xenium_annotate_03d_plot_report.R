@@ -148,10 +148,12 @@ if (dry_run && (render_page || merge_pages)) {
 }
 
 output_root <- here(config$project$outputs_dir)
-annotation_root <- if (all_samples_weighted) {
-  file.path(output_root, "xenium", "annotation", paste0("resolution", report_resolution, "_all_samples"))
-} else {
+annotation_root <- if (all_samples_res5) {
   file.path(output_root, "xenium", "annotation")
+} else if (all_samples_res4) {
+  file.path(output_root, "xenium", "annotation", "resolution4_all_samples")
+} else {
+  file.path(output_root, "xenium", "annotation", "legacy_resolution1_5")
 }
 consensus_stage <- if (all_samples_weighted) {
   "03_consensus_labels_weighted_2of3"
@@ -299,6 +301,13 @@ build_page <- function(
       paste0("Xenium_snn_res.", report_resolution), "consensus_method"
     )
   }
+  if (all_samples_res5) {
+    required_metadata <- c(
+      required_metadata, "production_reference_sampling",
+      "production_prediction_score_threshold",
+      "production_min_top2_mean_score_margin", "production_random_seed"
+    )
+  }
   missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
   if (length(missing_metadata) > 0L) {
     stop(
@@ -335,6 +344,27 @@ build_page <- function(
       as.character(obj[[paste0("whole_tissue_cluster_res", report_resolution_tag)]][, 1])
     )) {
       stop(sample_name, ": seurat_clusters does not match resolution-", report_resolution, " identities.")
+    }
+  }
+  if (all_samples_res5) {
+    expected_settings <- config$label_transfer$resolution5_all_samples
+    if (!identical(
+          unique(trimws(as.character(obj$production_reference_sampling))),
+          tolower(trimws(as.character(expected_settings$reference_sampling)))
+        ) ||
+        !identical(
+          unique(as.numeric(obj$production_prediction_score_threshold)),
+          as.numeric(config$label_transfer$prediction_score_threshold)
+        ) ||
+        !identical(
+          unique(as.numeric(obj$production_min_top2_mean_score_margin)),
+          as.numeric(expected_settings$min_top2_mean_score_margin)
+        ) ||
+        !identical(
+          unique(as.integer(obj$production_random_seed)),
+          as.integer(config$runtime$random_seed)
+        )) {
+      stop(sample_name, " production annotation provenance does not match config.yml.")
     }
   }
 

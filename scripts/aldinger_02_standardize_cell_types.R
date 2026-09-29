@@ -37,6 +37,71 @@ CairoTIFF(filename = file.path(plot_path, "AldingerUMAP_origclusters.tiff"),
 print(p3)
 dev.off()
 
+# Plot the configured broad markers by the original Aldinger figure clusters
+# before any clusters are removed or harmonized into clusters_refined.
+if (!"figure_clusters" %in% colnames(Aldinger[[]])) {
+  stop("Aldinger object lacks the required 'figure_clusters' metadata column.")
+}
+if (!"RNA" %in% Assays(Aldinger)) {
+  stop("Aldinger object lacks the required RNA assay for the figure-cluster DotPlot.")
+}
+
+figure_cluster_markers <- lapply(
+  markers,
+  function(features) intersect(features, rownames(Aldinger[["RNA"]]))
+)
+figure_cluster_markers <- figure_cluster_markers[lengths(figure_cluster_markers) > 0L]
+if (!length(figure_cluster_markers)) {
+  stop("None of the configured broad-cell markers are present in the Aldinger RNA assay.")
+}
+
+figure_cluster_dotplot <- DotPlot(
+  object = Aldinger,
+  features = figure_cluster_markers,
+  assay = "RNA",
+  group.by = "figure_clusters",
+  col.min = broad_dotplot_col_min,
+  col.max = broad_dotplot_col_max,
+  dot.min = broad_dotplot_dot_min / 100,
+  dot.scale = broad_dotplot_dot_scale,
+  scale.min = broad_dotplot_dot_min,
+  scale.max = broad_dotplot_dot_max,
+  cols = c("lightgrey", "red")
+) +
+  RotatedAxis() +
+  labs(
+    x = NULL,
+    y = "Aldinger figure cluster"
+  ) +
+  ggtitle("Standard marker expression by original Aldinger figure cluster") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+figure_cluster_dotplot_tiff <- file.path(
+  plot_path, "AldingerDotPlot_figure_clusters_markers.tiff"
+)
+figure_cluster_dotplot_pdf <- file.path(
+  plot_path, "AldingerDotPlot_figure_clusters_markers.pdf"
+)
+
+CairoTIFF(
+  filename = figure_cluster_dotplot_tiff,
+  width = 14,
+  height = 10,
+  units = "in",
+  res = 600
+)
+print(figure_cluster_dotplot)
+dev.off()
+
+ggsave(
+  filename = figure_cluster_dotplot_pdf,
+  plot = figure_cluster_dotplot,
+  device = grDevices::cairo_pdf,
+  width = 14,
+  height = 10,
+  limitsize = FALSE
+)
+
 # check proportions of clusters----
 cluster_counts <- table(Idents(Aldinger))
 
@@ -107,7 +172,7 @@ Aldinger_filtered <- NormalizeData(Aldinger_filtered, normalization.method = "Lo
 # 2️⃣ Find variable features
 Aldinger_filtered <- FindVariableFeatures(Aldinger_filtered, selection.method = "vst", nfeatures = 2000)
 
-# 3️⃣ Scale data
+# 3️⃣ Scale all genes
 Aldinger_filtered <- ScaleData(Aldinger_filtered, features = rownames(Aldinger_filtered))
 
 # 4️⃣ Run PCA
@@ -151,6 +216,8 @@ saveRDS(Aldinger_filtered, file.path(RDS_path, "Aldinger_newClusters_newUMAPv1.r
 # Verify all expected outputs exist
 expected_files <- c(
   file.path(plot_path, "AldingerUMAP_origclusters.tiff"),
+  figure_cluster_dotplot_tiff,
+  figure_cluster_dotplot_pdf,
   file.path(plot_path, "AldingerUMAP_newClusters.tiff"),
   file.path(RDS_path, "Aldinger_newClusters.rds"),
   file.path(plot_path, "AldingerUMAP_newClusters_newUMAPv1.tiff"),

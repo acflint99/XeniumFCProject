@@ -9,20 +9,21 @@ suppressPackageStartupMessages({
 })
 
 # 1. Load Master Palette & Settings
-source(here("scripts", "color_palette.R")) 
+source(here("scripts", "color_palette.R"))
+source(here("scripts", "R", "config.R"))
+config <- load_pipeline_config()
+production_paths <- get_production_output_paths(config)
 
 # SPECIFY CLUSTERS TO INCLUDE: 
 # Edit this list to include only the clusters you want to see in the plot
 target_clusters <- c("RL", "UBC", "Granule", "Purkinje", "GABA") 
 
 # Create the plot directory. PCW is already stored in the consensus objects.
-plot_dir <- here(
-  "outputs", "xenium", "annotation", "03_consensus_labels", "plots", "proportions"
-)
-if (!dir.exists(plot_dir)) dir.create(plot_dir)
+plot_dir <- file.path(production_paths$consensus_plot_dir, "proportions")
+if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = TRUE)
 
 # 3. List and Process RDS Files
-data_path <- here("outputs", "xenium", "annotation", "03_consensus_labels", "rds")
+data_path <- production_paths$consensus_rds_dir
 sample_files <- list.files(
   path = data_path,
   pattern = "_Consensus_annotated\\.rds$",
@@ -82,7 +83,7 @@ p <- ggplot(plot_df, aes(x = PCW_num, y = relative_percent, fill = consensus_lab
   )
 
 Cairo::CairoTIFF(
-  filename = here(plot_dir, "XeniumConsensusABT_res1.5_ClusterPropPlot.tif"),
+  filename = file.path(plot_dir, "XeniumConsensus_Res5_Weighted2of3_ClusterPropPlot.tif"),
   width = 10,
   height = 6,
   units = "in",
@@ -91,6 +92,6 @@ Cairo::CairoTIFF(
 print(p)
 grDevices::dev.off()
 ggplot2::ggsave(
-  filename = here(plot_dir, "XeniumConsensusABT_res1.5_ClusterPropPlot.pdf"),
+  filename = file.path(plot_dir, "XeniumConsensus_Res5_Weighted2of3_ClusterPropPlot.pdf"),
   plot = p, device = grDevices::cairo_pdf, width = 10, height = 6
 )

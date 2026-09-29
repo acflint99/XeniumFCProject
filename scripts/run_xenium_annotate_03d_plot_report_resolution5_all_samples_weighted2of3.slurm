@@ -18,7 +18,9 @@ module load R/4.4.1-foss-2023b
 
 cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 
-Rscript scripts/xenium_annotate_03d_plot_report.R \
+# Report rendering can exceed R's default pointer-protection stack for larger
+# samples. This runtime limit does not change the report content.
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03d_plot_report.R \
   --all-samples-res5 --weighted-2of3 --dry-run || exit 2
 
 report_options=(--all-samples-res5 --weighted-2of3 --render-page)
@@ -26,4 +28,5 @@ if [[ "${RES5_W2OF3_REPORT_OVERWRITE:-false}" == "true" ]]; then
   report_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_03d_plot_report.R "${report_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03d_plot_report.R \
+  "${report_options[@]}"

@@ -91,7 +91,7 @@ resolution_info <- data.frame(
   stringsAsFactors = FALSE
 )
 audit_root <- file.path(
-  output_root, "xenium", "preprocess", "03f_resolution_consistency",
+  output_root, "validation", "resolution_selection",
   "weighted_2of3"
 )
 table_dir <- file.path(audit_root, "tables")

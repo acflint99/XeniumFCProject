@@ -135,7 +135,7 @@ Science_newUMAP <- NormalizeData(Science, normalization.method = "LogNormalize",
 # 2️⃣ Find variable features
 Science_newUMAP <- FindVariableFeatures(Science_newUMAP, selection.method = "vst", nfeatures = 2000)
 
-# 3️⃣ Scale data
+# 3️⃣ Scale all genes
 Science_newUMAP <- ScaleData(Science_newUMAP, features = rownames(Science_newUMAP))
 
 # 4️⃣ Run PCA

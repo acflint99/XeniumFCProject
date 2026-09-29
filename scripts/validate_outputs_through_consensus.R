@@ -1,11 +1,12 @@
 #!/usr/bin/env Rscript
 
-# Read-only validation of pipeline outputs through xenium_annotate_03_apply_consensus.R.
+# Read-only validation of the approved resolution-5 production outputs through
+# xenium_annotate_03_apply_consensus.R.
 # Run from the XeniumFCProject root:
 #   Rscript scripts/validate_outputs_through_consensus.R
 #
-# Reports are written to outputs/validation/through_consensus/. No analysis
-# objects or figures are modified.
+# Reports are written to outputs/validation/resolution5_through_consensus/.
+# No analysis objects or figures are modified.
 
 options(warn = 1)
 
@@ -49,7 +50,28 @@ samples <- read.csv(
   na.strings = character()
 )
 output_root <- file.path(project_root, config$project$outputs_dir)
-report_dir <- file.path(output_root, "validation", "through_consensus")
+production <- config$production
+required_production_values <- c(
+  "whole_tissue_resolution", "preprocessing_stage",
+  "consensus_table_stage", "consensus_label_stage"
+)
+missing_production_values <- setdiff(required_production_values, names(production))
+if (length(missing_production_values)) {
+  stop(
+    "Missing production configuration values: ",
+    paste(missing_production_values, collapse = ", ")
+  )
+}
+production_resolution <- suppressWarnings(as.numeric(production$whole_tissue_resolution))
+if (!identical(production_resolution, 5)) {
+  stop("This validator requires the approved whole-tissue production resolution of 5.")
+}
+production_resolution_tag <- sprintf("%.1f", production_resolution)
+production_preprocessing_root <- file.path(
+  output_root, "xenium", "preprocess", production$preprocessing_stage
+)
+production_annotation_root <- file.path(output_root, "xenium", "annotation")
+report_dir <- file.path(output_root, "validation", "resolution5_through_consensus")
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
 
 references <- c("Aldinger", "Sepp", "Science")
@@ -91,23 +113,27 @@ append_issue <- function(issues, text) {
 }
 
 initial_plot_paths <- function(sample_name) {
+  stem <- paste0(sample_name, "_whole_tissue_Res", production_resolution_tag)
   file.path(
-    output_root,
-    "xenium", "preprocess", "03_clustered", "plots",
-    paste0(
-      sample_name,
-      c(
-        "_UMAP.tif", "_RawCluster_UMAP.tif",
-        "_GlobalRawClustersSpatialPlot.tif",
-        "_FacetRawClustersSpatialPlot.tif"
-      )
-    )
+    production_preprocessing_root, "plots",
+    paste0(stem, c(
+      paste0("_UMAP_Res1.5_vs_Res", production_resolution_tag, ".tif"),
+      paste0("_Spatial_Res1.5_vs_Res", production_resolution_tag, ".tif"),
+      paste0("_FacetSpatial_Res", production_resolution_tag, ".tif")
+    ))
+  )
+}
+
+production_object_path <- function(sample_name) {
+  file.path(
+    production_preprocessing_root, "rds",
+    paste0(sample_name, "_whole_tissue_Res", production_resolution_tag, ".rds")
   )
 }
 
 abt_paths <- function(sample_name, reference) {
   reference_dir <- file.path(
-    output_root, "xenium", "annotation", "01_label_transfer", tolower(reference)
+    production_annotation_root, "01_label_transfer", tolower(reference)
   )
   table_dir <- file.path(reference_dir, "tables")
   plot_dir <- file.path(reference_dir, "plots")
@@ -118,6 +144,12 @@ abt_paths <- function(sample_name, reference) {
     ),
     count_table = file.path(
       table_dir, paste0(sample_name, "_", reference, "_prediction_cellcounts.csv")
+    ),
+    balance_table = file.path(
+      table_dir, paste0(sample_name, "_", reference, "_reference_class_balance.csv")
+    ),
+    provenance_table = file.path(
+      table_dir, paste0(sample_name, "_", reference, "_transfer_provenance.csv")
     ),
     rds = file.path(
       rds_dir, paste0(sample_name, "_", reference, "_annotated.rds")
@@ -147,15 +179,15 @@ abt_paths <- function(sample_name, reference) {
 
 consensus_paths <- function(sample_name) {
   plot_dir <- file.path(
-    output_root, "xenium", "annotation", "03_consensus_labels", "plots"
+    production_annotation_root, production$consensus_label_stage, "plots"
   )
   list(
     table = file.path(
-      output_root, "xenium", "annotation", "02_consensus", "tables",
+      production_annotation_root, production$consensus_table_stage, "tables",
       paste0(sample_name, "_comparison_merged.csv")
     ),
     rds = file.path(
-      output_root, "xenium", "annotation", "03_consensus_labels", "rds",
+      production_annotation_root, production$consensus_label_stage, "rds",
       paste0(sample_name, "_Consensus_annotated.rds")
     ),
     plots = file.path(
@@ -246,10 +278,7 @@ consensus_label_reports <- list()
 validate_sample <- function(sample_name) {
   message("Validating ", sample_name, " ...")
   issues <- character()
-  clustered_path <- file.path(
-    output_root, "xenium", "preprocess", "03_clustered", "rds",
-    paste0(sample_name, "_CB_QC_cluster.rds")
-  )
+  clustered_path <- production_object_path(sample_name)
   qc_files <- file.path(
     output_root, "xenium", "preprocess", "02_qc", "reports",
     paste0(sample_name, c("_QCplots.pdf", "_QC_thresholds.txt"))
@@ -333,6 +362,32 @@ validate_sample <- function(sample_name) {
     }
     if (!all_files_nonempty(paths$plots)) {
       issues <- append_issue(issues, paste0(ref_key, "_incomplete_plots"))
+    }
+    if (!all_files_nonempty(c(paths$balance_table, paths$provenance_table))) {
+      issues <- append_issue(issues, paste0(ref_key, "_incomplete_provenance_tables"))
+    }
+
+    provenance <- safe_read_csv(paths$provenance_table)
+    if (inherits(provenance, "validation_error") ||
+        !all(c("field", "value") %in% names(provenance)) ||
+        anyDuplicated(provenance$field)) {
+      issues <- append_issue(issues, paste0(ref_key, "_provenance_table_invalid"))
+    } else {
+      provenance_values <- setNames(as.character(provenance$value), provenance$field)
+      expected_margin <- as.character(
+        config$label_transfer$resolution5_all_samples$min_top2_mean_score_margin
+      )
+      expected_provenance <- c(
+        sample_id = sample_name,
+        reference = reference,
+        reference_sampling_mode = "full",
+        min_top2_mean_score_margin = expected_margin
+      )
+      observed_provenance <- provenance_values[names(expected_provenance)]
+      if (anyNA(observed_provenance) ||
+          !identical(unname(observed_provenance), unname(expected_provenance))) {
+        issues <- append_issue(issues, paste0(ref_key, "_provenance_contract_mismatch"))
+      }
     }
 
     majority <- safe_read_csv(paths$majority_table)

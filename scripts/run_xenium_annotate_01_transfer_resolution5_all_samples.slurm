@@ -1,14 +1,15 @@
 #!/bin/bash
-# Resolution-5 label transfer for all manifest samples. Submit once for each
-# REFERENCE: Aldinger, Sepp, and Science.
+# Resolution-5 full-reference label transfer for all manifest samples. The
+# weighted reference vote abstains unless score >= 0.4 and top-two margin >=
+# 0.05. Submit once for each REFERENCE: Aldinger, Sepp, and Science.
 
 #SBATCH --job-name=Xen_res5_all_ABT
-#SBATCH --array=1-34%6
+#SBATCH --array=1-34%3
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/%x_%A_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/%x_%A_%a.err
 #SBATCH --time=04:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=64G
+#SBATCH --mem=96G
 #SBATCH --partition=short
 #SBATCH --constraint=intel
 #SBATCH --export=ALL

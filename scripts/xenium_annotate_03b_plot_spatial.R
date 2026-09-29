@@ -9,17 +9,17 @@ library(here)
 source(here("scripts", "color_palette.R"))
 source(here("scripts", "R", "config.R"))
 
-# Define your directory and sample list
-input_dir <- here("outputs", "xenium", "annotation", "03_consensus_labels", "rds")
+# Use the configured resolution-5 production consensus.
+config <- load_pipeline_config()
+production_paths <- get_production_output_paths(config)
+input_dir <- production_paths$consensus_rds_dir
 
-output_dir <- here(
-  "outputs", "xenium", "annotation", "03_consensus_labels", "plots"
-)
+output_dir <- production_paths$consensus_plot_dir
 
 # Create output directory if it doesn't exist
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-sample_list <- load_sample_manifest(load_pipeline_config())$sample_id
+sample_list <- load_sample_manifest(config)$sample_id
 
 # Loop through each sample
 for (sample_name in sample_list) {

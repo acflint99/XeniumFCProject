@@ -105,6 +105,54 @@ load_slide_manifest <- function(config = load_pipeline_config()) {
   read.csv(path, check.names = FALSE, stringsAsFactors = FALSE, na.strings = character())
 }
 
+get_production_output_paths <- function(config = load_pipeline_config()) {
+  production <- config$production
+  required <- c(
+    "whole_tissue_resolution", "preprocessing_stage",
+    "consensus_table_stage", "consensus_label_stage"
+  )
+  missing <- setdiff(required, names(production))
+  if (length(missing)) {
+    stop("Missing production configuration values: ", paste(missing, collapse = ", "))
+  }
+
+  stage_names <- unlist(production[required[-1L]], use.names = FALSE)
+  if (anyNA(stage_names) || any(!nzchar(stage_names)) ||
+      any(basename(stage_names) != stage_names)) {
+    stop("Production stage names must be nonblank directory names without path components.")
+  }
+
+  resolution <- suppressWarnings(as.numeric(production$whole_tissue_resolution))
+  if (length(resolution) != 1L || !is.finite(resolution) || resolution <= 0) {
+    stop("production.whole_tissue_resolution must be one positive number.")
+  }
+
+  output_root <- here::here(config$project$outputs_dir)
+  preprocessing_root <- file.path(
+    output_root, "xenium", "preprocess", production$preprocessing_stage
+  )
+  annotation_root <- file.path(output_root, "xenium", "annotation")
+
+  list(
+    resolution = resolution,
+    resolution_tag = sprintf("%.1f", resolution),
+    preprocessing_root = preprocessing_root,
+    preprocessing_rds_dir = file.path(preprocessing_root, "rds"),
+    preprocessing_plot_dir = file.path(preprocessing_root, "plots"),
+    annotation_root = annotation_root,
+    label_transfer_dir = file.path(annotation_root, "01_label_transfer"),
+    consensus_table_dir = file.path(
+      annotation_root, production$consensus_table_stage, "tables"
+    ),
+    consensus_rds_dir = file.path(
+      annotation_root, production$consensus_label_stage, "rds"
+    ),
+    consensus_plot_dir = file.path(
+      annotation_root, production$consensus_label_stage, "plots"
+    )
+  )
+}
+
 load_resolution2_pilot_manifest <- function(config = load_pipeline_config()) {
   path <- resolve_config_path(config$manifests$resolution2_pilot_samples, config)
   if (!file.exists(path)) stop("Resolution-2.0 pilot manifest not found: ", path)
@@ -146,7 +194,7 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   add_error <- function(...) errors <<- c(errors, paste0(...))
 
   required_sections <- c(
-    "project", "manifests", "inputs", "qc", "initial_clustering",
+    "project", "production", "manifests", "inputs", "qc", "initial_clustering",
     "label_transfer", "regional_subsets", "plotting"
   )
   missing_sections <- setdiff(required_sections, names(config))
@@ -234,12 +282,64 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
     clustering_dimensions = config$initial_clustering$dimensions,
     clustering_resolution = config$initial_clustering$resolution,
     transfer_dimensions = config$label_transfer$dimensions,
+    transfer_variable_features = config$label_transfer$variable_features,
+    transfer_reference_cells_per_identity = config$label_transfer$reference_cells_per_identity,
+    transfer_k_anchor = config$label_transfer$k_anchor,
+    transfer_k_score = config$label_transfer$k_score,
+    transfer_k_weight = config$label_transfer$k_weight,
     regional_integration_dimensions = config$regional_subsets$integration_dimensions_default,
     regional_post_qc_dimensions = config$regional_subsets$post_qc_dimensions_observed,
     regional_neighbor_k = config$regional_subsets$neighbor_k_post_qc
   )
   if (any(!is.finite(numeric_checks)) || any(numeric_checks <= 0)) {
     add_error("QC, clustering, and transfer numeric settings must be finite and positive.")
+  }
+
+  transfer_threshold <- suppressWarnings(as.numeric(
+    config$label_transfer$prediction_score_threshold
+  ))
+  if (length(transfer_threshold) != 1L || !is.finite(transfer_threshold) ||
+      transfer_threshold <= 0 || transfer_threshold >= 1) {
+    add_error("label_transfer.prediction_score_threshold must be between 0 and 1.")
+  }
+
+  resolution5_transfer <- config$label_transfer$resolution5_all_samples
+  if (is.null(resolution5_transfer)) {
+    add_error("Missing label_transfer.resolution5_all_samples configuration.")
+  } else {
+    sampling_mode <- tolower(trimws(as.character(
+      resolution5_transfer$reference_sampling
+    )))
+    if (length(sampling_mode) != 1L || !identical(sampling_mode, "full")) {
+      add_error(
+        "label_transfer.resolution5_all_samples.reference_sampling must be 'full'."
+      )
+    }
+    min_margin <- suppressWarnings(as.numeric(
+      resolution5_transfer$min_top2_mean_score_margin
+    ))
+    if (length(min_margin) != 1L || !is.finite(min_margin) ||
+        min_margin < 0 || min_margin >= 1) {
+      add_error(
+        "label_transfer.resolution5_all_samples.min_top2_mean_score_margin ",
+        "must be at least 0 and less than 1."
+      )
+    }
+  }
+
+  production_paths <- tryCatch(
+    get_production_output_paths(config),
+    error = function(e) {
+      add_error(conditionMessage(e))
+      NULL
+    }
+  )
+  if (!is.null(production_paths) &&
+      !identical(production_paths$resolution, 5)) {
+    add_error(
+      "The approved production.whole_tissue_resolution must remain 5; found ",
+      production_paths$resolution, "."
+    )
   }
 
   vz_labels <- unlist(config$regional_subsets$vz_broad_labels, use.names = FALSE)

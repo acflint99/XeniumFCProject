@@ -51,7 +51,7 @@ AldingerSubset_newUMAP <- NormalizeData(AldingerSubset, normalization.method = "
 # 2️⃣ Find variable features
 AldingerSubset_newUMAP <- FindVariableFeatures(AldingerSubset_newUMAP, selection.method = "vst", nfeatures = 2000)
 
-# 3️⃣ Scale data
+# 3️⃣ Scale all panel genes
 AldingerSubset_newUMAP <- ScaleData(AldingerSubset_newUMAP, features = rownames(AldingerSubset_newUMAP))
 
 # 4️⃣ Run PCA

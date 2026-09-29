@@ -37,7 +37,10 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
-Rscript scripts/xenium_annotate_03_apply_consensus.R \
+# Unknown-cluster marker calculations can exceed R's default pointer-protection
+# stack on larger samples. The R-supported maximum avoids that runtime failure
+# without changing the analysis or its memory request.
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03_apply_consensus.R \
   --all-samples-res5 --weighted-2of3 --dry-run "${SLURM_ARRAY_TASK_ID}" || exit 2
 
 driver_options=(--all-samples-res5 --weighted-2of3)
@@ -45,5 +48,5 @@ if [[ "${RES5_ALL_W2OF3_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_03_apply_consensus.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03_apply_consensus.R \
   "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"

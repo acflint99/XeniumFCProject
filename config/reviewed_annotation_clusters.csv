@@ -1,0 +1,6 @@
+sample_id,seurat_cluster,current_consensus_label,expected_label,review_source
+GZFB_9_X_G_1,24,RL,Granule,user-reviewed marker expression and outputs
+GZFB_9_X_G_3,27,RL,Granule,user-reviewed marker expression and outputs
+GZFB_9_X_G_3,38,RL,Granule,user-reviewed marker expression and outputs
+GZFB_20_X_G_1,18,Glia,RL,user-reviewed marker expression and outputs
+GZFB_20_X_G_1,58,Glia,RL,user-reviewed marker expression and outputs

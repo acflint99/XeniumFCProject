@@ -83,6 +83,21 @@ fi
 # a dry-run mode, so its two required inputs are checked directly.
 current_stage="configuration validation"
 Rscript scripts/validate_config.R
+
+current_stage="required R package validation"
+Rscript -e '
+if (!requireNamespace("writexl", quietly = TRUE)) {
+  stop(
+    "Required package writexl is unavailable in the project renv library. ",
+    "Install and record it before submitting consensus application."
+  )
+}
+cat(
+  "DEPENDENCY PASS | writexl | version=",
+  as.character(utils::packageVersion("writexl")), "\n", sep = ""
+)
+'
+
 if [[ "${downstream_only}" == "false" ]]; then
   current_stage="Sepp panel-subset input validation"
   for required_input in \

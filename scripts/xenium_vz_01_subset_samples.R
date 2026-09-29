@@ -10,6 +10,7 @@ suppressPackageStartupMessages({
 source(here("scripts", "R", "config.R"))
 config <- load_pipeline_config()
 samples <- load_sample_manifest(config)
+production_paths <- get_production_output_paths(config)
 task_map <- data.frame(task_id = seq_len(nrow(samples)), sample_id = samples$sample_id)
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -36,7 +37,7 @@ if (is.na(task_id) || task_id < 1L || task_id > nrow(samples)) {
 current_sample <- samples$sample_id[[task_id]]
 output_root <- here(config$project$outputs_dir)
 input_path <- file.path(
-  output_root, "xenium", "annotation", "03_consensus_labels", "rds",
+  production_paths$consensus_rds_dir,
   paste0(current_sample, "_Consensus_annotated.rds")
 )
 output_dir <- file.path(output_root, "xenium", "vz", "01_subsets", "rds")
@@ -70,6 +71,14 @@ if (length(missing_clusters)) {
 
 obj_subset <- subset(obj, idents = existing_clusters)
 Idents(obj_subset) <- "consensus_label"
+input_info <- file.info(input_path)
+obj_subset@misc$whole_tissue_production_source <- list(
+  resolution = production_paths$resolution,
+  consensus_stage = config$production$consensus_label_stage,
+  input_path = normalizePath(input_path, mustWork = TRUE),
+  input_size = as.numeric(input_info$size),
+  input_mtime = as.numeric(input_info$mtime)
+)
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 saveRDS(obj_subset, output_path, compress = FALSE)
 message("Saved VZ consensus subset for ", current_sample, ": ", output_path)

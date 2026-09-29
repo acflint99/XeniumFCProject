@@ -340,8 +340,12 @@ SeuratObj_FC_filtered_noNA_newUMAP <- NormalizeData(SeuratObj_FC_filtered_noNA, 
 # 2️⃣ Find variable features
 SeuratObj_FC_filtered_noNA_newUMAP <- FindVariableFeatures(SeuratObj_FC_filtered_noNA_newUMAP, selection.method = "vst", nfeatures = 2000)
 
-# 3️⃣ Scale data
-SeuratObj_FC_filtered_noNA_newUMAP <- ScaleData(SeuratObj_FC_filtered_noNA_newUMAP, features = rownames(SeuratObj_FC_filtered_noNA_newUMAP))
+# 3️⃣ Scale all genes, using smaller processing blocks to reduce peak memory.
+SeuratObj_FC_filtered_noNA_newUMAP <- ScaleData(
+  SeuratObj_FC_filtered_noNA_newUMAP,
+  features = rownames(SeuratObj_FC_filtered_noNA_newUMAP),
+  block.size = 250
+)
 
 # 4️⃣ Run PCA
 SeuratObj_FC_filtered_noNA_newUMAP <- RunPCA(SeuratObj_FC_filtered_noNA_newUMAP, features = VariableFeatures(SeuratObj_FC_filtered_noNA_newUMAP))
