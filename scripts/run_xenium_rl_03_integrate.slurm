@@ -26,5 +26,11 @@ fi
 if [[ "${RL_INTEGRATE_PLOTS_ONLY:-false}" == "true" ]]; then
   driver_options+=(--plots-only)
 fi
+if [[ "${RL_INTEGRATE_INCLUDE_UNCORRECTED:-false}" == "true" ]]; then
+  driver_options+=(--include-uncorrected)
+fi
+if [[ "${RL_INTEGRATE_RESUME_CHECKPOINT:-false}" == "true" ]]; then
+  driver_options+=(--resume-checkpoint)
+fi
 
 Rscript scripts/xenium_rl_03_integrate.R "${driver_options[@]}"

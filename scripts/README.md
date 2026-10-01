@@ -1766,21 +1766,48 @@ Processing writes the stable object
 post-QC scripts consume that name. Existing processing RDS or UMAP outputs
 require an explicit `--overwrite` rerun after review.
 
+The critical stage-3 path computes only the corrected Harmony UMAP. The
+pre-Harmony diagnostic UMAP is deferred because it does not affect Harmony,
+neighbors, clustering, QC, or downstream labels. Corrected UMAP and clustering
+use fork-based workers on Linux so the large graph is shared rather than copied
+into independent R sessions. Before clustering, stage 3 writes the provenance-
+checked restart object `Xenium_VZ_precluster_checkpoint.rds`. If a job fails
+after that checkpoint, inspect and resume without repeating normalization,
+PCA, Harmony, the corrected UMAP, or neighbor construction:
+
+```bash
+Rscript scripts/xenium_vz_03_integrate.R --resume-checkpoint --dry-run
+sbatch --export=ALL,VZ_INTEGRATE_RESUME_CHECKPOINT=true,VZ_INTEGRATE_OVERWRITE=true \
+  scripts/run_xenium_vz_03_integrate.slurm
+```
+
 Stage 3 writes
 `Xenium_VZ_UnknownClusters_BySample_UMAP.tif`, where each independently
 numbered Unknown cluster includes its sample ID, and
 `Xenium_VZ_ConsensusLabel_UMAP.tif`, where all Unknown cells are pooled as
 `Unknown` and colored grey. These are integration summaries, not QC evidence.
 The sample-qualified Unknown legend is restricted to two columns on a taller
-canvas. To regenerate all stage-3 UMAPs from the existing integrated object
-without rerunning normalization, Harmony, clustering, or rewriting the RDS,
-inspect and submit plot-only mode with:
+canvas. To regenerate the corrected stage-3 UMAPs from the existing integrated
+object without rerunning normalization, Harmony, clustering, or rewriting the
+RDS, inspect and submit plot-only mode with:
 
 ```bash
 Rscript scripts/xenium_vz_03_integrate.R --plots-only --dry-run
 sbatch --export=ALL,VZ_INTEGRATE_PLOTS_ONLY=true,VZ_INTEGRATE_OVERWRITE=true \
   scripts/run_xenium_vz_03_integrate.slurm
 ```
+
+Generate the deferred pre-/post-Harmony batch comparison separately with:
+
+```bash
+Rscript scripts/xenium_vz_03_integrate.R --plots-only --include-uncorrected --dry-run
+sbatch --export=ALL,VZ_INTEGRATE_PLOTS_ONLY=true,VZ_INTEGRATE_INCLUDE_UNCORRECTED=true,VZ_INTEGRATE_OVERWRITE=true \
+  scripts/run_xenium_vz_03_integrate.slurm
+```
+
+Until that deferred job completes, any older
+`Xenium_VZ_Batch_Comp_UMAP.tif` should be treated as stale; full stage 3 warns
+when it detects that file but does not delete or overwrite it.
 
 The QC violin PDF, resolution-0.8 cluster summary, and top-10 marker table are
 created only by the explicit stage-4 review job described below, under
@@ -1949,19 +1976,42 @@ Stage 3 writes the stable object
 `outputs/xenium/rl/03_integrated/rds/Xenium_RL_integrated.rds`; RL QC and post-QC
 processing consume that path.
 
+As in VZ, the critical RL path defers the pre-Harmony diagnostic UMAP, uses
+fork-based workers for the corrected UMAP and resolution clustering, and saves
+`Xenium_RL_precluster_checkpoint.rds` before clustering. Resume a failed job
+from the validated checkpoint with:
+
+```bash
+Rscript scripts/xenium_rl_03_integrate.R --resume-checkpoint --dry-run
+sbatch --export=ALL,RL_INTEGRATE_RESUME_CHECKPOINT=true,RL_INTEGRATE_OVERWRITE=true \
+  scripts/run_xenium_rl_03_integrate.slurm
+```
+
 It also writes `Xenium_RL_UnknownClusters_BySample_UMAP.tif`, with sample IDs
 appended to the independently numbered Unknown labels, and
 `Xenium_RL_ConsensusLabel_UMAP.tif`, with every Unknown pooled into one grey
 category. The sample-qualified Unknown legend is restricted to two columns on
-a taller canvas. To regenerate all stage-3 UMAPs from the existing integrated
-object without rerunning normalization, Harmony, clustering, or rewriting the
-RDS, inspect and submit plot-only mode with:
+a taller canvas. To regenerate the corrected stage-3 UMAPs from the existing
+integrated object without rerunning normalization, Harmony, clustering, or
+rewriting the RDS, inspect and submit plot-only mode with:
 
 ```bash
 Rscript scripts/xenium_rl_03_integrate.R --plots-only --dry-run
 sbatch --export=ALL,RL_INTEGRATE_PLOTS_ONLY=true,RL_INTEGRATE_OVERWRITE=true \
   scripts/run_xenium_rl_03_integrate.slurm
 ```
+
+Generate the deferred pre-/post-Harmony batch comparison separately with:
+
+```bash
+Rscript scripts/xenium_rl_03_integrate.R --plots-only --include-uncorrected --dry-run
+sbatch --export=ALL,RL_INTEGRATE_PLOTS_ONLY=true,RL_INTEGRATE_INCLUDE_UNCORRECTED=true,RL_INTEGRATE_OVERWRITE=true \
+  scripts/run_xenium_rl_03_integrate.slurm
+```
+
+Until that deferred job completes, any older
+`Xenium_RL_Batch_Comp_UMAP.tif` should be treated as stale; full stage 3 warns
+when it detects that file but does not delete or overwrite it.
 
 Marker testing and QC violins intentionally begin at stage 4, not stage 3;
 those outputs are written under `outputs/xenium/rl/04_qc/plots/` and
