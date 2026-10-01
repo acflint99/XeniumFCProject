@@ -35,7 +35,8 @@ output_path <- file.path(rds_dir, "Xenium_RL_integrated.rds")
 plot_paths <- c(
   file.path(plot_dir, paste0("Xenium_RL_UMAP_Res_", res_list, ".tif")),
   file.path(plot_dir, "Xenium_RL_Batch_Comp_UMAP.tif"),
-  file.path(plot_dir, "Xenium_RL_ConsensusLabel_UMAP.tif")
+  file.path(plot_dir, "Xenium_RL_ConsensusLabel_UMAP.tif"),
+  file.path(plot_dir, "Xenium_RL_UnknownClusters_BySample_UMAP.tif")
 )
 expected_outputs <- c(output_path, plot_paths)
 
@@ -49,7 +50,7 @@ if (file.exists(merge_manifest_path)) {
   manifest_rows <- nrow(merge_manifest_preview)
   manifest_columns_match <- all(c(
     "sample_id", "input_path", "cells", "configured_broad_cells",
-    "shared_unknown_cells", "PCW"
+    "shared_unknown_cells", "sample_qualified_unknown_labels", "PCW"
   ) %in% names(merge_manifest_preview))
   manifest_ids_match <- "sample_id" %in% names(merge_manifest_preview) &&
     setequal(as.character(merge_manifest_preview$sample_id), sample_ids)
@@ -58,10 +59,15 @@ if (file.exists(merge_manifest_path)) {
     manifest_pcw <- as.character(merge_manifest_preview$PCW)
     manifest_broad <- suppressWarnings(as.numeric(merge_manifest_preview$configured_broad_cells))
     manifest_unknown <- suppressWarnings(as.numeric(merge_manifest_preview$shared_unknown_cells))
+    manifest_qualified <- as.character(merge_manifest_preview$sample_qualified_unknown_labels)
     manifest_values_valid <- all(is.finite(manifest_cells) & manifest_cells > 0) &&
       all(is.finite(manifest_broad) & manifest_broad >= 0) &&
       all(is.finite(manifest_unknown) & manifest_unknown >= 0) &&
       all(manifest_broad + manifest_unknown == manifest_cells) &&
+      all(
+        (manifest_unknown > 0 & !is.na(manifest_qualified) & nzchar(manifest_qualified)) |
+          (manifest_unknown == 0 & (is.na(manifest_qualified) | !nzchar(manifest_qualified)))
+      ) &&
       all(!is.na(manifest_pcw) & nzchar(manifest_pcw))
   }
   manifest_ready <- manifest_rows == length(sample_ids) && manifest_columns_match &&
@@ -102,6 +108,7 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(patchwork)
 })
+source(here("scripts", "color_palette.R"))
 
 # --- HELPER: MEMORY MONITOR ---
 # This prints the current RAM usage to your console at every step
@@ -136,7 +143,11 @@ dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
 
 # 3. LOAD DATA
 obj <- readRDS(merged_path)
-required_metadata <- c("orig.ident", "consensus_label", "RL_subset_reason", "PCW")
+required_metadata <- c(
+  "orig.ident", "consensus_label", "regional_consensus_label",
+  "regional_consensus_label_pooled", "regional_unknown_label",
+  "RL_subset_reason", "PCW"
+)
 missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
 if (length(missing_metadata)) stop("Merged RL input lacks metadata: ", paste(missing_metadata, collapse = ", "))
 if (!setequal(unique(as.character(obj$orig.ident)), sample_ids)) {
@@ -175,7 +186,23 @@ if (!identical(unname(observed_unknown), unname(expected_unknown)) || !all(
 )) {
   stop("Merged RL shared-Unknown provenance does not match its manifest or labels.")
 }
-Idents(obj) <- "consensus_label"
+if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
+  stop("Merged RL sample-qualified Unknown labels are invalid.")
+}
+observed_qualified <- vapply(sample_ids, function(sample_id) {
+  sample_cells <- as.character(obj$orig.ident) == sample_id
+  paste(sort(unique(as.character(obj$regional_consensus_label[
+    sample_cells & is_unknown_consensus_label(obj$consensus_label)
+  ]))), collapse = "|")
+}, character(1))
+expected_qualified <- as.character(
+  merge_manifest_preview$sample_qualified_unknown_labels[manifest_order]
+)
+expected_qualified[is.na(expected_qualified)] <- ""
+if (!identical(unname(observed_qualified), unname(expected_qualified))) {
+  stop("Merged RL sample-qualified Unknown labels do not match the merge manifest.")
+}
+Idents(obj) <- "regional_consensus_label"
 check_mem("DATA LOADED")
 
 # 4. STANDARD WORKFLOW
@@ -286,17 +313,38 @@ Cairo::CairoTIFF(
 print(p1 + p2)
 grDevices::dev.off()
 
-# 2. Generate the Plot
-p_orig <- DimPlot(obj, 
-                  reduction = "umap_harmony", 
-                  group.by = "consensus_label",
-                  label = TRUE, 
-                  label.size = 4,
-                  label.box = TRUE,       # Makes original labels easier to see
-                  raster = TRUE, 
-                  pt.size = 0.5, 
-                  alpha = 0.8) +
-  ggtitle("Xenium RL Integrated UMAP: Consensus Labels") +
+# Display each independently numbered per-sample Unknown identity separately,
+# while retaining non-Unknown cells as a neutral background category.
+unknown_levels <- unlist(lapply(sample_ids, function(sample_id) {
+  values <- unique(as.character(obj$regional_consensus_label[
+    as.character(obj$orig.ident) == sample_id &
+      is_unknown_consensus_label(obj$consensus_label)
+  ]))
+  sort(values)
+}), use.names = FALSE)
+unknown_levels <- unique(unknown_levels[nzchar(unknown_levels)])
+if (!length(unknown_levels)) stop("RL integration contains no sample-qualified Unknown labels.")
+obj$regional_unknown_label <- factor(
+  as.character(obj$regional_unknown_label),
+  levels = c("Non-Unknown", unknown_levels)
+)
+unknown_colors <- resolve_sample_qualified_unknown_colors(
+  c("Non-Unknown", unknown_levels)
+)
+p_unknown_by_sample <- DimPlot(
+  obj,
+  reduction = "umap_harmony",
+  group.by = "regional_unknown_label",
+  cols = unknown_colors,
+  label = TRUE,
+  repel = TRUE,
+  label.size = 3,
+  label.box = TRUE,
+  raster = TRUE,
+  pt.size = 0.5,
+  alpha = 0.8
+) +
+  ggtitle("Xenium RL Integrated UMAP: Sample-qualified Unknown clusters") +
   theme_classic() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
@@ -304,7 +352,46 @@ p_orig <- DimPlot(obj,
     axis.ticks = element_blank()
   )
 
-# 3. Save the Plot
+Cairo::CairoTIFF(
+  filename = file.path(plot_dir, "Xenium_RL_UnknownClusters_BySample_UMAP.tif"),
+  width = 16,
+  height = 12,
+  units = "in",
+  res = 600
+)
+print(p_unknown_by_sample)
+grDevices::dev.off()
+
+# Companion overview: preserve known consensus identities and combine every
+# sample-specific Unknown identity into one explicitly grey category.
+pooled_levels <- order_consensus_levels(
+  obj$regional_consensus_label_pooled, celltype_order
+)
+obj$regional_consensus_label_pooled <- factor(
+  as.character(obj$regional_consensus_label_pooled), levels = pooled_levels
+)
+pooled_colors <- resolve_cluster_colors(pooled_levels)
+p_unknown_pooled <- DimPlot(
+  obj,
+  reduction = "umap_harmony",
+  group.by = "regional_consensus_label_pooled",
+  cols = pooled_colors,
+  label = TRUE,
+  repel = TRUE,
+  label.size = 4,
+  label.box = TRUE,
+  raster = TRUE,
+  pt.size = 0.5,
+  alpha = 0.8
+) +
+  ggtitle("Xenium RL Integrated UMAP: Unknown pooled in grey") +
+  theme_classic() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
 Cairo::CairoTIFF(
   filename = file.path(plot_dir, "Xenium_RL_ConsensusLabel_UMAP.tif"),
   width = 12,
@@ -312,9 +399,13 @@ Cairo::CairoTIFF(
   units = "in",
   res = 600
 )
-print(p_orig)
+print(p_unknown_pooled)
 grDevices::dev.off()
 
 saveRDS(obj, output_path, compress = FALSE)
 
 check_mem("PIPELINE COMPLETE - FILE SAVED")
+message(
+  "Stage 3 integration does not run marker testing. Run the explicit RL stage-4 ",
+  "QC review to create the QC violin PDF, cluster summary, and top-10 marker table."
+)

@@ -5,6 +5,7 @@ rm(list = ls())
 
 suppressPackageStartupMessages(library(here))
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "consensus_labels.R"))
 
 config <- load_pipeline_config()
 sample_ids <- load_sample_manifest(config)$sample_id
@@ -115,11 +116,18 @@ dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 
 obj <- readRDS(merged_path)
-required_metadata <- c("orig.ident", "consensus_label", "PCW", "Xenium_snn_res.0.8")
+required_metadata <- c(
+  "orig.ident", "consensus_label", "regional_consensus_label",
+  "regional_consensus_label_pooled", "regional_unknown_label",
+  "PCW", "Xenium_snn_res.0.8"
+)
 missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
 if (length(missing_metadata)) stop("Merged RL input lacks metadata: ", paste(missing_metadata, collapse = ", "))
 if (!setequal(unique(as.character(obj$orig.ident)), sample_ids)) {
   stop("Merged RL input does not contain exactly the configured sample IDs.")
+}
+if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
+  stop("Merged RL input has invalid sample-qualified Unknown labels.")
 }
 
 merged_info <- file.info(merged_path)
@@ -177,16 +185,25 @@ obj <- with_future_workers(
 )
 check_mem("POST-BATCH-CLUSTERING")
 
-p1 <- DimPlot(obj, 
-              reduction = "umap_clean", 
-              group.by = "consensus_label", 
-              label = TRUE, 
+regional_levels <- order_regional_consensus_levels(
+  obj$regional_consensus_label, celltype_order
+)
+obj$regional_consensus_label <- factor(
+  as.character(obj$regional_consensus_label), levels = regional_levels
+)
+regional_colors <- resolve_regional_consensus_colors(regional_levels)
+
+p1 <- DimPlot(obj,
+              reduction = "umap_clean",
+              group.by = "regional_consensus_label",
+              cols = regional_colors,
+              label = TRUE,
               label.size = 5,
               label.box = TRUE,
-              raster = TRUE, 
+              raster = TRUE,
               pt.size = 0.6,
-              alpha = 0.8) + 
-  ggtitle(paste0("Refined RL UMAP - Original Clusters")) +
+              alpha = 0.8) +
+  ggtitle("Refined RL UMAP - Sample-qualified input labels") +
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
 

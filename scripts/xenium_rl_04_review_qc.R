@@ -15,6 +15,7 @@ suppressPackageStartupMessages({
   library(ggplot2)
 })
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "consensus_labels.R"))
 
 config <- load_pipeline_config()
 sample_ids <- load_sample_manifest(config)$sample_id
@@ -103,6 +104,9 @@ if (qc_only) {
   dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
   obj <- readRDS(merged_path)
   if (!cluster_column %in% colnames(obj[[]])) stop("Merged RL object lacks ", cluster_column, ".")
+  if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
+    stop("Merged RL object lacks valid sample-qualified Unknown labels. Rerun stages 2 and 3.")
+  }
   if (ncol(obj) == 0L) stop("Merged RL object contains zero cells.")
   obj <- JoinLayers(obj)
   Idents(obj) <- cluster_column
@@ -162,6 +166,9 @@ if (length(existing_removal) && !overwrite) {
 
 obj <- readRDS(merged_path)
 if (!cluster_column %in% colnames(obj[[]])) stop("Merged RL object lacks ", cluster_column, ".")
+if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
+  stop("Merged RL object lacks valid sample-qualified Unknown labels. Rerun stages 2 and 3.")
+}
 review <- read.csv(review_path, stringsAsFactors = FALSE)
 merged_info <- file.info(merged_path)
 review_is_current <- nrow(review) == 1L &&

@@ -75,6 +75,7 @@ merge_manifest <- data.frame(
   cells = integer(length(sample_ids)),
   configured_broad_cells = integer(length(sample_ids)),
   shared_unknown_cells = integer(length(sample_ids)),
+  sample_qualified_unknown_labels = character(length(sample_ids)),
   PCW = character(length(sample_ids)),
   stringsAsFactors = FALSE
 )
@@ -103,12 +104,20 @@ for (i in seq_along(sample_ids)) {
   }
 
   obj$orig.ident <- sample_id
-  Idents(obj) <- "consensus_label"
+  obj <- add_regional_unknown_labels(obj, sample_id)
+  if (!validate_regional_unknown_labels(obj, sample_id)) {
+    stop(sample_id, " regional Unknown labels failed validation.")
+  }
+  Idents(obj) <- "regional_consensus_label"
   obj@images <- list()
   obj <- RenameCells(obj, add.cell.id = sample_id)
   merge_manifest$cells[[i]] <- ncol(obj)
   merge_manifest$configured_broad_cells[[i]] <- sum(!expected_unknown)
   merge_manifest$shared_unknown_cells[[i]] <- sum(expected_unknown)
+  merge_manifest$sample_qualified_unknown_labels[[i]] <- paste(
+    sort(unique(as.character(obj$regional_consensus_label[expected_unknown]))),
+    collapse = "|"
+  )
   merge_manifest$PCW[[i]] <- pcw_values[[1]]
 
   if (is.null(merged_obj)) {
@@ -128,7 +137,10 @@ if (anyDuplicated(colnames(merged_obj))) stop("Merged VZ object contains duplica
 if (ncol(merged_obj) != sum(merge_manifest$cells)) {
   stop("Merged VZ cell count does not equal the sum of per-sample cell counts.")
 }
-Idents(merged_obj) <- "consensus_label"
+if (!validate_regional_unknown_labels(merged_obj, merged_obj$orig.ident)) {
+  stop("Merged VZ regional Unknown labels do not match consensus labels and sample IDs.")
+}
+Idents(merged_obj) <- "regional_consensus_label"
 
 dir.create(merged_rds_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(merged_table_dir, recursive = TRUE, showWarnings = FALSE)

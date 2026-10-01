@@ -1690,6 +1690,18 @@ configured-label and shared-Unknown cell counts separately. Changing this flag
 would change regional cell composition and is intentionally rejected by config
 validation.
 
+`Unknown-##` numbering is local to each sample and therefore must not imply
+cross-sample identity. During both regional merges, the original
+`consensus_label` is preserved for exact joins back to the whole-tissue object,
+while `regional_consensus_label` appends the sample ID to every Unknown label
+(for example, `Unknown-01_FB124_X_G`) and becomes the active identity. The
+companion metadata columns `regional_unknown_label` and
+`regional_consensus_label_pooled` support, respectively, an Unknown-only UMAP
+with sample-qualified labels and an overview in which all Unknown cells are
+pooled into one grey category. Known consensus labels are unchanged in all
+three regional metadata columns. Each merge manifest records the exact
+sample-qualified Unknown identities in `sample_qualified_unknown_labels`.
+
 Because shared Unknown cells change both regional cell sets, all existing VZ
 and RL outputs from stage 1 onward are stale, even when an early-stage filename
 did not change. Do not mix old and new stages. First run the stage-1 `--list`
@@ -1753,6 +1765,15 @@ Processing writes the stable object
 `outputs/xenium/vz/03_integrated/rds/Xenium_VZ_integrated.rds`. The QC and
 post-QC scripts consume that name. Existing processing RDS or UMAP outputs
 require an explicit `--overwrite` rerun after review.
+
+Stage 3 writes
+`Xenium_VZ_UnknownClusters_BySample_UMAP.tif`, where each independently
+numbered Unknown cluster includes its sample ID, and
+`Xenium_VZ_ConsensusLabel_UMAP.tif`, where all Unknown cells are pooled as
+`Unknown` and colored grey. These are integration summaries, not QC evidence.
+The QC violin PDF, resolution-0.8 cluster summary, and top-10 marker table are
+created only by the explicit stage-4 review job described below, under
+`outputs/xenium/vz/04_qc/plots/` and `outputs/xenium/vz/04_qc/tables/`.
 
 VZ QC is an explicit review gate. First inspect readiness, then generate the
 QC summary, combined violin PDF, marker table, and review manifest:
@@ -1893,6 +1914,13 @@ Rscript scripts/xenium_rl_03_integrate.R --dry-run
 Stage 3 writes the stable object
 `outputs/xenium/rl/03_integrated/rds/Xenium_RL_integrated.rds`; RL QC and post-QC
 processing consume that path.
+
+It also writes `Xenium_RL_UnknownClusters_BySample_UMAP.tif`, with sample IDs
+appended to the independently numbered Unknown labels, and
+`Xenium_RL_ConsensusLabel_UMAP.tif`, with every Unknown pooled into one grey
+category. Marker testing and QC violins intentionally begin at stage 4, not
+stage 3; those outputs are written under `outputs/xenium/rl/04_qc/plots/` and
+`outputs/xenium/rl/04_qc/tables/`.
 
 RL QC uses the same explicit review gate:
 

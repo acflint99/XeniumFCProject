@@ -5,6 +5,7 @@ rm(list = ls())
 
 suppressPackageStartupMessages(library(here))
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "consensus_labels.R"))
 
 config <- load_pipeline_config()
 args <- commandArgs(trailingOnly = TRUE)
@@ -151,9 +152,16 @@ dir.create(table_path, recursive = TRUE, showWarnings = FALSE)
 dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
 
 obj <- readRDS(merged_path)
-required_metadata <- c("orig.ident", "consensus_label", "PCW", "Xenium_snn_res.0.5")
+required_metadata <- c(
+  "orig.ident", "consensus_label", "regional_consensus_label",
+  "regional_consensus_label_pooled", "regional_unknown_label",
+  "PCW", "Xenium_snn_res.0.5"
+)
 missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
 if (length(missing_metadata)) stop("RL post-QC input lacks metadata: ", paste(missing_metadata, collapse = ", "))
+if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
+  stop("RL post-QC input has invalid sample-qualified Unknown labels.")
+}
 if (!"umap_clean" %in% Reductions(obj)) stop("RL post-QC input lacks the umap_clean reduction.")
 if (!"Xenium" %in% Assays(obj)) stop("RL post-QC input lacks the Xenium assay.")
 if (ncol(obj) == 0L) stop("RL post-QC input contains zero cells.")

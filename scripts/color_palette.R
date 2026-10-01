@@ -55,6 +55,57 @@ resolve_cluster_colors <- function(labels) {
   stats::setNames(unname(colors), labels)
 }
 
+# Regional VZ/RL objects preserve the original consensus_label for joins and
+# append the sample ID only in regional_consensus_label. These helpers keep all
+# known biological identities on the master palette while assigning arbitrary,
+# deterministic colors to the sample-qualified Unknown identities.
+is_sample_qualified_unknown_consensus_label <- function(labels) {
+  labels <- trimws(as.character(labels))
+  !is.na(labels) & grepl("^Unknown(?:-[0-9]{2,})?_.+$", labels, perl = TRUE)
+}
+
+order_regional_consensus_levels <- function(labels, known_order) {
+  labels <- unique(trimws(as.character(labels)))
+  if (anyNA(labels) || any(!nzchar(labels))) {
+    stop("Regional consensus labels must not be blank or missing.")
+  }
+  unknown <- is_unknown_consensus_label(labels) |
+    is_sample_qualified_unknown_consensus_label(labels)
+  known_labels <- labels[!unknown]
+  unknown_labels <- sort(labels[unknown])
+  c(
+    intersect(known_order, known_labels),
+    setdiff(known_labels, known_order),
+    unknown_labels
+  )
+}
+
+resolve_regional_consensus_colors <- function(labels) {
+  labels <- as.character(labels)
+  qualified_unknown <- is_sample_qualified_unknown_consensus_label(labels)
+  standard_labels <- labels[!qualified_unknown]
+  colors <- stats::setNames(rep(NA_character_, length(labels)), labels)
+  if (length(standard_labels)) {
+    colors[standard_labels] <- resolve_cluster_colors(standard_labels)
+  }
+  qualified_labels <- labels[qualified_unknown]
+  if (length(qualified_labels)) {
+    colors[qualified_labels] <- grDevices::hcl.colors(
+      length(qualified_labels), "Dynamic"
+    )
+  }
+  colors
+}
+
+resolve_sample_qualified_unknown_colors <- function(labels) {
+  labels <- as.character(labels)
+  colors <- stats::setNames(
+    grDevices::hcl.colors(length(labels), "Dynamic"), labels
+  )
+  if ("Non-Unknown" %in% labels) colors[["Non-Unknown"]] <- "#D9D9D9"
+  colors
+}
+
 #lock factor order
 celltype_order <- c(
   "RL", "UBC", "Granule",
