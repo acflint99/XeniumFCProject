@@ -1771,17 +1771,49 @@ Stage 3 writes
 numbered Unknown cluster includes its sample ID, and
 `Xenium_VZ_ConsensusLabel_UMAP.tif`, where all Unknown cells are pooled as
 `Unknown` and colored grey. These are integration summaries, not QC evidence.
+The sample-qualified Unknown legend is restricted to two columns on a taller
+canvas. To regenerate all stage-3 UMAPs from the existing integrated object
+without rerunning normalization, Harmony, clustering, or rewriting the RDS,
+inspect and submit plot-only mode with:
+
+```bash
+Rscript scripts/xenium_vz_03_integrate.R --plots-only --dry-run
+sbatch --export=ALL,VZ_INTEGRATE_PLOTS_ONLY=true,VZ_INTEGRATE_OVERWRITE=true \
+  scripts/run_xenium_vz_03_integrate.slurm
+```
+
 The QC violin PDF, resolution-0.8 cluster summary, and top-10 marker table are
 created only by the explicit stage-4 review job described below, under
 `outputs/xenium/vz/04_qc/plots/` and `outputs/xenium/vz/04_qc/tables/`.
 
 VZ QC is an explicit review gate. First inspect readiness, then generate the
-QC summary, combined violin PDF, marker table, and review manifest:
+resolution-0.8 QC summary, combined violin PDF, marker table, sample-qualified
+Unknown evidence, and review manifest:
 
 ```bash
 Rscript scripts/xenium_vz_04_review_qc.R --qc-only --dry-run
 sbatch scripts/run_xenium_vz_04_review_qc.slurm
 ```
+
+The sample-qualified Unknown evidence includes:
+
+- `Xenium_VZ_SampleQualifiedUnknown_ClusterComposition.csv`, an observed-cell
+  cross-tabulation of resolution-0.8 expression cluster, sample, and qualified
+  Unknown population, with both cluster and population fractions;
+- `Xenium_VZ_SampleQualifiedUnknown_QC_Summary.csv`, including count/feature
+  quartiles, sample-matched configured-cell medians, median ratios, and the
+  fraction of each population below those sample-matched medians;
+- `Xenium_VZ_SampleQualifiedUnknown_QC_Violins.pdf`, with count and feature
+  distributions for each sample's Unknown populations beside configured
+  regional cells from that same sample;
+- `VZ_SampleQualifiedUnknown_top10_Markers.csv`, containing positive markers
+  from within-sample one-versus-all-other-regional-cell tests; and
+- `VZ_SampleQualifiedUnknown_Marker_Status.csv`, recording target/reference
+  cell counts, completed comparisons, empty results, and populations skipped
+  because either comparison group has fewer than three cells.
+
+These outputs are descriptive review evidence only. They do not impose a new
+QC threshold or remove cells automatically.
 
 After reviewing those outputs, record the decision explicitly. For example,
 remove clusters 7 and 8 with `--remove-clusters=7,8`, or preserve every cell
@@ -1799,9 +1831,11 @@ sbatch --export=ALL,VZ_QC_MODE=apply,VZ_QC_REMOVE_CLUSTERS=none \
 
 The launcher defaults to review mode, so it cannot apply a removal decision
 unless both `VZ_QC_MODE=apply` and an explicit comma-separated cluster list or
-the literal value `none` are supplied. It requests 8 hours, 4 CPUs, and 256 GB
-on `short`. Expected runtime is approximately 1-4 hours for either review or
-application (low confidence; static inspection only), excluding queue wait.
+the literal value `none` are supplied. It requests 12 hours, 4 CPUs, and 256 GB
+on `short`. Review mode is expected to take approximately 2-8 hours because it
+runs one sample-matched marker comparison per qualified Unknown population;
+application remains approximately 1-4 hours. Both estimates are low confidence
+until the first expanded review job is measured, and exclude queue wait.
 
 Inspect post-QC integration without loading the merged Seurat object:
 
@@ -1918,8 +1952,19 @@ processing consume that path.
 It also writes `Xenium_RL_UnknownClusters_BySample_UMAP.tif`, with sample IDs
 appended to the independently numbered Unknown labels, and
 `Xenium_RL_ConsensusLabel_UMAP.tif`, with every Unknown pooled into one grey
-category. Marker testing and QC violins intentionally begin at stage 4, not
-stage 3; those outputs are written under `outputs/xenium/rl/04_qc/plots/` and
+category. The sample-qualified Unknown legend is restricted to two columns on
+a taller canvas. To regenerate all stage-3 UMAPs from the existing integrated
+object without rerunning normalization, Harmony, clustering, or rewriting the
+RDS, inspect and submit plot-only mode with:
+
+```bash
+Rscript scripts/xenium_rl_03_integrate.R --plots-only --dry-run
+sbatch --export=ALL,RL_INTEGRATE_PLOTS_ONLY=true,RL_INTEGRATE_OVERWRITE=true \
+  scripts/run_xenium_rl_03_integrate.slurm
+```
+
+Marker testing and QC violins intentionally begin at stage 4, not stage 3;
+those outputs are written under `outputs/xenium/rl/04_qc/plots/` and
 `outputs/xenium/rl/04_qc/tables/`.
 
 RL QC uses the same explicit review gate:
@@ -1928,6 +1973,15 @@ RL QC uses the same explicit review gate:
 Rscript scripts/xenium_rl_04_review_qc.R --qc-only --dry-run
 sbatch scripts/run_xenium_rl_04_review_qc.slurm
 ```
+
+Its expanded review outputs mirror VZ under `outputs/xenium/rl/04_qc/`:
+`Xenium_RL_SampleQualifiedUnknown_ClusterComposition.csv`,
+`Xenium_RL_SampleQualifiedUnknown_QC_Summary.csv`,
+`Xenium_RL_SampleQualifiedUnknown_QC_Violins.pdf`,
+`RL_SampleQualifiedUnknown_top10_Markers.csv`, and
+`RL_SampleQualifiedUnknown_Marker_Status.csv`. Marker comparisons use each
+Unknown population against all other regional cells from the same sample, and
+no removal is inferred from these descriptive outputs.
 
 After reviewing the RL evidence, use `--remove-clusters=<IDs>` or
 `--remove-clusters=none`. RL QC now starts independently from the approved
@@ -1942,11 +1996,12 @@ sbatch --export=ALL,RL_QC_MODE=apply,RL_QC_REMOVE_CLUSTERS=none \
   scripts/run_xenium_rl_04_review_qc.slurm
 ```
 
-The launcher defaults to review mode and
-requests 8 hours, 4 CPUs, and 256 GB on `short`. The recorded decision is
-applied consistently to all 34 individual objects and the merged post-QC
-object. Expected runtime is approximately 1-4 hours for either mode (low
-confidence; static inspection only), excluding queue wait.
+The launcher defaults to review mode and requests 12 hours, 4 CPUs, and 256 GB
+on `short`. The recorded decision is applied consistently to all 34 individual
+objects and the merged post-QC object. Expanded review mode is expected to take
+approximately 2-8 hours; application remains approximately 1-4 hours. These
+are low-confidence estimates pending the first measured expanded review job
+and exclude queue wait.
 
 Inspect the protected post-QC and subcluster stages with:
 

@@ -10,14 +10,18 @@ samples <- load_sample_manifest(config)
 sample_ids <- samples$sample_id
 
 args <- commandArgs(trailingOnly = TRUE)
-valid_options <- c("--dry-run", "--overwrite")
+valid_options <- c("--dry-run", "--overwrite", "--plots-only")
 unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
 if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
 if (any(!args %in% valid_options)) {
-  stop("Usage: Rscript scripts/xenium_rl_03_integrate.R [--dry-run|--overwrite]")
+  stop(
+    "Usage: Rscript scripts/xenium_rl_03_integrate.R ",
+    "[--dry-run] [--overwrite] [--plots-only]"
+  )
 }
 dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
+plots_only <- "--plots-only" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 plot_dir <- here(config$project$outputs_dir, "xenium", "rl", "03_integrated", "plots")
@@ -75,6 +79,14 @@ if (file.exists(merge_manifest_path)) {
 }
 
 if (dry_run) {
+  if (plots_only) {
+    compact_dry_run(
+      "RL integration plots only",
+      inputs = output_path,
+      outputs = plot_paths
+    )
+    quit(save = "no", status = 0L)
+  }
   compact_dry_run(
     "RL integration",
     inputs = c(merged_path, merge_manifest_path),
@@ -89,12 +101,21 @@ if (dry_run) {
   quit(save = "no", status = 0L)
 }
 
-if (!file.exists(merged_path)) stop("Merged RL input not found: ", merged_path)
-if (!manifest_ready) stop("RL merge manifest is missing, incomplete, or inconsistent: ", merge_manifest_path)
-existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+if (plots_only) {
+  if (!file.exists(output_path)) stop("Integrated RL input not found: ", output_path)
+  existing_outputs <- plot_paths[file.exists(plot_paths)]
+} else {
+  if (!file.exists(merged_path)) stop("Merged RL input not found: ", merged_path)
+  if (!manifest_ready) {
+    stop("RL merge manifest is missing, incomplete, or inconsistent: ", merge_manifest_path)
+  }
+  existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+}
 if (length(existing_outputs) && !overwrite) {
   stop(
-    "Refusing to overwrite existing RL processing outputs:\n- ",
+    "Refusing to overwrite existing RL ",
+    if (plots_only) "plot" else "processing",
+    " outputs:\n- ",
     paste(existing_outputs, collapse = "\n- "),
     "\nUse --overwrite only after reviewing them."
   )
@@ -141,145 +162,179 @@ check_mem("PIPELINE START")
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
 
-# 3. LOAD DATA
-obj <- readRDS(merged_path)
-required_metadata <- c(
-  "orig.ident", "consensus_label", "regional_consensus_label",
-  "regional_consensus_label_pooled", "regional_unknown_label",
-  "RL_subset_reason", "PCW"
-)
-missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
-if (length(missing_metadata)) stop("Merged RL input lacks metadata: ", paste(missing_metadata, collapse = ", "))
-if (!setequal(unique(as.character(obj$orig.ident)), sample_ids)) {
-  stop("Merged RL input does not contain exactly the 34 configured sample IDs.")
-}
-manifest_order <- match(sample_ids, as.character(merge_manifest_preview$sample_id))
-expected_cells <- as.integer(merge_manifest_preview$cells[manifest_order])
-observed_cells <- as.integer(table(factor(as.character(obj$orig.ident), levels = sample_ids)))
-if (!identical(observed_cells, expected_cells)) {
-  stop("Merged RL per-sample cell counts do not match the merge manifest.")
-}
-expected_pcw <- as.character(merge_manifest_preview$PCW[manifest_order])
-observed_pcw <- vapply(sample_ids, function(sample_id) {
-  values <- unique(as.character(obj$PCW[as.character(obj$orig.ident) == sample_id]))
-  values <- values[!is.na(values) & nzchar(values)]
-  if (length(values) == 1L) values[[1]] else NA_character_
-}, character(1))
-if (anyNA(observed_pcw) || !identical(unname(observed_pcw), unname(expected_pcw))) {
-  stop("Merged RL per-sample PCW values do not match the merge manifest.")
-}
-if (ncol(obj) != sum(expected_cells)) {
-  stop("Merged RL cell count does not match its merge manifest.")
-}
-if (anyNA(obj$RL_subset_reason) || any(!obj$RL_subset_reason %in%
-    c("configured_broad_label", "shared_unknown"))) {
-  stop("Merged RL input has missing or invalid RL_subset_reason values.")
-}
-observed_unknown <- vapply(sample_ids, function(sample_id) {
-  sample_cells <- as.character(obj$orig.ident) == sample_id
-  sum(obj$RL_subset_reason[sample_cells] == "shared_unknown")
-}, integer(1))
-expected_unknown <- as.integer(merge_manifest_preview$shared_unknown_cells[manifest_order])
-if (!identical(unname(observed_unknown), unname(expected_unknown)) || !all(
-  (obj$RL_subset_reason == "shared_unknown") ==
-    is_unknown_consensus_label(obj$consensus_label)
-)) {
-  stop("Merged RL shared-Unknown provenance does not match its manifest or labels.")
-}
-if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
-  stop("Merged RL sample-qualified Unknown labels are invalid.")
-}
-observed_qualified <- vapply(sample_ids, function(sample_id) {
-  sample_cells <- as.character(obj$orig.ident) == sample_id
-  paste(sort(unique(as.character(obj$regional_consensus_label[
-    sample_cells & is_unknown_consensus_label(obj$consensus_label)
-  ]))), collapse = "|")
-}, character(1))
-expected_qualified <- as.character(
-  merge_manifest_preview$sample_qualified_unknown_labels[manifest_order]
-)
-expected_qualified[is.na(expected_qualified)] <- ""
-if (!identical(unname(observed_qualified), unname(expected_qualified))) {
-  stop("Merged RL sample-qualified Unknown labels do not match the merge manifest.")
-}
-Idents(obj) <- "regional_consensus_label"
-check_mem("DATA LOADED")
+if (plots_only) {
+  message("Plot-only mode: loading the existing integrated RL object.")
+  obj <- readRDS(output_path)
+  required_plot_metadata <- c(
+    "orig.ident", "consensus_label", "regional_consensus_label",
+    "regional_consensus_label_pooled", "regional_unknown_label"
+  )
+  missing_plot_metadata <- setdiff(required_plot_metadata, colnames(obj[[]]))
+  if (length(missing_plot_metadata)) {
+    stop("Integrated RL input lacks plot metadata: ", paste(missing_plot_metadata, collapse = ", "))
+  }
+  if (!setequal(unique(as.character(obj$orig.ident)), sample_ids)) {
+    stop("Integrated RL input does not contain exactly the configured sample IDs.")
+  }
+  if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
+    stop("Integrated RL sample-qualified Unknown labels are invalid.")
+  }
+  check_mem("INTEGRATED OBJECT LOADED FOR PLOTTING")
+} else {
+  # 3. LOAD DATA
+  obj <- readRDS(merged_path)
+  required_metadata <- c(
+    "orig.ident", "consensus_label", "regional_consensus_label",
+    "regional_consensus_label_pooled", "regional_unknown_label",
+    "RL_subset_reason", "PCW"
+  )
+  missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
+  if (length(missing_metadata)) stop("Merged RL input lacks metadata: ", paste(missing_metadata, collapse = ", "))
+  if (!setequal(unique(as.character(obj$orig.ident)), sample_ids)) {
+    stop("Merged RL input does not contain exactly the 34 configured sample IDs.")
+  }
+  manifest_order <- match(sample_ids, as.character(merge_manifest_preview$sample_id))
+  expected_cells <- as.integer(merge_manifest_preview$cells[manifest_order])
+  observed_cells <- as.integer(table(factor(as.character(obj$orig.ident), levels = sample_ids)))
+  if (!identical(observed_cells, expected_cells)) {
+    stop("Merged RL per-sample cell counts do not match the merge manifest.")
+  }
+  expected_pcw <- as.character(merge_manifest_preview$PCW[manifest_order])
+  observed_pcw <- vapply(sample_ids, function(sample_id) {
+    values <- unique(as.character(obj$PCW[as.character(obj$orig.ident) == sample_id]))
+    values <- values[!is.na(values) & nzchar(values)]
+    if (length(values) == 1L) values[[1]] else NA_character_
+  }, character(1))
+  if (anyNA(observed_pcw) || !identical(unname(observed_pcw), unname(expected_pcw))) {
+    stop("Merged RL per-sample PCW values do not match the merge manifest.")
+  }
+  if (ncol(obj) != sum(expected_cells)) {
+    stop("Merged RL cell count does not match its merge manifest.")
+  }
+  if (anyNA(obj$RL_subset_reason) || any(!obj$RL_subset_reason %in%
+      c("configured_broad_label", "shared_unknown"))) {
+    stop("Merged RL input has missing or invalid RL_subset_reason values.")
+  }
+  observed_unknown <- vapply(sample_ids, function(sample_id) {
+    sample_cells <- as.character(obj$orig.ident) == sample_id
+    sum(obj$RL_subset_reason[sample_cells] == "shared_unknown")
+  }, integer(1))
+  expected_unknown <- as.integer(merge_manifest_preview$shared_unknown_cells[manifest_order])
+  if (!identical(unname(observed_unknown), unname(expected_unknown)) || !all(
+    (obj$RL_subset_reason == "shared_unknown") ==
+      is_unknown_consensus_label(obj$consensus_label)
+  )) {
+    stop("Merged RL shared-Unknown provenance does not match its manifest or labels.")
+  }
+  if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
+    stop("Merged RL sample-qualified Unknown labels are invalid.")
+  }
+  observed_qualified <- vapply(sample_ids, function(sample_id) {
+    sample_cells <- as.character(obj$orig.ident) == sample_id
+    paste(sort(unique(as.character(obj$regional_consensus_label[
+      sample_cells & is_unknown_consensus_label(obj$consensus_label)
+    ]))), collapse = "|")
+  }, character(1))
+  expected_qualified <- as.character(
+    merge_manifest_preview$sample_qualified_unknown_labels[manifest_order]
+  )
+  expected_qualified[is.na(expected_qualified)] <- ""
+  if (!identical(unname(observed_qualified), unname(expected_qualified))) {
+    stop("Merged RL sample-qualified Unknown labels do not match the merge manifest.")
+  }
+  Idents(obj) <- "regional_consensus_label"
+  check_mem("DATA LOADED")
 
-# 4. STANDARD WORKFLOW
-message("Normalizing and Finding Variable Features...")
-obj <- NormalizeData(obj, verbose = FALSE) %>%
-  FindVariableFeatures(selection.method = "vst", nfeatures = 2000, verbose = FALSE)
+  # 4. STANDARD WORKFLOW
+  message("Normalizing and Finding Variable Features...")
+  obj <- NormalizeData(obj, verbose = FALSE) %>%
+    FindVariableFeatures(selection.method = "vst", nfeatures = 2000, verbose = FALSE)
 
-message("Scaling data...")
-obj <- ScaleData(obj, features = VariableFeatures(obj), verbose = TRUE)
-check_mem("POST-SCALE")
+  message("Scaling data...")
+  obj <- ScaleData(obj, features = VariableFeatures(obj), verbose = TRUE)
+  check_mem("POST-SCALE")
 
-message("Running PCA...")
-obj <- RunPCA(
-  obj, npcs = 30, verbose = FALSE,
-  seed.use = config$runtime$random_seed
-)
+  message("Running PCA...")
+  obj <- RunPCA(
+    obj, npcs = 30, verbose = FALSE,
+    seed.use = config$runtime$random_seed
+  )
 
-# 5. BATCH CHECK (UNCORRECTED UMAP)
-message("Generating uncorrected UMAP...")
-obj <- RunUMAP(obj, reduction = "pca", dims = 1:30, 
-               reduction.name = "umap_uncorrected", verbose = TRUE,
-               seed.use = config$runtime$random_seed)
-check_mem("POST-UNCORRECTED UMAP")
+  # 5. BATCH CHECK (UNCORRECTED UMAP)
+  message("Generating uncorrected UMAP...")
+  obj <- RunUMAP(obj, reduction = "pca", dims = 1:30,
+                 reduction.name = "umap_uncorrected", verbose = TRUE,
+                 seed.use = config$runtime$random_seed)
+  check_mem("POST-UNCORRECTED UMAP")
 
-# 6. RUN HARMONY
-message("Running Harmony integration...")
-obj <- RunHarmony(obj, group.by.vars = "orig.ident", 
-                  dims.use = 1:30, reduction.save = "harmony", verbose = TRUE)
-check_mem("POST-HARMONY")
+  # 6. RUN HARMONY
+  message("Running Harmony integration...")
+  obj <- RunHarmony(obj, group.by.vars = "orig.ident",
+                    dims.use = 1:30, reduction.save = "harmony", verbose = TRUE)
+  check_mem("POST-HARMONY")
 
-# 7. POST-HARMONY REDUCTION & CLUSTERING
-message("Running Integrated UMAP and Neighbors...")
-obj <- RunUMAP(obj, reduction = "harmony", dims = 1:30, 
-               reduction.name = "umap_harmony", verbose = TRUE,
-               seed.use = config$runtime$random_seed)
+  # 7. POST-HARMONY REDUCTION & CLUSTERING
+  message("Running Integrated UMAP and Neighbors...")
+  obj <- RunUMAP(obj, reduction = "harmony", dims = 1:30,
+                 reduction.name = "umap_harmony", verbose = TRUE,
+                 seed.use = config$runtime$random_seed)
 
-obj <- FindNeighbors(obj, reduction = "harmony", dims = 1:30, verbose = TRUE)
+  obj <- FindNeighbors(obj, reduction = "harmony", dims = 1:30, verbose = TRUE)
 
-# 8. GENERATE CLUSTERS (RUN IN BULK FOR SPEED)
+  # 8. GENERATE CLUSTERS (RUN IN BULK FOR SPEED)
+  message(Sys.time(), ": Calculating all clusters with ", workers, " configured worker(s)...")
+
+  # Limit multisession export of the large Seurat object to the operation that
+  # can use it; the remaining workflow stays sequential.
+  obj <- with_future_workers(
+    FindClusters(obj, resolution = res_list, verbose = FALSE)
+  )
+  check_mem("POST-BATCH-CLUSTERING")
+}
+
 assay_prefix <- DefaultAssay(obj)
-message(Sys.time(), ": Calculating all clusters with ", workers, " configured worker(s)...")
-
-# Limit multisession export of the large Seurat object to the operation that
-# can use it; the remaining workflow stays sequential.
-obj <- with_future_workers(
-  FindClusters(obj, resolution = res_list, verbose = FALSE)
-)
-check_mem("POST-BATCH-CLUSTERING")
+required_reductions <- c("umap_uncorrected", "umap_harmony")
+missing_reductions <- setdiff(required_reductions, Reductions(obj))
+if (length(missing_reductions)) {
+  stop("Integrated RL object lacks reductions: ", paste(missing_reductions, collapse = ", "))
+}
+required_resolution_columns <- paste0(assay_prefix, "_snn_res.", res_list)
+missing_resolution_columns <- setdiff(required_resolution_columns, colnames(obj[[]]))
+if (length(missing_resolution_columns)) {
+  stop(
+    "Integrated RL object lacks resolution metadata: ",
+    paste(missing_resolution_columns, collapse = ", ")
+  )
+}
 
 # Now loop only for sorting and plotting
 for(res in res_list) {
   # Dynamically build the column name so it ALWAYS matches
   res_col <- paste0(assay_prefix, "_snn_res.", res)
-  
+
   # 1 & 2. Sort numerically
   clusters <- unique(na.omit(obj@meta.data[[res_col]]))
   numeric_order <- sort(as.numeric(as.character(clusters)))
-  
+
   # 3. Re-assign (using res_col, not the hardcoded Xenium string)
-  obj@meta.data[[res_col]] <- factor(as.character(obj@meta.data[[res_col]]), 
+  obj@meta.data[[res_col]] <- factor(as.character(obj@meta.data[[res_col]]),
                                      levels = as.character(numeric_order))
-  
+
   message(Sys.time(), ": Generating & Saving UMAP for Resolution: ", res)
-  
-  p <- DimPlot(obj, 
-               reduction = "umap_harmony", 
-               group.by = res_col, 
-               label = TRUE, 
+
+  p <- DimPlot(obj,
+               reduction = "umap_harmony",
+               group.by = res_col,
+               label = TRUE,
                label.size = 5,
                label.box = TRUE,
-               raster = TRUE, 
+               raster = TRUE,
                pt.size = 0.6,
-               alpha = 0.8) + 
+               alpha = 0.8) +
     ggtitle(paste0("Refined RL UMAP - Resolution ", res)) +
     theme_classic() +
     theme(plot.title = element_text(hjust = 0.5, face = "bold"))
-  
+
   Cairo::CairoTIFF(
     filename = file.path(plot_dir, paste0("Xenium_RL_UMAP_Res_", res, ".tif")),
     width = 10,
@@ -289,7 +344,7 @@ for(res in res_list) {
   )
   print(p)
   grDevices::dev.off()
-  
+
   rm(p)
   gc()
 }
@@ -297,10 +352,10 @@ for(res in res_list) {
 # 8. VISUALIZATION (Using Raster to prevent RStudio lag)
 message("Saving comparison plots...")
 # raster = TRUE converts points to pixels; essential for >100k cells
-p1 <- DimPlot(obj, reduction = "umap_uncorrected", group.by = "orig.ident", raster = TRUE) + 
+p1 <- DimPlot(obj, reduction = "umap_uncorrected", group.by = "orig.ident", raster = TRUE) +
   NoLegend() + ggtitle("Pre-Harmony")
 
-p2 <- DimPlot(obj, reduction = "umap_harmony", group.by = "orig.ident", raster = TRUE) + 
+p2 <- DimPlot(obj, reduction = "umap_harmony", group.by = "orig.ident", raster = TRUE) +
   ggtitle("Post-Harmony")
 
 Cairo::CairoTIFF(
@@ -346,16 +401,26 @@ p_unknown_by_sample <- DimPlot(
 ) +
   ggtitle("Xenium RL Integrated UMAP: Sample-qualified Unknown clusters") +
   theme_classic() +
+  guides(
+    color = guide_legend(
+      ncol = 2,
+      byrow = FALSE,
+      override.aes = list(size = 3, alpha = 1)
+    )
+  ) +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
     axis.text = element_blank(),
-    axis.ticks = element_blank()
+    axis.ticks = element_blank(),
+    legend.text = element_text(size = 7),
+    legend.key.height = grid::unit(0.25, "cm"),
+    legend.spacing.y = grid::unit(0.03, "cm")
   )
 
 Cairo::CairoTIFF(
   filename = file.path(plot_dir, "Xenium_RL_UnknownClusters_BySample_UMAP.tif"),
   width = 16,
-  height = 12,
+  height = 14,
   units = "in",
   res = 600
 )
@@ -402,10 +467,19 @@ Cairo::CairoTIFF(
 print(p_unknown_pooled)
 grDevices::dev.off()
 
-saveRDS(obj, output_path, compress = FALSE)
+if (!plots_only) {
+  saveRDS(obj, output_path, compress = FALSE)
+}
 
-check_mem("PIPELINE COMPLETE - FILE SAVED")
-message(
-  "Stage 3 integration does not run marker testing. Run the explicit RL stage-4 ",
-  "QC review to create the QC violin PDF, cluster summary, and top-10 marker table."
-)
+plan("sequential")
+
+if (plots_only) {
+  check_mem("PLOT-ONLY MODE COMPLETE")
+  message("Plot-only mode replaced the RL stage-3 plots and did not modify ", output_path, ".")
+} else {
+  check_mem("PIPELINE COMPLETE - FILE SAVED")
+  message(
+    "Stage 3 integration does not run marker testing. Run the explicit RL stage-4 ",
+    "QC review to create the QC violin PDF, cluster summary, and top-10 marker table."
+  )
+}

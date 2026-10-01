@@ -23,5 +23,8 @@ driver_options=()
 if [[ "${VZ_INTEGRATE_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
+if [[ "${VZ_INTEGRATE_PLOTS_ONLY:-false}" == "true" ]]; then
+  driver_options+=(--plots-only)
+fi
 
 Rscript scripts/xenium_vz_03_integrate.R "${driver_options[@]}"
