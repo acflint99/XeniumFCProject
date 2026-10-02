@@ -1775,9 +1775,12 @@ workers reached 422 GB MaxRSS and failed in VZ job 40676165. The launcher maps
 `VZ_INTEGRATE_CLUSTER_WORKERS` to `XENIUM_STAGE3_CLUSTER_WORKERS`; leave it
 unset at the safe default of 1 unless new memory evidence supports increasing
 it. Before clustering, stage 3 writes the provenance-checked restart object
-`Xenium_VZ_precluster_checkpoint.rds`. If a job fails after that checkpoint,
-inspect and resume without repeating normalization, PCA, Harmony, the corrected
-UMAP, or neighbor construction:
+`Xenium_VZ_precluster_checkpoint.rds`; immediately after clustering it writes
+`Xenium_VZ_postcluster_checkpoint.rds` before creating any plots. Resume mode
+automatically prefers the post-clustering checkpoint when it exists, otherwise
+it uses the pre-clustering checkpoint. Each stage-3 script also parses its
+complete source at startup so a damaged later line fails before loading data or
+running analysis. If a job fails after either checkpoint, inspect and resume:
 
 ```bash
 Rscript scripts/xenium_vz_03_integrate.R --resume-checkpoint --dry-run
@@ -1985,7 +1988,10 @@ the corrected UMAP to use all allocated CPUs, and defaults clustering to one
 process. The launcher maps `RL_INTEGRATE_CLUSTER_WORKERS` to
 `XENIUM_STAGE3_CLUSTER_WORKERS`; leave it unset at 1 unless new memory evidence
 supports increasing it. Stage 3 saves `Xenium_RL_precluster_checkpoint.rds`
-before clustering. Resume a failed job from the validated checkpoint with:
+before clustering and `Xenium_RL_postcluster_checkpoint.rds` immediately after
+clustering, before plotting. Resume mode automatically uses the most advanced
+available validated checkpoint. The RL script also performs the same complete
+up-front source parse. Resume a failed job with:
 
 ```bash
 Rscript scripts/xenium_rl_03_integrate.R --resume-checkpoint --dry-run

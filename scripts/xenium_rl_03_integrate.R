@@ -1,6 +1,20 @@
 # Clear the environment
 rm(list = ls())
 
+# Rscript evaluates top-level expressions incrementally. Parse the complete
+# source before doing any expensive work so a damaged later line fails now.
+script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+if (length(script_arg) == 1L) {
+  script_path <- normalizePath(sub("^--file=", "", script_arg), mustWork = TRUE)
+  syntax_error <- tryCatch({
+    parse(file = script_path)
+    NULL
+  }, error = identity)
+  if (inherits(syntax_error, "error")) {
+    stop("Stage-3 RL source failed its up-front syntax check: ", conditionMessage(syntax_error))
+  }
+}
+
 suppressPackageStartupMessages(library(here))
 source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "consensus_labels.R"))
@@ -49,6 +63,7 @@ merge_manifest_path <- here(
 res_list <- c(0.5, 0.8, 1)
 output_path <- file.path(rds_dir, "Xenium_RL_integrated.rds")
 checkpoint_path <- file.path(rds_dir, "Xenium_RL_precluster_checkpoint.rds")
+postcluster_checkpoint_path <- file.path(rds_dir, "Xenium_RL_postcluster_checkpoint.rds")
 batch_plot_path <- file.path(plot_dir, "Xenium_RL_Batch_Comp_UMAP.tif")
 plot_paths <- c(
   file.path(plot_dir, paste0("Xenium_RL_UMAP_Res_", res_list, ".tif")),
@@ -56,7 +71,14 @@ plot_paths <- c(
   file.path(plot_dir, "Xenium_RL_UnknownClusters_BySample_UMAP.tif")
 )
 requested_plot_paths <- c(plot_paths, if (include_uncorrected) batch_plot_path)
-expected_outputs <- c(output_path, checkpoint_path, plot_paths)
+expected_outputs <- c(
+  output_path, checkpoint_path, postcluster_checkpoint_path, plot_paths
+)
+resume_checkpoint_path <- if (file.exists(postcluster_checkpoint_path)) {
+  postcluster_checkpoint_path
+} else {
+  checkpoint_path
+}
 
 manifest_ready <- FALSE
 manifest_rows <- NA_integer_
@@ -104,7 +126,7 @@ if (dry_run) {
   if (resume_checkpoint) {
     compact_dry_run(
       "RL integration checkpoint resume",
-      inputs = c(checkpoint_path, merged_path, merge_manifest_path),
+      inputs = c(resume_checkpoint_path, merged_path, merge_manifest_path),
       outputs = c(output_path, plot_paths),
       checks = c(
         manifest_rows = manifest_rows == length(sample_ids),
@@ -137,8 +159,8 @@ if (plots_only) {
   if (!manifest_ready) {
     stop("RL merge manifest is missing, incomplete, or inconsistent: ", merge_manifest_path)
   }
-  if (resume_checkpoint && !file.exists(checkpoint_path)) {
-    stop("RL pre-clustering checkpoint not found: ", checkpoint_path)
+  if (resume_checkpoint && !file.exists(resume_checkpoint_path)) {
+    stop("RL integration checkpoint not found: ", resume_checkpoint_path)
   }
   candidate_outputs <- if (resume_checkpoint) c(output_path, plot_paths) else expected_outputs
   existing_outputs <- candidate_outputs[file.exists(candidate_outputs)]
@@ -216,6 +238,7 @@ check_mem("PIPELINE START")
 
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
+resume_has_clusters <- FALSE
 
 if (plots_only) {
   message("Plot-only mode: loading the existing integrated RL object.")
@@ -236,9 +259,10 @@ if (plots_only) {
   }
   check_mem("INTEGRATED OBJECT LOADED FOR PLOTTING")
 } else if (resume_checkpoint) {
-  message("Resume mode: loading the RL pre-clustering checkpoint.")
-  obj <- readRDS(checkpoint_path)
+  message("Resume mode: loading RL checkpoint: ", resume_checkpoint_path)
+  obj <- readRDS(resume_checkpoint_path)
   provenance <- attr(obj, "xenium_stage3_checkpoint")
+  resume_has_clusters <- identical(provenance$checkpoint_stage, "postcluster")
   merged_info <- file.info(merged_path)
   checkpoint_valid <- is.list(provenance) &&
     identical(provenance$region, "RL") &&
@@ -361,6 +385,7 @@ if (plots_only) {
   obj <- FindNeighbors(obj, reduction = "harmony", dims = 1:30, verbose = TRUE)
   attr(obj, "xenium_stage3_checkpoint") <- list(
     region = "RL",
+    checkpoint_stage = "precluster",
     sample_ids = sample_ids,
     merged_path = normalizePath(merged_path),
     merged_size = as.numeric(file.info(merged_path)$size),
@@ -374,7 +399,7 @@ if (plots_only) {
   check_mem("PRE-CLUSTERING CHECKPOINT SAVED")
 }
 
-if (!plots_only) {
+if (!plots_only && !resume_has_clusters) {
   # 7. GENERATE CLUSTERS. Default to one process so regional integrations do
   # not repeat the VZ forked-clustering memory failure observed in job 40676165.
   message(
@@ -386,6 +411,15 @@ if (!plots_only) {
     max_workers = cluster_workers
   )
   check_mem("POST-BATCH-CLUSTERING")
+  provenance <- attr(obj, "xenium_stage3_checkpoint")
+  provenance$checkpoint_stage <- "postcluster"
+  provenance$postcluster_created_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
+  attr(obj, "xenium_stage3_checkpoint") <- provenance
+  message("Saving post-clustering checkpoint: ", postcluster_checkpoint_path)
+  saveRDS(obj, postcluster_checkpoint_path, compress = FALSE)
+  check_mem("POST-CLUSTERING CHECKPOINT SAVED")
+} else if (resume_has_clusters) {
+  message("Post-clustering checkpoint detected; skipping FindClusters().")
 }
 
 assay_prefix <- DefaultAssay(obj)
@@ -585,6 +619,9 @@ if (plots_only) {
     "Stage 3 integration does not run marker testing. Run the explicit RL stage-4 ",
     "QC review to create the QC violin PDF, cluster summary, and top-10 marker table."
   )
-  message("Restart checkpoint retained at ", checkpoint_path, ".")
+  message(
+    "Restart checkpoints retained at ", checkpoint_path, " and ",
+    postcluster_checkpoint_path, "."
+  )
   message("The pre-/post-Harmony comparison remains deferred to plot-only mode.")
 }
