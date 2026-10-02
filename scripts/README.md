@@ -1769,11 +1769,15 @@ require an explicit `--overwrite` rerun after review.
 The critical stage-3 path computes only the corrected Harmony UMAP. The
 pre-Harmony diagnostic UMAP is deferred because it does not affect Harmony,
 neighbors, clustering, QC, or downstream labels. Corrected UMAP and clustering
-use fork-based workers on Linux so the large graph is shared rather than copied
-into independent R sessions. Before clustering, stage 3 writes the provenance-
-checked restart object `Xenium_VZ_precluster_checkpoint.rds`. If a job fails
-after that checkpoint, inspect and resume without repeating normalization,
-PCA, Harmony, the corrected UMAP, or neighbor construction:
+use separate worker settings: the corrected UMAP can use all four allocated
+CPUs, while clustering defaults to one process after three forked clustering
+workers reached 422 GB MaxRSS and failed in VZ job 40676165. The launcher maps
+`VZ_INTEGRATE_CLUSTER_WORKERS` to `XENIUM_STAGE3_CLUSTER_WORKERS`; leave it
+unset at the safe default of 1 unless new memory evidence supports increasing
+it. Before clustering, stage 3 writes the provenance-checked restart object
+`Xenium_VZ_precluster_checkpoint.rds`. If a job fails after that checkpoint,
+inspect and resume without repeating normalization, PCA, Harmony, the corrected
+UMAP, or neighbor construction:
 
 ```bash
 Rscript scripts/xenium_vz_03_integrate.R --resume-checkpoint --dry-run
@@ -1976,10 +1980,12 @@ Stage 3 writes the stable object
 `outputs/xenium/rl/03_integrated/rds/Xenium_RL_integrated.rds`; RL QC and post-QC
 processing consume that path.
 
-As in VZ, the critical RL path defers the pre-Harmony diagnostic UMAP, uses
-fork-based workers for the corrected UMAP and resolution clustering, and saves
-`Xenium_RL_precluster_checkpoint.rds` before clustering. Resume a failed job
-from the validated checkpoint with:
+As in VZ, the critical RL path defers the pre-Harmony diagnostic UMAP, allows
+the corrected UMAP to use all allocated CPUs, and defaults clustering to one
+process. The launcher maps `RL_INTEGRATE_CLUSTER_WORKERS` to
+`XENIUM_STAGE3_CLUSTER_WORKERS`; leave it unset at 1 unless new memory evidence
+supports increasing it. Stage 3 saves `Xenium_RL_precluster_checkpoint.rds`
+before clustering. Resume a failed job from the validated checkpoint with:
 
 ```bash
 Rscript scripts/xenium_rl_03_integrate.R --resume-checkpoint --dry-run
@@ -2032,6 +2038,17 @@ Its expanded review outputs mirror VZ under `outputs/xenium/rl/04_qc/`:
 `RL_SampleQualifiedUnknown_Marker_Status.csv`. Marker comparisons use each
 Unknown population against all other regional cells from the same sample, and
 no removal is inferred from these descriptive outputs.
+
+RL stage 4 also writes
+`Xenium_RL_RawSubcluster_BySample_QC_Summary.csv`, containing count and feature
+quartiles, within-sample median ratios, sample and cluster fractions, and
+RL/Granule/UBC/Unknown composition for every observed sample/cluster pair.
+`Xenium_RL_RawSubcluster_BySample_QC_Heatmaps.pdf` shows the log2 median count
+and feature ratios relative to all RL-branch cells from the same sample, while
+`Xenium_RL_RawSubcluster_SampleComposition_Heatmap.pdf` shows the fraction of
+each expression cluster contributed by each sample. These descriptive outputs
+are intended to distinguish reproducible low-QC clusters from sample- or
+age-specific composition before any removal decision.
 
 After reviewing the RL evidence, use `--remove-clusters=<IDs>` or
 `--remove-clusters=none`. RL QC now starts independently from the approved

@@ -185,6 +185,13 @@ workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset =
 if (is.na(workers) || workers < 1L) {
   stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
 }
+cluster_workers <- suppressWarnings(as.integer(
+  Sys.getenv("XENIUM_STAGE3_CLUSTER_WORKERS", unset = "1")
+))
+if (is.na(cluster_workers) || cluster_workers < 1L) {
+  stop("XENIUM_STAGE3_CLUSTER_WORKERS must be a positive integer when set.")
+}
+cluster_workers <- min(cluster_workers, workers, length(res_list))
 options(future.globals.maxSize = config$runtime$future_globals_max_gb_default * 1024^3)
 plan(sequential)
 set.seed(config$runtime$random_seed)
@@ -368,15 +375,15 @@ if (plots_only) {
 }
 
 if (!plots_only) {
-  # 7. GENERATE CLUSTERS WITH FORKED WORKERS
-  cluster_workers <- min(workers, length(res_list))
+  # 7. GENERATE CLUSTERS. Default to one process so regional integrations do
+  # not repeat the VZ forked-clustering memory failure observed in job 40676165.
   message(
     Sys.time(), ": Calculating all clusters with ", cluster_workers,
-    " fork-based worker(s)..."
+    if (cluster_workers == 1L) " sequential worker..." else " fork-based workers..."
   )
   obj <- with_fork_workers(
     FindClusters(obj, resolution = res_list, verbose = FALSE),
-    max_workers = length(res_list)
+    max_workers = cluster_workers
   )
   check_mem("POST-BATCH-CLUSTERING")
 }

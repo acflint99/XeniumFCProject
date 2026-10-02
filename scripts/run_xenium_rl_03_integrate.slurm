@@ -18,6 +18,7 @@ cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
+export XENIUM_STAGE3_CLUSTER_WORKERS="${RL_INTEGRATE_CLUSTER_WORKERS:-1}"
 
 driver_options=()
 if [[ "${RL_INTEGRATE_OVERWRITE:-false}" == "true" ]]; then
