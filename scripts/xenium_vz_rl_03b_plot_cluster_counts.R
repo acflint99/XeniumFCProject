@@ -22,12 +22,25 @@ if(!dir.exists(plot_out_dir)) dir.create(plot_out_dir, recursive = TRUE)
 
 # 1. Define a named list of your cluster sets
 cluster_sets <- list(
-  "Granule_Lineage" = c("Prolif GCPs", "Maturing GCPs", "GCPs", "Differentiating GCs", "Migrating GCs", "Mature GCs"),
-  "UBC_Lineage" = c("RL VZ", "RL SVZ", "Intermediate Progenitors", "Immature UBCs", "Mature UBCs", "eCN"),
-  "GABA_Lineage" = c("VZPs", "GABA Progenitors", "Golgi Cells", "MLIs", "iCN"),
-  "Purkinje_Lineage" = c("VZPs", "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs"),
-  "Glial_Lineage"  = c("VZPs", "RG Progenitors", "BG", "Astrocytes/Ependyma", "Ependymal Cells", "OPCs"),
-  "Other_Lineage" = c("Cycling Cells", "Meninges",  "Endothelial", "Immune")
+  "Granule_Lineage" = c(
+    "Prolif GCPs", "Maturing GCPs", "Differentiating GCs", "Migrating GCs", "Mature GCs"
+  ),
+  "UBC_Lineage" = c("RL VZ", "RL SVZ", "Immature UBCs", "Mature UBCs"),
+  "eCN_Lineage" = "eCN",
+  "GABA_Lineage" = c(
+    "VZPs", "Cycling VZPs", "GABA Progenitors", "Golgi Cells", "MLIs", "iCN"
+  ),
+  "Purkinje_Lineage" = c(
+    "VZPs", "Cycling VZPs", "Maturing PCs", "Early-born PCs",
+    "Late-born PCs", "Patterning PCs"
+  ),
+  "Glial_Lineage" = c(
+    "VZPs", "Cycling VZPs", "RG Progenitors", "Cycling Glia",
+    "BG", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs"
+  ),
+  "Other_Lineage" = c(
+    "Cycling Cells", "Meninges", "Microglia", "Endothelial", "Immune"
+  )
 )
 
 target_samples <- load_sample_manifest(config)$sample_id

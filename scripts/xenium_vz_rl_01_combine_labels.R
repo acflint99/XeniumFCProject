@@ -1,8 +1,9 @@
 #!/usr/bin/env Rscript
 
 # Join independently reviewed VZ and RL subcluster labels to the approved
-# whole-tissue consensus objects. Shared Unknown cells retain their original
-# consensus identity rather than receiving arbitrary VZ or RL priority.
+# whole-tissue consensus objects. Shared Unknown cells receive only explicitly
+# reviewed labels from the VZ/RL annotation-pair decision manifest; the
+# original consensus_label remains unchanged as provenance.
 
 rm(list = ls())
 options(bitmapType = "cairo")
@@ -15,6 +16,8 @@ suppressPackageStartupMessages({
 })
 
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "consensus_labels.R"))
+source(here("scripts", "R", "xenium_vz_rl_unknown_relabel.R"))
 source(here("scripts", "color_palette.R"))
 
 config <- load_pipeline_config()
@@ -39,6 +42,18 @@ rl_input_dir <- file.path(output_root, "xenium", "rl", "07_mapped", "rds")
 rds_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "rds")
 plot_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "plots", "combined")
 table_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "tables")
+review_dir <- file.path(
+  output_root, "xenium", "vz_rl", "00_unknown_annotation_review", "tables"
+)
+comparison_pair_path <- file.path(
+  review_dir, "Xenium_VZRL_Unknown_VZ_RL_Pairs.csv"
+)
+comparison_manifest_path <- file.path(
+  review_dir, "Xenium_VZRL_Unknown_Annotation_Comparison_manifest.csv"
+)
+reviewed_relabel_path <- resolve_config_path(
+  config$manifests$reviewed_unknown_relabels, config
+)
 
 base_input_names <- paste0(sample_ids, "_Consensus_annotated.rds")
 vz_input_names <- paste0(sample_ids, "_VZ_QC_Subclusters.rds")
@@ -64,7 +79,7 @@ table_paths <- lapply(sample_ids, function(sample_id) {
       sample_id,
       c(
         "_counts_consensus_label.csv", "_counts_VZ&RLsubclusters.csv",
-        "_counts_regional_assignment.csv"
+        "_counts_regional_assignment.csv", "_reviewed_unknown_relabels.csv"
       )
     )
   )
@@ -79,10 +94,81 @@ observed_vz_names <- if (dir.exists(vz_input_dir)) {
 observed_rl_names <- if (dir.exists(rl_input_dir)) {
   list.files(rl_input_dir, pattern = "\\.rds$", full.names = FALSE)
 } else character()
-all_input_paths <- c(base_input_paths, vz_input_paths, rl_input_paths)
+all_input_paths <- c(
+  base_input_paths, vz_input_paths, rl_input_paths,
+  comparison_pair_path, comparison_manifest_path, reviewed_relabel_path
+)
 missing_paths <- all_input_paths[!file.exists(all_input_paths)]
 unexpected_vz_names <- setdiff(observed_vz_names, c(vz_input_names, "Xenium_VZ_Mapping_manifest.csv"))
 unexpected_rl_names <- setdiff(observed_rl_names, c(rl_input_names, "Xenium_RL_Mapping_manifest.csv"))
+
+expected_comparison_inputs <- rbind(
+  data.frame(
+    sample_id = sample_ids, input_type = "consensus",
+    input_path = base_input_paths, stringsAsFactors = FALSE
+  ),
+  data.frame(
+    sample_id = sample_ids, input_type = "VZ",
+    input_path = vz_input_paths, stringsAsFactors = FALSE
+  ),
+  data.frame(
+    sample_id = sample_ids, input_type = "RL",
+    input_path = rl_input_paths, stringsAsFactors = FALSE
+  )
+)
+
+review_validation <- tryCatch({
+  required_review_files <- c(comparison_pair_path, comparison_manifest_path)
+  missing_review_files <- required_review_files[!file.exists(required_review_files)]
+  if (length(missing_review_files)) {
+    stop(
+      "Missing Stage-00 comparison file(s): ",
+      paste(missing_review_files, collapse = "; ")
+    )
+  }
+  comparison_pairs <- read.csv(
+    comparison_pair_path, stringsAsFactors = FALSE, na.strings = character()
+  )
+  comparison_manifest <- read.csv(
+    comparison_manifest_path, stringsAsFactors = FALSE, na.strings = character()
+  )
+  reviewed_relabels <- load_reviewed_unknown_relabels(config)
+  allowed_final_labels <- setdiff(
+    unique(c(celltype_order, master_subcluster_order)), "Unknown"
+  )
+  validate_unknown_relabel_review(
+    reviewed_relabels, sample_ids, allowed_final_labels,
+    require_complete_labels = TRUE
+  )
+  validate_unknown_comparison_provenance(
+    comparison_manifest, sample_ids, expected_comparison_inputs
+  )
+  comparison_keys <- unknown_relabel_key(comparison_pairs)
+  reviewed_keys <- unknown_relabel_key(reviewed_relabels)
+  if (anyDuplicated(comparison_keys)) {
+    stop("Unknown annotation-pair comparison contains duplicate keys.")
+  }
+  if (!setequal(comparison_keys, reviewed_keys)) {
+    stop(
+      "Reviewed Unknown decisions do not exactly match the current comparison ",
+      "template. Missing decisions: ", length(setdiff(comparison_keys, reviewed_keys)),
+      "; unused decisions: ", length(setdiff(reviewed_keys, comparison_keys)), "."
+    )
+  }
+  missing_colors <- setdiff(unique(reviewed_relabels$final_label), names(subcluster_palette))
+  if (length(missing_colors)) {
+    stop(
+      "Reviewed Unknown final labels lack plotting colors: ",
+      paste(missing_colors, collapse = ", ")
+    )
+  }
+  list(
+    valid = TRUE,
+    reviewed_relabels = reviewed_relabels,
+    reviewed_keys = reviewed_keys,
+    allowed_final_labels = allowed_final_labels
+  )
+}, error = function(error) list(valid = FALSE, error = conditionMessage(error)))
 
 if (dry_run) {
   compact_dry_run(
@@ -91,7 +177,8 @@ if (dry_run) {
     outputs = unlist(expected_by_sample, use.names = FALSE),
     checks = c(
       no_unexpected_vz_inputs = !length(unexpected_vz_names),
-      no_unexpected_rl_inputs = !length(unexpected_rl_names)
+      no_unexpected_rl_inputs = !length(unexpected_rl_names),
+      reviewed_unknown_relabels = isTRUE(review_validation$valid)
     )
   )
   if (length(unexpected_vz_names)) cat(
@@ -100,6 +187,9 @@ if (dry_run) {
   if (length(unexpected_rl_names)) cat(
     "  Unexpected RL inputs: ", paste(unexpected_rl_names, collapse = "; "), "\n"
   )
+  if (!isTRUE(review_validation$valid)) {
+    cat("  Unknown-relabel review: ", review_validation$error, "\n")
+  }
   quit(save = "no", status = 0L)
 }
 
@@ -112,6 +202,16 @@ if (length(unexpected_vz_names) || length(unexpected_rl_names)) {
     paste(c(unexpected_vz_names, unexpected_rl_names), collapse = "\n- ")
   )
 }
+if (!isTRUE(review_validation$valid)) {
+  stop("Cannot combine subclusters; Unknown-relabel review is not ready: ", review_validation$error)
+}
+reviewed_relabels <- review_validation$reviewed_relabels
+reviewed_keys <- review_validation$reviewed_keys
+reviewed_final_labels <- setNames(
+  as.character(reviewed_relabels$final_label), reviewed_keys
+)
+reviewed_notes <- setNames(as.character(reviewed_relabels$review_notes), reviewed_keys)
+combined_label_order <- unique(c(master_subcluster_order, celltype_order))
 expected_outputs <- unlist(expected_by_sample, use.names = FALSE)
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
 if (length(existing_outputs) && !overwrite) {
@@ -226,6 +326,35 @@ for (i in seq_along(sample_ids)) {
   combined_labels <- as.character(obj$consensus_label)
   combined_labels[has_vz & !has_rl] <- as.character(obj$VZ_subcluster[has_vz & !has_rl])
   combined_labels[has_rl & !has_vz] <- as.character(obj$RL_subcluster[has_rl & !has_vz])
+  unknown_relabel <- rep(NA_character_, ncol(obj))
+  unknown_relabel_key_value <- rep(NA_character_, ncol(obj))
+  if (any(overlap)) {
+    overlap_data <- data.frame(
+      sample_id = sample_id,
+      consensus_label = as.character(obj$consensus_label[overlap]),
+      VZ_subcluster = as.character(obj$VZ_subcluster[overlap]),
+      RL_subcluster = as.character(obj$RL_subcluster[overlap]),
+      stringsAsFactors = FALSE
+    )
+    overlap_keys <- unknown_relabel_key(overlap_data)
+    if (any(!overlap_keys %in% reviewed_keys)) {
+      stop(sample_id, " has shared Unknown annotation pairs without reviewed decisions.")
+    }
+    unknown_relabel[overlap] <- unname(reviewed_final_labels[overlap_keys])
+    unknown_relabel_key_value[overlap] <- paste0(
+      "sample_id=", overlap_data$sample_id,
+      ";consensus_label=", overlap_data$consensus_label,
+      ";VZ_subcluster=", overlap_data$VZ_subcluster,
+      ";RL_subcluster=", overlap_data$RL_subcluster
+    )
+    combined_labels[overlap] <- unknown_relabel[overlap]
+  }
+  obj$unknown_relabel <- unknown_relabel
+  obj$unknown_relabel_key <- unknown_relabel_key_value
+  obj$unknown_relabel_status <- factor(
+    ifelse(overlap, "reviewed_annotation_pair", "not_applicable"),
+    levels = c("not_applicable", "reviewed_annotation_pair")
+  )
   regional_assignment <- rep("unassigned_consensus", ncol(obj))
   regional_assignment[has_vz & !has_rl] <- "VZ"
   regional_assignment[has_rl & !has_vz] <- "RL"
@@ -239,7 +368,7 @@ for (i in seq_along(sample_ids)) {
   }
   unexpected_labels <- setdiff(
     unique(combined_labels)[!is_unknown_consensus_label(unique(combined_labels))],
-    master_subcluster_order
+    combined_label_order
   )
   if (length(unexpected_labels)) {
     stop(
@@ -247,7 +376,7 @@ for (i in seq_along(sample_ids)) {
       paste(unexpected_labels, collapse = ", ")
     )
   }
-  present_levels <- order_consensus_levels(combined_labels, master_subcluster_order)
+  present_levels <- order_consensus_levels(combined_labels, combined_label_order)
   obj$comb_subcluster <- factor(combined_labels, levels = present_levels)
   Idents(obj) <- "comb_subcluster"
   plot_colors <- subcluster_palette[present_levels]
@@ -270,6 +399,36 @@ for (i in seq_along(sample_ids)) {
   write.csv(consensus_counts, table_paths[[i]][[1]], row.names = FALSE)
   write.csv(combined_counts, table_paths[[i]][[2]], row.names = FALSE)
   write.csv(assignment_counts, table_paths[[i]][[3]], row.names = FALSE)
+  if (any(overlap)) {
+    overlap_key_data <- data.frame(
+      sample_id = sample_id,
+      consensus_label = as.character(obj$consensus_label[overlap]),
+      VZ_subcluster = as.character(obj$VZ_subcluster[overlap]),
+      RL_subcluster = as.character(obj$RL_subcluster[overlap]),
+      stringsAsFactors = FALSE
+    )
+    overlap_keys <- unknown_relabel_key(overlap_key_data)
+    relabel_counts <- aggregate(
+      list(Cell_Count = rep(1L, sum(overlap))),
+      by = data.frame(
+        Original_Consensus_Label = as.character(obj$consensus_label[overlap]),
+        VZ_Subcluster = as.character(obj$VZ_subcluster[overlap]),
+        RL_Subcluster = as.character(obj$RL_subcluster[overlap]),
+        Reviewed_Final_Label = as.character(obj$unknown_relabel[overlap]),
+        Review_Notes = unname(reviewed_notes[overlap_keys]),
+        stringsAsFactors = FALSE
+      ),
+      FUN = sum
+    )
+  } else {
+    relabel_counts <- data.frame(
+      Original_Consensus_Label = character(), VZ_Subcluster = character(),
+      RL_Subcluster = character(), Reviewed_Final_Label = character(),
+      Review_Notes = character(), Cell_Count = integer(),
+      stringsAsFactors = FALSE
+    )
+  }
+  write.csv(relabel_counts, table_paths[[i]][[4]], row.names = FALSE)
 
   p_comb_06 <- ImageDimPlot(
     obj, group.by = "comb_subcluster", cols = plot_colors, size = 0.6

@@ -52,6 +52,15 @@ truth for the full pipeline.
 VZ/RL integration settings still differ among scripts and should not be
 unified without checking the intended scientific workflow.
 
+`reviewed_unknown_relabels.csv` is the explicit scientific decision manifest
+used after the independently mapped VZ and RL annotations have been compared.
+Its key is the exact combination of `sample_id`, original `consensus_label`,
+`VZ_subcluster`, and `RL_subcluster`. The committed header-only file is
+intentional: populate it from the protected Stage-00 comparison template only
+after reviewing the paired annotations. Every decision also requires a final
+label and nonblank review notes. The original `consensus_label` is preserved in
+the combined object even after the reviewed label is applied.
+
 `cheaha_slurm_partitions.csv` is a dated scheduling-policy snapshot rather
 than pipeline configuration. It records the partition classes, node counts,
 per-researcher node limits, maximum wall times, and priority tiers shown in the

@@ -4,7 +4,7 @@
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/RL_MergePostQC_%j.err
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=128G
+#SBATCH --mem=256G
 #SBATCH --partition=short
 #SBATCH --constraint=intel
 #SBATCH --mail-user=acflint@uab.edu

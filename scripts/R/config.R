@@ -159,6 +159,15 @@ load_resolution2_pilot_manifest <- function(config = load_pipeline_config()) {
   read.csv(path, check.names = FALSE, stringsAsFactors = FALSE, na.strings = character())
 }
 
+load_reviewed_unknown_relabels <- function(config = load_pipeline_config()) {
+  path <- resolve_config_path(config$manifests$reviewed_unknown_relabels, config)
+  if (!file.exists(path)) stop("Reviewed Unknown-relabel manifest not found: ", path)
+  read.csv(
+    path, check.names = FALSE, stringsAsFactors = FALSE,
+    na.strings = character()
+  )
+}
+
 get_sample_record <- function(sample_id,
                               samples = NULL,
                               config = load_pipeline_config()) {
@@ -205,6 +214,7 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   samples <- load_sample_manifest(config)
   slides <- load_slide_manifest(config)
   resolution2_pilot <- load_resolution2_pilot_manifest(config)
+  unknown_relabels <- load_reviewed_unknown_relabels(config)
 
   required_sample_columns <- c(
     "sample_id", "input_directory", "input_layout", "cell_stats_file"
@@ -217,6 +227,47 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   if (any(!nzchar(samples$sample_id))) add_error("Blank sample IDs found.")
   if (any(!samples$input_layout %in% c("single", "multi_sample_slide"))) {
     add_error("input_layout must be 'single' or 'multi_sample_slide'.")
+  }
+
+  required_unknown_relabel_columns <- c(
+    "sample_id", "consensus_label", "VZ_subcluster", "RL_subcluster",
+    "final_label", "review_notes"
+  )
+  missing_unknown_relabel_columns <- setdiff(
+    required_unknown_relabel_columns, names(unknown_relabels)
+  )
+  if (length(missing_unknown_relabel_columns)) {
+    add_error(
+      "Missing reviewed Unknown-relabel columns: ",
+      paste(missing_unknown_relabel_columns, collapse = ", ")
+    )
+  } else if (nrow(unknown_relabels)) {
+    unknown_key_columns <- required_unknown_relabel_columns[1:4]
+    unknown_keys <- do.call(
+      paste,
+      c(lapply(unknown_relabels[unknown_key_columns], trimws), sep = "\u001f")
+    )
+    if (any(vapply(
+      unknown_relabels[required_unknown_relabel_columns],
+      function(x) anyNA(x) || any(!nzchar(trimws(x))),
+      logical(1)
+    ))) {
+      add_error("Reviewed Unknown-relabel rows must not contain blank values.")
+    }
+    if (anyDuplicated(unknown_keys)) {
+      add_error("Duplicate reviewed Unknown-relabel annotation-pair keys found.")
+    }
+    if (any(!unknown_relabels$sample_id %in% samples$sample_id)) {
+      add_error(
+        "Reviewed Unknown-relabel manifest contains sample IDs absent from samples.csv."
+      )
+    }
+    unknown_labels <- trimws(as.character(unknown_relabels$consensus_label))
+    if (any(!grepl("^(unknown|Unknown|Unknown-[0-9]{2,})$", unknown_labels))) {
+      add_error(
+        "Reviewed Unknown-relabel consensus_label values must be Unknown or Unknown-##."
+      )
+    }
   }
 
   required_pilot_columns <- c("task_id", "sample_id", "PCW", "age_group")
@@ -273,6 +324,20 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
     add_error("A multi-sample component refers to an unknown slide directory.")
   }
 
+  required_regional_numeric <- c(
+    "integration_dimensions_default", "post_qc_dimensions_observed",
+    "umap_neighbors_post_qc", "neighbor_k_post_qc"
+  )
+  missing_regional_numeric <- setdiff(
+    required_regional_numeric, names(config$regional_subsets)
+  )
+  if (length(missing_regional_numeric)) {
+    add_error(
+      "Missing regional_subsets numeric settings: ",
+      paste(missing_regional_numeric, collapse = ", ")
+    )
+  }
+
   numeric_checks <- c(
     mad_multiplier = config$qc$mad_multiplier,
     min_transcripts = config$qc$min_transcripts,
@@ -289,6 +354,7 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
     transfer_k_weight = config$label_transfer$k_weight,
     regional_integration_dimensions = config$regional_subsets$integration_dimensions_default,
     regional_post_qc_dimensions = config$regional_subsets$post_qc_dimensions_observed,
+    regional_post_qc_umap_neighbors = config$regional_subsets$umap_neighbors_post_qc,
     regional_neighbor_k = config$regional_subsets$neighbor_k_post_qc
   )
   if (any(!is.finite(numeric_checks)) || any(numeric_checks <= 0)) {
@@ -347,8 +413,22 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   if (!length(vz_labels) || any(!nzchar(vz_labels)) || anyDuplicated(vz_labels)) {
     add_error("regional_subsets.vz_broad_labels must contain unique, nonblank labels.")
   }
+  if (!"VZ" %in% vz_labels) {
+    add_error(
+      "regional_subsets.vz_broad_labels must include the explicit 'VZ' consensus label."
+    )
+  }
   if (!length(rl_labels) || any(!nzchar(rl_labels)) || anyDuplicated(rl_labels)) {
     add_error("regional_subsets.rl_broad_labels must contain unique, nonblank labels.")
+  }
+  if (!identical(config$regional_subsets$include_unknown_in_both_branches, TRUE)) {
+    add_error(
+      "regional_subsets.include_unknown_in_both_branches must be true so unresolved ",
+      "consensus identities are retained in both regional branches."
+    )
+  }
+  if (length(intersect(vz_labels, rl_labels))) {
+    add_error("VZ and RL configured broad-label lists must not overlap.")
   }
 
   if (isTRUE(check_files)) {

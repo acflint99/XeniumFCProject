@@ -4,7 +4,7 @@
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_VZ_Subclusters_%j.err
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=128G
+#SBATCH --mem=256G
 #SBATCH --partition=short
 #SBATCH --constraint=intel
 #SBATCH --mail-user=acflint@uab.edu
@@ -20,6 +20,16 @@ export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
 driver_options=()
+subcluster_resolution="${VZ_SUBCLUSTER_RESOLUTION:-0.5}"
+case "${subcluster_resolution}" in
+  0.3|0.5|0.8)
+    driver_options+=("--resolution=${subcluster_resolution}")
+    ;;
+  *)
+    echo "VZ_SUBCLUSTER_RESOLUTION must be 0.3, 0.5, or 0.8." >&2
+    exit 2
+    ;;
+esac
 if [[ "${VZ_SUBCLUSTER_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
@@ -31,8 +41,14 @@ case "${VZ_SUBCLUSTER_MODE:-review}" in
   apply)
     driver_options+=(--apply-reviewed-labels)
     ;;
+  refresh-plots)
+    driver_options+=(--plots-only)
+    ;;
+  refresh-umaps)
+    driver_options+=(--umaps-only)
+    ;;
   *)
-    echo "VZ_SUBCLUSTER_MODE must be 'review' or 'apply'." >&2
+    echo "VZ_SUBCLUSTER_MODE must be 'review', 'apply', 'refresh-plots', or 'refresh-umaps'." >&2
     exit 2
     ;;
 esac

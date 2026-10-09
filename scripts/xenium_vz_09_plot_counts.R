@@ -23,16 +23,34 @@ plot_dir <- here("outputs", "xenium", "vz", "09_cluster_counts", "plots")
 
 # 1. Define a named list of your cluster sets
 cluster_sets <- list(
-  "GABA_Lineage" = c("VZPs", "GABA Progenitors", "Golgi Cells", "MLIs", "iCN"),
-  "Purkinje_Lineage" = c("VZPs", "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs"),
-  "Glial_Lineage"  = c("VZPs", "RG Progenitors", "BG", "Astrocytes/Ependyma")     
+  "GABA_Lineage" = c(
+    "VZPs", "Cycling VZPs", "GABA Progenitors", "Golgi Cells", "MLIs", "iCN"
+  ),
+  "Purkinje_Lineage" = c(
+    "VZPs", "Cycling VZPs", "Maturing PCs", "Early-born PCs",
+    "Late-born PCs", "Patterning PCs"
+  ),
+  "Glial_Lineage" = c(
+    "VZPs", "Cycling VZPs", "RG Progenitors", "Cycling Glia",
+    "BG", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs"
+  )
 )
 
-# Intentional focused cohort for the developmental lineage count comparison.
+# Intentional one-sample-per-PCW cohort for the developmental comparison.
 # This is not the complete 34-sample manifest by design.
-target_samples <- c("FB328_1_X_G", "GZFB_12_X_G_3", "GZFB5_X_G",
-                    "GZFB_1_X_G", "FB330_1_X_G", "FB78_X_G",
-                    "GZFB4_X_G", "FB124_X_G") 
+target_sample_pcw <- c(
+  "GZFB_12_X_G_3" = 10,
+  "GZFB5_X_G" = 11,
+  "FB328_1_X_G" = 12,
+  "GZFB_1_X_G" = 12.5,
+  "FB330_1_X_G" = 13,
+  "FB78_X_G" = 14,
+  "GZFB4_X_G" = 16,
+  "FB124_X_G" = 17,
+  "GZFB_22_X_G_4" = 19
+)
+target_samples <- names(target_sample_pcw)
+target_pcw_levels <- unname(target_sample_pcw)
 
 plot_stems <- paste0("Xenium_VZ_", names(cluster_sets), "_ClusterCountPlot")
 expected_outputs <- c(
@@ -74,6 +92,31 @@ missing_target_samples <- setdiff(target_samples, unique(as.character(obj$orig.i
 if (length(missing_target_samples)) {
   stop("VZ count cohort is missing sample(s): ", paste(missing_target_samples, collapse = ", "))
 }
+target_metadata <- unique(data.frame(
+  sample_id = as.character(obj$orig.ident[obj$orig.ident %in% target_samples]),
+  PCW = as.character(obj$PCW[obj$orig.ident %in% target_samples]),
+  stringsAsFactors = FALSE
+))
+pcw_rows_per_sample <- table(target_metadata$sample_id)
+invalid_pcw_samples <- target_samples[pcw_rows_per_sample[target_samples] != 1L]
+if (length(invalid_pcw_samples)) {
+  stop(
+    "Each VZ count-cohort sample must have exactly one PCW value; failures: ",
+    paste(invalid_pcw_samples, collapse = ", ")
+  )
+}
+observed_pcw <- suppressWarnings(as.numeric(gsub(
+  "[^0-9.]", "", target_metadata$PCW[match(target_samples, target_metadata$sample_id)]
+)))
+pcw_mismatches <- target_samples[
+  !is.finite(observed_pcw) | observed_pcw != target_sample_pcw[target_samples]
+]
+if (length(pcw_mismatches)) {
+  stop(
+    "VZ count-cohort PCW metadata do not match the approved sample-to-PCW map: ",
+    paste(pcw_mismatches, collapse = ", ")
+  )
+}
 
 # 2. Iterate through the sets
 for (set_name in names(cluster_sets)) {
@@ -94,7 +137,7 @@ for (set_name in names(cluster_sets)) {
   if (nrow(plot_df) == 0) next
   
   # Set Factor Levels
-  plot_df$PCW_num <- factor(plot_df$PCW_num, levels = sort(unique(plot_df$PCW_num)))
+  plot_df$PCW_num <- factor(plot_df$PCW_num, levels = target_pcw_levels)
   plot_df$VZ_subcluster <- factor(plot_df$VZ_subcluster, 
                                   levels = intersect(vz_subcluster_order, current_clusters))
   
@@ -102,6 +145,7 @@ for (set_name in names(cluster_sets)) {
   p <- ggplot(plot_df, aes(x = PCW_num, y = cell_count, fill = VZ_subcluster)) +
     geom_bar(stat = "identity", color = "black", width = 0.8, linewidth = 0.2) +
     scale_fill_manual(values = vz_palette) + 
+    scale_x_discrete(drop = FALSE) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
     labs(
       title = paste("Cluster Set:", set_name),

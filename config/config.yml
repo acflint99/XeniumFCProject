@@ -24,6 +24,7 @@ manifests:
   slides: "config/slides.csv"
   sample_metadata: "metadata/samples_meta.xlsx"
   resolution2_pilot_samples: "config/resolution2_pilot_samples.csv"
+  reviewed_unknown_relabels: "config/reviewed_unknown_relabels.csv"
 
 runtime:
   r_version: "4.4.1"
@@ -81,6 +82,7 @@ regional_subsets:
   # when VZ and RL labels are recombined; neither branch receives priority.
   include_unknown_in_both_branches: true
   vz_broad_labels:
+    - "VZ"
     - "Glia"
     - "GABA"
     - "Purkinje"
@@ -90,7 +92,8 @@ regional_subsets:
     - "Granule"
     - "UBC"
   integration_dimensions_default: 30
-  post_qc_dimensions_observed: 50
+  post_qc_dimensions_observed: 30
+  umap_neighbors_post_qc: 30
   neighbor_k_post_qc: 30
 
 plotting:

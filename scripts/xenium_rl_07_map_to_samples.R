@@ -11,6 +11,7 @@ suppressPackageStartupMessages({
 })
 source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "consensus_labels.R"))
+source(here("scripts", "R", "xenium_vz_rl_qc_routing.R"))
 
 config <- load_pipeline_config()
 sample_ids <- load_sample_manifest(config)$sample_id
@@ -28,27 +29,55 @@ if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 output_root <- here(config$project$outputs_dir)
 input_dir <- file.path(output_root, "xenium", "rl", "04_qc", "rds")
 output_dir <- file.path(output_root, "xenium", "rl", "07_mapped", "rds")
+decision_manifest_path <- file.path(
+  output_root, "xenium", "rl", "04_qc", "tables",
+  "Xenium_RL_QC_removal_manifest.csv"
+)
 master_path <- file.path(
   output_root, "xenium", "rl", "06_subclusters", "rds",
   "Xenium_RL_subclusters.rds"
 )
 input_names <- paste0(sample_ids, "_RL_QC.rds")
-input_paths <- file.path(input_dir, input_names)
+legacy_input_paths <- file.path(input_dir, input_names)
 output_names <- paste0(sample_ids, "_RL_QC_Subclusters.rds")
 output_paths <- file.path(output_dir, output_names)
 manifest_path <- file.path(output_dir, "Xenium_RL_Mapping_manifest.csv")
-observed_names <- if (dir.exists(input_dir)) {
+decision_manifest <- if (file.exists(decision_manifest_path)) {
+  read.csv(decision_manifest_path, stringsAsFactors = FALSE)
+} else NULL
+decision_inspection <- inspect_regional_qc_manifest(decision_manifest, sample_ids)
+preview_input_paths <- if (isTRUE(decision_inspection$valid) &&
+                           isTRUE(decision_inspection$has_routing)) {
+  as.character(decision_manifest$mapping_input_path)
+} else {
+  legacy_input_paths
+}
+routing_result <- if (isTRUE(decision_inspection$valid)) {
+  tryCatch(
+    resolve_regional_qc_mapping_inputs(
+      decision_manifest, sample_ids, legacy_input_paths
+    ),
+    error = function(error) error
+  )
+} else NULL
+routing_ready <- is.list(routing_result) && !inherits(routing_result, "error")
+legacy_routing <- isTRUE(decision_inspection$valid) &&
+  isTRUE(decision_inspection$legacy)
+observed_names <- if (legacy_routing && dir.exists(input_dir)) {
   list.files(input_dir, pattern = "\\.rds$", full.names = FALSE)
 } else character()
-missing_names <- input_names[!file.exists(input_paths)]
-unexpected_names <- setdiff(observed_names, input_names)
+unexpected_names <- if (legacy_routing) setdiff(observed_names, input_names) else character()
 
 if (dry_run) {
   compact_dry_run(
     "RL label mapping",
-    inputs = c(master_path, input_paths),
+    inputs = c(master_path, decision_manifest_path, preview_input_paths),
     outputs = c(output_paths, manifest_path),
-    checks = c(no_unexpected_inputs = !length(unexpected_names))
+    checks = c(
+      decision_manifest = isTRUE(decision_inspection$valid),
+      routed_inputs_current = routing_ready,
+      no_unexpected_legacy_inputs = !length(unexpected_names)
+    )
   )
   if (length(unexpected_names)) {
     cat("  Unexpected inputs: ", paste(unexpected_names, collapse = "; "), "\n")
@@ -57,12 +86,21 @@ if (dry_run) {
 }
 
 if (!file.exists(master_path)) stop("Master RL subcluster object not found: ", master_path)
-if (length(missing_names)) {
-  stop("Cannot map RL labels; missing files:\n- ", paste(missing_names, collapse = "\n- "))
+if (!isTRUE(decision_inspection$valid)) {
+  stop(
+    "RL Stage-4 decision manifest is missing or invalid: ",
+    decision_manifest_path, "\n- ",
+    paste(decision_inspection$errors, collapse = "\n- ")
+  )
+}
+if (!routing_ready) {
+  stop("Cannot resolve RL mapping inputs: ", conditionMessage(routing_result))
 }
 if (length(unexpected_names)) {
   stop("Cannot map RL labels; unexpected top-level RDS files:\n- ", paste(unexpected_names, collapse = "\n- "))
 }
+input_paths <- routing_result$input_paths
+materialization_modes <- routing_result$materialization_mode
 expected_outputs <- c(output_paths, manifest_path)
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
 if (length(existing_outputs) && !overwrite) {
@@ -169,6 +207,7 @@ mapping_rows <- future_lapply(seq_along(sample_ids), function(i) {
   saveRDS(temp_obj, output_paths[[i]], compress = FALSE)
   data.frame(
     sample_id = sample_id, input_path = input_paths[[i]], output_path = output_paths[[i]],
+    input_materialization_mode = materialization_modes[[i]],
     total_cells = ncol(temp_obj), mapped_rl_cells = mapped_cells,
     mapped_rl_unknown_cells = mapped_unknown_cells,
     PCW = pcw_values[[1]], stringsAsFactors = FALSE

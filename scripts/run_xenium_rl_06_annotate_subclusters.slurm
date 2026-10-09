@@ -20,6 +20,16 @@ export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
 driver_options=()
+subcluster_resolution="${RL_SUBCLUSTER_RESOLUTION:-0.5}"
+case "${subcluster_resolution}" in
+  0.3|0.5|0.8)
+    driver_options+=("--resolution=${subcluster_resolution}")
+    ;;
+  *)
+    echo "RL_SUBCLUSTER_RESOLUTION must be 0.3, 0.5, or 0.8." >&2
+    exit 2
+    ;;
+esac
 if [[ "${RL_SUBCLUSTER_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
@@ -31,8 +41,11 @@ case "${RL_SUBCLUSTER_MODE:-review}" in
   apply)
     driver_options+=(--apply-reviewed-labels)
     ;;
+  refresh-plots)
+    driver_options+=(--plots-only)
+    ;;
   *)
-    echo "RL_SUBCLUSTER_MODE must be 'review' or 'apply'." >&2
+    echo "RL_SUBCLUSTER_MODE must be 'review', 'apply', or 'refresh-plots'." >&2
     exit 2
     ;;
 esac

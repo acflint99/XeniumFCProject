@@ -2,8 +2,8 @@
 #SBATCH --job-name=Xen_RL_QC
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_RL_QC_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_RL_QC_%j.err
-#SBATCH --time=08:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=256G
 #SBATCH --partition=short
 #SBATCH --constraint=intel
@@ -24,17 +24,19 @@ if [[ "${RL_QC_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
+# Reviewed 2026-10-02 from the resolution-0.8 cluster QC, sample-composition,
+# and top-50 marker evidence. Review mode remains the launcher default; this
+# decision is used only when RL_QC_MODE=apply is explicitly requested.
+reviewed_removal_clusters="6,15,24,26,27"
+
 case "${RL_QC_MODE:-review}" in
   review)
     driver_options+=(--qc-only)
     ;;
   apply)
-    if [[ -z "${RL_QC_REMOVE_CLUSTERS:-}" ]]; then
-      echo "RL_QC_REMOVE_CLUSTERS is required when RL_QC_MODE=apply." >&2
-      echo "Use a comma-separated cluster list or the literal value 'none'." >&2
-      exit 2
-    fi
-    driver_options+=("--remove-clusters=${RL_QC_REMOVE_CLUSTERS}")
+    selected_removal_clusters="${RL_QC_REMOVE_CLUSTERS:-${reviewed_removal_clusters}}"
+    echo "Applying reviewed RL removal clusters: ${selected_removal_clusters}"
+    driver_options+=("--remove-clusters=${selected_removal_clusters}")
     ;;
   *)
     echo "RL_QC_MODE must be 'review' or 'apply'." >&2
@@ -42,4 +44,5 @@ case "${RL_QC_MODE:-review}" in
     ;;
 esac
 
-Rscript scripts/xenium_rl_04_review_qc.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 \
+  scripts/xenium_rl_04_review_qc.R "${driver_options[@]}"

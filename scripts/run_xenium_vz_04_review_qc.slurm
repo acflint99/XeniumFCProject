@@ -2,8 +2,8 @@
 #SBATCH --job-name=Xen_VZ_QC
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_VZ_QC_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_VZ_QC_%j.err
-#SBATCH --time=08:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=256G
 #SBATCH --partition=short
 #SBATCH --constraint=intel
@@ -30,11 +30,12 @@ case "${VZ_QC_MODE:-review}" in
     ;;
   apply)
     if [[ -z "${VZ_QC_REMOVE_CLUSTERS:-}" ]]; then
-      echo "VZ_QC_REMOVE_CLUSTERS is required when VZ_QC_MODE=apply." >&2
-      echo "Use a comma-separated cluster list or the literal value 'none'." >&2
+      echo "VZ_QC_REMOVE_CLUSTERS must explicitly name the newly reviewed clusters or 'none' (current reviewed decision: 9,25,26)." >&2
       exit 2
     fi
-    driver_options+=("--remove-clusters=${VZ_QC_REMOVE_CLUSTERS}")
+    remove_clusters="${VZ_QC_REMOVE_CLUSTERS}"
+    echo "Applying reviewed VZ QC decision: remove cluster(s) ${remove_clusters}."
+    driver_options+=("--remove-clusters=${remove_clusters}")
     ;;
   *)
     echo "VZ_QC_MODE must be 'review' or 'apply'." >&2
@@ -42,4 +43,5 @@ case "${VZ_QC_MODE:-review}" in
     ;;
 esac
 
-Rscript scripts/xenium_vz_04_review_qc.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 \
+  scripts/xenium_vz_04_review_qc.R "${driver_options[@]}"

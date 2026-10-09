@@ -16,9 +16,27 @@ module load rc-base
 module load R/4.4.1-foss-2023b
 cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 
+plot_mode="${VZ_PLOTS_MODE:-samples}"
 driver_options=()
 if [[ "${VZ_PLOTS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript scripts/xenium_vz_08_plot_samples.R \
-  "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"
+
+case "${plot_mode}" in
+  samples)
+    Rscript scripts/xenium_vz_08_plot_samples.R \
+      "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"
+    ;;
+  combine)
+    if [[ "${SLURM_ARRAY_TASK_COUNT:-1}" -ne 1 ]]; then
+      echo "VZ combine mode must be submitted with --array=1." >&2
+      exit 2
+    fi
+    Rscript scripts/xenium_vz_08_plot_samples.R \
+      --combine "${driver_options[@]}"
+    ;;
+  *)
+    echo "VZ_PLOTS_MODE must be 'samples' or 'combine'; received '${plot_mode}'." >&2
+    exit 2
+    ;;
+esac

@@ -1,23 +1,28 @@
 #!/usr/bin/env Rscript
 
-# Reintegrate the reviewed VZ object after the explicit stage-4 QC decision.
+# Reuse or reintegrate the reviewed VZ object after the explicit stage-4 QC decision.
 rm(list = ls())
 
 suppressPackageStartupMessages(library(here))
 source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "consensus_labels.R"))
+source(here("scripts", "R", "xenium_vz_rl_qc_routing.R"))
 
 config <- load_pipeline_config()
 sample_ids <- load_sample_manifest(config)$sample_id
 args <- commandArgs(trailingOnly = TRUE)
-valid_options <- c("--dry-run", "--overwrite")
+valid_options <- c("--dry-run", "--overwrite", "--resume-checkpoint")
 unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
 if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
 if (any(!args %in% valid_options)) {
-  stop("Usage: Rscript scripts/xenium_vz_05_reintegrate_post_qc.R [--dry-run|--overwrite]")
+  stop(
+    "Usage: Rscript scripts/xenium_vz_05_reintegrate_post_qc.R ",
+    "[--dry-run|--overwrite] [--resume-checkpoint]"
+  )
 }
 dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
+resume_checkpoint <- "--resume-checkpoint" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
@@ -28,17 +33,36 @@ merged_path <- file.path(output_root, "xenium", "vz", "03_integrated", "rds", "X
 removal_path <- file.path(output_root, "xenium", "vz", "04_qc", "tables", "Xenium_VZ_QC_removal_manifest.csv")
 review_path <- file.path(output_root, "xenium", "vz", "04_qc", "tables", "Xenium_VZ_QC_review_manifest.csv")
 output_path <- file.path(rds_dir, "Xenium_VZ_postQC.rds")
+checkpoint_path <- file.path(rds_dir, "Xenium_VZ_postQC_precluster_checkpoint.rds")
+postcluster_checkpoint_path <- file.path(
+  rds_dir, "Xenium_VZ_postQC_postcluster_checkpoint.rds"
+)
 provenance_path <- file.path(table_dir, "Xenium_VZ_postQC_manifest.csv")
-res_list <- c(0.3, 0.5, 0.8, 1)
-plot_paths <- c(
-  file.path(plot_path, "Xenium_VZ_PostQC_OrigCluster_UMAP.tif"),
-  file.path(plot_path, paste0("Xenium_VZ_PostQC_UMAP_Res_", res_list, ".tif"))
+full_res_list <- c(0.3, 0.5, 0.8, 1)
+reuse_res_list <- c(0.5, 0.8, 1)
+post_qc_dimensions <- suppressWarnings(as.integer(
+  config$regional_subsets$post_qc_dimensions_observed
+))
+post_qc_umap_neighbors <- suppressWarnings(as.integer(
+  config$regional_subsets$umap_neighbors_post_qc
+))
+post_qc_neighbor_k <- suppressWarnings(as.integer(
+  config$regional_subsets$neighbor_k_post_qc
+))
+configured_post_qc_parameters <- c(
+  dimensions = post_qc_dimensions,
+  umap_neighbors = post_qc_umap_neighbors,
+  neighbor_k = post_qc_neighbor_k
 )
-expected_outputs <- c(output_path, provenance_path, plot_paths)
+if (length(configured_post_qc_parameters) != 3L ||
+    anyNA(configured_post_qc_parameters) ||
+    any(!is.finite(configured_post_qc_parameters)) ||
+    any(configured_post_qc_parameters < 1L)) {
+  stop(
+    "VZ post-QC dimensions, UMAP neighbors, and graph k must be positive integers."
+  )
+}
 
-required_removal_columns <- c(
-  "sample_id", "input_cells", "removed_cells", "remaining_cells", "clusters_removed"
-)
 required_review_columns <- c(
   "merged_path", "merged_size", "merged_mtime", "cells", "cluster_column", "clusters", "random_seed"
 )
@@ -48,30 +72,98 @@ removal_manifest <- if (file.exists(removal_path)) {
 review <- if (file.exists(review_path)) {
   read.csv(review_path, stringsAsFactors = FALSE)
 } else NULL
-removal_ready <- !is.null(removal_manifest) &&
-  all(required_removal_columns %in% names(removal_manifest)) &&
-  nrow(removal_manifest) == length(sample_ids) &&
-  identical(as.character(removal_manifest$sample_id), sample_ids) &&
-  all(is.finite(suppressWarnings(as.numeric(removal_manifest$removed_cells))))
+removal_inspection <- inspect_regional_qc_manifest(removal_manifest, sample_ids)
+removal_ready <- isTRUE(removal_inspection$valid)
 review_ready <- !is.null(review) &&
   all(required_review_columns %in% names(review)) &&
   nrow(review) == 1L &&
   identical(as.character(review$cluster_column), "Xenium_snn_res.0.8")
+zero_removal_fast_path <- removal_ready && isTRUE(removal_inspection$zero_removal)
+res_list <- if (zero_removal_fast_path) reuse_res_list else full_res_list
+plot_paths <- c(
+  file.path(plot_path, "Xenium_VZ_PostQC_OrigCluster_UMAP.tif"),
+  file.path(plot_path, paste0("Xenium_VZ_PostQC_UMAP_Res_", res_list, ".tif"))
+)
+final_outputs <- c(output_path, provenance_path, plot_paths)
+expected_outputs <- c(
+  final_outputs,
+  if (!zero_removal_fast_path) {
+    c(checkpoint_path, postcluster_checkpoint_path)
+  } else {
+    character()
+  }
+)
+resume_checkpoint_path <- if (file.exists(postcluster_checkpoint_path)) {
+  postcluster_checkpoint_path
+} else {
+  checkpoint_path
+}
+excluded_fast_path_outputs <- if (zero_removal_fast_path) {
+  file.path(
+    plot_path,
+    paste0("Xenium_VZ_PostQC_UMAP_Res_", setdiff(full_res_list, reuse_res_list), ".tif")
+  )
+} else {
+  character()
+}
 
 if (dry_run) {
+  if (resume_checkpoint) {
+    compact_dry_run(
+      "VZ post-QC checkpoint resume",
+      inputs = c(resume_checkpoint_path, merged_path, review_path, removal_path),
+      outputs = final_outputs,
+      checks = c(
+        review_manifest = review_ready,
+        removal_manifest = removal_ready,
+        nonzero_removal = !zero_removal_fast_path
+      )
+    )
+    quit(save = "no", status = 0L)
+  }
   compact_dry_run(
-    "VZ post-QC reintegration",
+    if (zero_removal_fast_path) {
+      "VZ post-QC zero-removal reuse"
+    } else {
+      "VZ post-QC reintegration"
+    },
     inputs = c(merged_path, review_path, removal_path),
     outputs = expected_outputs,
-    checks = c(review_manifest = review_ready, removal_manifest = removal_ready)
+    checks = c(
+      review_manifest = review_ready,
+      removal_manifest = removal_ready,
+      no_excluded_full_outputs = !length(
+        excluded_fast_path_outputs[file.exists(excluded_fast_path_outputs)]
+      )
+    )
   )
   quit(save = "no", status = 0L)
 }
 
 if (!file.exists(merged_path)) stop("Merged VZ input not found: ", merged_path)
 if (!review_ready) stop("VZ QC review manifest is missing or invalid: ", review_path)
-if (!removal_ready) stop("VZ QC removal manifest is missing or invalid: ", removal_path)
-existing_outputs <- expected_outputs[file.exists(expected_outputs)]
+if (!removal_ready) {
+  stop(
+    "VZ QC removal manifest is missing or invalid: ", removal_path, "\n- ",
+    paste(removal_inspection$errors, collapse = "\n- ")
+  )
+}
+if (resume_checkpoint && zero_removal_fast_path) {
+  stop("Checkpoint resume is unnecessary for the VZ zero-removal fast path.")
+}
+if (resume_checkpoint && !file.exists(resume_checkpoint_path)) {
+  stop("VZ post-QC checkpoint not found: ", resume_checkpoint_path)
+}
+stale_excluded_outputs <- excluded_fast_path_outputs[file.exists(excluded_fast_path_outputs)]
+if (length(stale_excluded_outputs)) {
+  stop(
+    "Refusing zero-removal reuse while excluded full-reintegration output(s) exist:\n- ",
+    paste(stale_excluded_outputs, collapse = "\n- "),
+    "\nArchive or remove them explicitly before running the fast path."
+  )
+}
+candidate_outputs <- if (resume_checkpoint) final_outputs else expected_outputs
+existing_outputs <- candidate_outputs[file.exists(candidate_outputs)]
 if (length(existing_outputs) && !overwrite) {
   stop(
     "Refusing to overwrite existing VZ post-QC outputs:\n- ",
@@ -94,14 +186,29 @@ workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset =
 if (is.na(workers) || workers < 1L) {
   stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
 }
+cluster_workers <- suppressWarnings(as.integer(
+  Sys.getenv("VZ_POST_QC_CLUSTER_WORKERS", unset = as.character(workers))
+))
+if (is.na(cluster_workers) || cluster_workers < 1L) {
+  stop("VZ_POST_QC_CLUSTER_WORKERS must be a positive integer when set.")
+}
+cluster_workers <- min(cluster_workers, workers, length(full_res_list))
 options(future.globals.maxSize = config$runtime$future_globals_max_gb_default * 1024^3)
 plan(sequential)
 set.seed(config$runtime$random_seed)
 
-with_future_workers <- function(expr) {
+with_fork_workers <- function(expr, active_workers = cluster_workers) {
   old_plan <- plan()
   on.exit(plan(old_plan), add = TRUE)
-  if (workers > 1L) plan(multisession, workers = workers)
+  if (active_workers > 1L) {
+    if (!future::supportsMulticore()) {
+      stop(
+        "Fork-based parallelism is unavailable. Resubmit with ",
+        "--cpus-per-task=1 to avoid serialized copies of the large graph."
+      )
+    }
+    plan(multicore, workers = active_workers)
+  }
   force(expr)
 }
 
@@ -115,95 +222,331 @@ dir.create(plot_path, recursive = TRUE, showWarnings = FALSE)
 dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 
-obj <- readRDS(merged_path)
 required_metadata <- c(
   "orig.ident", "consensus_label", "regional_consensus_label",
   "regional_consensus_label_pooled", "regional_unknown_label",
   "PCW", "Xenium_snn_res.0.8"
 )
-missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
-if (length(missing_metadata)) stop("Merged VZ input lacks metadata: ", paste(missing_metadata, collapse = ", "))
-if (!setequal(unique(as.character(obj$orig.ident)), sample_ids)) {
-  stop("Merged VZ input does not contain exactly the configured sample IDs.")
-}
-if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
-  stop("Merged VZ input has invalid sample-qualified Unknown labels.")
-}
-
 merged_info <- file.info(merged_path)
-review_is_current <-
+review_info <- file.info(review_path)
+removal_info <- file.info(removal_path)
+review_file_is_current <-
   isTRUE(all.equal(as.numeric(review$merged_size), as.numeric(merged_info$size))) &&
-  isTRUE(all.equal(as.numeric(review$merged_mtime), as.numeric(merged_info$mtime))) &&
-  identical(as.integer(review$cells), as.integer(ncol(obj)))
-if (!review_is_current) stop("VZ merged object changed after QC review. Repeat the QC decision stage.")
+  isTRUE(all.equal(as.numeric(review$merged_mtime), as.numeric(merged_info$mtime)))
+if (!review_file_is_current) {
+  stop("VZ merged object changed after QC review. Repeat the QC decision stage.")
+}
 
 removal_decisions <- unique(as.character(removal_manifest$clusters_removed))
 if (length(removal_decisions) != 1L) stop("VZ removal manifest contains inconsistent decisions.")
 clusters_to_remove <- if (identical(removal_decisions, "none")) {
   character()
 } else strsplit(removal_decisions, "|", fixed = TRUE)[[1]]
+expected_removed_cells <- sum(as.numeric(removal_manifest$removed_cells))
 
-obj <- JoinLayers(obj)
-Idents(obj) <- "Xenium_snn_res.0.8"
-cells_before_qc <- ncol(obj)
-if (length(clusters_to_remove)) {
-  unknown_clusters <- setdiff(clusters_to_remove, levels(Idents(obj)))
-  if (length(unknown_clusters)) stop("Reviewed VZ cluster(s) are absent: ", paste(unknown_clusters, collapse = ", "))
-  obj <- subset(obj, idents = clusters_to_remove, invert = TRUE)
+resume_has_clusters <- FALSE
+if (resume_checkpoint) {
+  message("Resume mode: loading VZ post-QC checkpoint: ", resume_checkpoint_path)
+  obj <- readRDS(resume_checkpoint_path)
+  checkpoint_provenance <- attr(obj, "xenium_stage5_checkpoint")
+  resume_has_clusters <- identical(
+    checkpoint_provenance$checkpoint_stage, "postcluster"
+  )
+  checkpoint_valid <- is.list(checkpoint_provenance) &&
+    identical(checkpoint_provenance$branch, "VZ") &&
+    identical(checkpoint_provenance$sample_ids, sample_ids) &&
+    identical(checkpoint_provenance$merged_path, normalizePath(merged_path)) &&
+    identical(checkpoint_provenance$merged_size, as.numeric(merged_info$size)) &&
+    identical(checkpoint_provenance$merged_mtime, as.numeric(merged_info$mtime)) &&
+    identical(checkpoint_provenance$review_size, as.numeric(review_info$size)) &&
+    identical(checkpoint_provenance$review_mtime, as.numeric(review_info$mtime)) &&
+    identical(checkpoint_provenance$removal_size, as.numeric(removal_info$size)) &&
+    identical(checkpoint_provenance$removal_mtime, as.numeric(removal_info$mtime)) &&
+    identical(checkpoint_provenance$clusters_to_remove, clusters_to_remove) &&
+    identical(
+      as.numeric(checkpoint_provenance$removed_cells),
+      as.numeric(expected_removed_cells)
+    ) &&
+    identical(checkpoint_provenance$random_seed, config$runtime$random_seed) &&
+    identical(checkpoint_provenance$resolutions, full_res_list) &&
+    identical(
+      as.integer(checkpoint_provenance$pca_dimensions), post_qc_dimensions
+    ) &&
+    identical(
+      as.integer(checkpoint_provenance$umap_neighbors), post_qc_umap_neighbors
+    ) &&
+    identical(
+      as.integer(checkpoint_provenance$neighbor_k), post_qc_neighbor_k
+    )
+  if (!checkpoint_valid) {
+    stop(
+      "VZ post-QC checkpoint provenance does not match the current input, ",
+      "review, removal manifest, seed, resolutions, or configured post-QC parameters."
+    )
+  }
+  if (!all(c("pca_clean", "harmony_clean", "umap_clean") %in% Reductions(obj))) {
+    stop("VZ post-QC checkpoint lacks PCA, Harmony, or UMAP reductions.")
+  }
+  checkpoint_graph <- paste0(DefaultAssay(obj), "_snn")
+  if (!checkpoint_graph %in% Graphs(obj)) {
+    stop("VZ post-QC checkpoint lacks the SNN graph: ", checkpoint_graph)
+  }
+  cells_before_qc <- as.integer(checkpoint_provenance$cells_before_qc)
+  removed_cells <- as.integer(checkpoint_provenance$removed_cells)
+  if (!identical(as.integer(ncol(obj)), cells_before_qc - removed_cells)) {
+    stop("VZ post-QC checkpoint cell count does not match its provenance.")
+  }
+  check_mem("POST-QC CHECKPOINT LOADED")
+} else {
+  obj <- readRDS(merged_path)
+  if (!identical(as.integer(review$cells), as.integer(ncol(obj)))) {
+    stop("VZ merged object cell count changed after QC review.")
+  }
+
+  Idents(obj) <- "Xenium_snn_res.0.8"
+  cells_before_qc <- ncol(obj)
+  if (length(clusters_to_remove)) {
+    unknown_clusters <- setdiff(clusters_to_remove, levels(Idents(obj)))
+    if (length(unknown_clusters)) {
+      stop(
+        "Reviewed VZ cluster(s) are absent: ",
+        paste(unknown_clusters, collapse = ", ")
+      )
+    }
+    obj <- subset(obj, idents = clusters_to_remove, invert = TRUE)
+  }
+  removed_cells <- cells_before_qc - ncol(obj)
+  if (removed_cells != expected_removed_cells) {
+    stop(
+      "Merged VZ removal count does not match the reviewed per-sample ",
+      "removal manifest."
+    )
+  }
 }
-removed_cells <- cells_before_qc - ncol(obj)
-if (removed_cells != sum(as.numeric(removal_manifest$removed_cells))) {
-  stop("Merged VZ removal count does not match the reviewed per-sample removal manifest.")
+
+missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
+if (length(missing_metadata)) {
+  stop("VZ post-QC working object lacks metadata: ", paste(missing_metadata, collapse = ", "))
+}
+if (!setequal(unique(as.character(obj$orig.ident)), sample_ids)) {
+  stop("VZ post-QC working object does not contain exactly the configured sample IDs.")
+}
+if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
+  stop("VZ post-QC working object has invalid sample-qualified Unknown labels.")
 }
 
-# 1. Re-run PCA on the subset
-obj <- RunPCA(
-  obj, verbose = FALSE, reduction.name = "pca_clean", npcs = 50,
-  seed.use = config$runtime$random_seed
-)
-
-# 2. Re-run Harmony (If you used it originally)
-# You must re-integrate because the batch-effect vectors change when 31k cells leave
-obj <- RunHarmony(obj, group.by.vars = "orig.ident", reduction = "pca_clean", reduction.save = "harmony_clean")
-
-# 3. Re-run UMAP
-obj <- RunUMAP(
-  obj, reduction = "harmony_clean", dims = 1:50, n.neighbors = 100,
-  reduction.name = "umap_clean", seed.use = config$runtime$random_seed
-)
-
-obj <- FindNeighbors(obj, reduction = "harmony_clean", dims = 1:50, k.param = 30, verbose = TRUE)
-
-# Define resolutions for the loop
-# 8. GENERATE CLUSTERS (RUN IN BULK FOR SPEED)
 assay_prefix <- DefaultAssay(obj)
-message(Sys.time(), ": Calculating all clusters with ", workers, " configured worker(s)...")
+processing_mode <- if (zero_removal_fast_path) {
+  "zero_removal_reuse_stage3"
+} else {
+  "full_post_removal_reintegration"
+}
+reused_reductions <- character()
+reused_resolutions <- numeric()
+computed_resolutions <- numeric()
+pca_dimensions <- NA_integer_
+umap_neighbors <- NA_integer_
+neighbor_k <- NA_integer_
 
-# Scope multisession export of the large object to clustering.
-obj <- with_future_workers(
-  FindClusters(obj, resolution = res_list, verbose = TRUE)
-)
-check_mem("POST-BATCH-CLUSTERING")
+if (zero_removal_fast_path) {
+  message(
+    "Stage-4 manifest records zero removals across all ", length(sample_ids),
+    " samples; reusing the reviewed stage-3 reductions, graph, and clusters."
+  )
+  required_stage3_reductions <- c("pca", "harmony", "umap_harmony")
+  missing_stage3_reductions <- setdiff(required_stage3_reductions, Reductions(obj))
+  if (length(missing_stage3_reductions)) {
+    stop(
+      "Zero-removal reuse requires stage-3 reduction(s): ",
+      paste(missing_stage3_reductions, collapse = ", ")
+    )
+  }
+  preserved_columns <- paste0(assay_prefix, "_snn_res.", reuse_res_list)
+  missing_preserved_columns <- setdiff(preserved_columns, colnames(obj[[]]))
+  if (length(missing_preserved_columns)) {
+    stop(
+      "Zero-removal reuse requires stage-3 cluster column(s): ",
+      paste(missing_preserved_columns, collapse = ", ")
+    )
+  }
+  graph_name <- paste0(assay_prefix, "_snn")
+  if (!graph_name %in% Graphs(obj)) {
+    stop("Zero-removal reuse requires the stage-3 SNN graph: ", graph_name)
+  }
+  preserved_cell_ids <- colnames(obj)
+  preserved_cluster_values <- lapply(
+    preserved_columns,
+    function(column) as.character(obj[[column, drop = TRUE]])
+  )
+  names(preserved_cluster_values) <- preserved_columns
 
-regional_levels <- order_regional_consensus_levels(
-  obj$regional_consensus_label, celltype_order
+  stage3_umap <- Embeddings(obj, reduction = "umap_harmony")
+  if (!identical(rownames(stage3_umap), colnames(obj))) {
+    stop("Stage-3 UMAP cell order does not exactly match the VZ object.")
+  }
+  obj[["umap_clean"]] <- CreateDimReducObject(
+    embeddings = stage3_umap,
+    key = "UMAPCLEAN_",
+    assay = assay_prefix
+  )
+  reused_reductions <- required_stage3_reductions
+  reused_resolutions <- reuse_res_list
+  pca_dimensions <- ncol(Embeddings(obj, reduction = "pca"))
+
+  obj <- JoinLayers(obj)
+  if (!identical(colnames(obj), preserved_cell_ids)) {
+    stop("Joining layers changed VZ cell IDs or their order during zero-removal reuse.")
+  }
+  changed_cluster_columns <- preserved_columns[
+    !vapply(
+      preserved_columns,
+      function(column) {
+        identical(
+          as.character(obj[[column, drop = TRUE]]),
+          preserved_cluster_values[[column]]
+        )
+      },
+      logical(1)
+    )
+  ]
+  if (length(changed_cluster_columns)) {
+    stop(
+      "Joining layers changed preserved stage-3 cluster assignments: ",
+      paste(changed_cluster_columns, collapse = ", ")
+    )
+  }
+} else {
+  if (!resume_checkpoint) {
+    obj <- JoinLayers(obj)
+
+    obj <- RunPCA(
+      obj, verbose = FALSE, reduction.name = "pca_clean",
+      npcs = post_qc_dimensions,
+      seed.use = config$runtime$random_seed
+    )
+    obj <- RunHarmony(
+      obj,
+      group.by.vars = "orig.ident",
+      reduction = "pca_clean",
+      dims.use = seq_len(post_qc_dimensions),
+      reduction.save = "harmony_clean"
+    )
+    obj <- RunUMAP(
+      obj, reduction = "harmony_clean",
+      dims = seq_len(post_qc_dimensions),
+      n.neighbors = post_qc_umap_neighbors,
+      reduction.name = "umap_clean", seed.use = config$runtime$random_seed
+    )
+    obj <- FindNeighbors(
+      obj, reduction = "harmony_clean",
+      dims = seq_len(post_qc_dimensions),
+      k.param = post_qc_neighbor_k,
+      verbose = TRUE
+    )
+
+    checkpoint_provenance <- list(
+      branch = "VZ",
+      checkpoint_stage = "precluster",
+      sample_ids = sample_ids,
+      merged_path = normalizePath(merged_path, mustWork = TRUE),
+      merged_size = as.numeric(merged_info$size),
+      merged_mtime = as.numeric(merged_info$mtime),
+      review_size = as.numeric(review_info$size),
+      review_mtime = as.numeric(review_info$mtime),
+      removal_size = as.numeric(removal_info$size),
+      removal_mtime = as.numeric(removal_info$mtime),
+      clusters_to_remove = clusters_to_remove,
+      cells_before_qc = as.integer(cells_before_qc),
+      removed_cells = as.integer(removed_cells),
+      random_seed = config$runtime$random_seed,
+      resolutions = full_res_list,
+      pca_dimensions = post_qc_dimensions,
+      umap_neighbors = post_qc_umap_neighbors,
+      neighbor_k = post_qc_neighbor_k,
+      created_at = format(Sys.time(), tz = "UTC", usetz = TRUE)
+    )
+    attr(obj, "xenium_stage5_checkpoint") <- checkpoint_provenance
+    message("Saving VZ post-QC pre-clustering checkpoint: ", checkpoint_path)
+    saveRDS(obj, checkpoint_path, compress = FALSE)
+    check_mem("PRE-CLUSTERING CHECKPOINT SAVED")
+  }
+
+  if (!resume_has_clusters) {
+    checkpoint_provenance_before_clustering <- attr(
+      obj, "xenium_stage5_checkpoint"
+    )
+    if (!is.list(checkpoint_provenance_before_clustering)) {
+      stop("VZ pre-clustering checkpoint provenance is missing from the object.")
+    }
+    message(
+      Sys.time(), ": Calculating all clusters with ", cluster_workers,
+      if (cluster_workers == 1L) {
+        " sequential worker..."
+      } else {
+        " fork-based shared-memory workers..."
+      }
+    )
+    obj <- with_fork_workers(
+      FindClusters(obj, resolution = res_list, verbose = TRUE),
+      active_workers = cluster_workers
+    )
+    check_mem("POST-BATCH-CLUSTERING")
+
+    checkpoint_provenance <- checkpoint_provenance_before_clustering
+    checkpoint_provenance$checkpoint_stage <- "postcluster"
+    checkpoint_provenance$cluster_workers <- cluster_workers
+    checkpoint_provenance$postcluster_created_at <- format(
+      Sys.time(), tz = "UTC", usetz = TRUE
+    )
+    attr(obj, "xenium_stage5_checkpoint") <- checkpoint_provenance
+    message(
+      "Saving VZ post-QC post-clustering checkpoint: ",
+      postcluster_checkpoint_path
+    )
+    saveRDS(obj, postcluster_checkpoint_path, compress = FALSE)
+    check_mem("POST-CLUSTERING CHECKPOINT SAVED")
+  } else {
+    message("Post-clustering checkpoint detected; skipping FindClusters().")
+  }
+
+  computed_resolutions <- full_res_list
+  pca_dimensions <- post_qc_dimensions
+  umap_neighbors <- post_qc_umap_neighbors
+  neighbor_k <- post_qc_neighbor_k
+}
+
+required_post_qc_columns <- paste0(assay_prefix, "_snn_res.", res_list)
+missing_post_qc_columns <- setdiff(required_post_qc_columns, colnames(obj[[]]))
+if (length(missing_post_qc_columns)) {
+  stop(
+    "VZ post-QC object lacks required cluster column(s): ",
+    paste(missing_post_qc_columns, collapse = ", ")
+  )
+}
+if (!"umap_clean" %in% Reductions(obj)) {
+  stop("VZ post-QC object lacks the required umap_clean reduction.")
+}
+
+pooled_regional_levels <- order_regional_consensus_levels(
+  obj$regional_consensus_label_pooled, celltype_order
 )
-obj$regional_consensus_label <- factor(
-  as.character(obj$regional_consensus_label), levels = regional_levels
+obj$regional_consensus_label_pooled <- factor(
+  as.character(obj$regional_consensus_label_pooled),
+  levels = pooled_regional_levels
 )
-regional_colors <- resolve_regional_consensus_colors(regional_levels)
+pooled_regional_colors <- resolve_regional_consensus_colors(pooled_regional_levels)
 
 p1 <- DimPlot(obj,
               reduction = "umap_clean",
-              group.by = "regional_consensus_label",
-              cols = regional_colors,
+              group.by = "regional_consensus_label_pooled",
+              cols = pooled_regional_colors,
               label = TRUE,
               label.size = 5,
               label.box = TRUE,
               raster = TRUE,
               pt.size = 0.6,
               alpha = 0.8) +
-  ggtitle("Refined VZ UMAP - Sample-qualified input labels") +
+  ggtitle("Refined VZ UMAP - Pooled input labels") +
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
 
@@ -271,12 +614,43 @@ write.csv(
     removed_cells = removed_cells,
     cells_after_qc = ncol(obj),
     cluster_column = "Xenium_snn_res.0.8",
-    pca_dimensions = 50L,
-    umap_neighbors = 100L,
-    neighbor_k = 30L,
+    processing_mode = processing_mode,
+    pca_dimensions = pca_dimensions,
+    umap_neighbors = umap_neighbors,
+    neighbor_k = neighbor_k,
     resolutions = paste(res_list, collapse = "|"),
+    preferred_stage6_resolution = 0.5,
+    reused_reductions = if (length(reused_reductions)) {
+      paste(reused_reductions, collapse = "|")
+    } else {
+      "none"
+    },
+    reused_resolutions = if (length(reused_resolutions)) {
+      paste(reused_resolutions, collapse = "|")
+    } else {
+      "none"
+    },
+    computed_resolutions = if (length(computed_resolutions)) {
+      paste(computed_resolutions, collapse = "|")
+    } else {
+      "none"
+    },
     random_seed = config$runtime$random_seed,
     workers = workers,
+    cluster_workers = if (zero_removal_fast_path) 0L else cluster_workers,
+    clustering_backend = if (zero_removal_fast_path) {
+      "reused"
+    } else if (cluster_workers > 1L) {
+      "multicore"
+    } else {
+      "sequential"
+    },
+    precluster_checkpoint = if (zero_removal_fast_path) NA_character_ else checkpoint_path,
+    postcluster_checkpoint = if (zero_removal_fast_path) {
+      NA_character_
+    } else {
+      postcluster_checkpoint_path
+    },
     output_rds = output_path,
     output_size = as.numeric(output_info$size),
     output_mtime = as.numeric(output_info$mtime),
@@ -287,3 +661,9 @@ write.csv(
 )
 plan(sequential)
 check_mem("PIPELINE COMPLETE - FILE SAVED")
+if (!zero_removal_fast_path) {
+  message(
+    "Restart checkpoints retained at ", checkpoint_path, " and ",
+    postcluster_checkpoint_path, "."
+  )
+}

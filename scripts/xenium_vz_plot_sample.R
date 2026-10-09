@@ -1,188 +1,255 @@
-options(bitmapType = "cairo")
-
-# 1. INITIALIZATION
+# Per-sample VZ spatial and marker reports.
 library(Seurat)
 library(ggplot2)
 library(here)
 library(dplyr)
 
-# Load your new palette and order
 source(here("scripts", "color_palette.R"))
+source(here("scripts", "R", "spatial_report_helpers.R"))
 
 generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
-  
-  message(paste("--- Processing Sample:", sample_id, "---"))
-  
-  # Add this to the very top of your function
+  message("--- Processing Sample: ", sample_id, " ---")
   on.exit(while (!is.null(dev.list())) dev.off(), add = TRUE)
-  
-  # 1. Setup Output Directory
+
   sample_plot_dir <- file.path(base_plot_dir, sample_id)
   if (!dir.exists(sample_plot_dir)) dir.create(sample_plot_dir, recursive = TRUE)
-  
-  # 2. Load Data
+  output_stem <- paste0(sample_id, "_VZ")
+
   obj <- readRDS(input_rds_path)
-  if (!all(c("VZ_subcluster", "consensus_label", "PCW") %in% colnames(obj[[]]))) {
-    stop(sample_id, " lacks required VZ plotting metadata.")
+  required_metadata <- c("VZ_subcluster", "consensus_label", "PCW")
+  missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
+  if (length(missing_metadata)) {
+    stop(sample_id, " lacks required VZ plotting metadata: ", paste(missing_metadata, collapse = ", "))
   }
-  obj$VZ_subcluster <- factor(obj$VZ_subcluster, levels = vz_subcluster_order)
-  
-  # Export Cluster Statistics
+  if (!"Xenium" %in% names(obj@assays)) stop(sample_id, " lacks the Xenium assay.")
+  DefaultAssay(obj) <- "Xenium"
+
+  observed_vz_labels <- unique(as.character(obj$VZ_subcluster))
+  observed_vz_labels <- observed_vz_labels[!is.na(observed_vz_labels) & nzchar(observed_vz_labels)]
+  unsupported_vz_labels <- setdiff(observed_vz_labels, vz_subcluster_order)
+  missing_vz_colors <- setdiff(observed_vz_labels, names(vz_palette))
+  if (length(unsupported_vz_labels) || length(missing_vz_colors)) {
+    stop(
+      sample_id, " has VZ labels not fully registered in the shared taxonomy. Missing from order: ",
+      if (length(unsupported_vz_labels)) paste(unsupported_vz_labels, collapse = ", ") else "none",
+      "; missing from palette: ",
+      if (length(missing_vz_colors)) paste(missing_vz_colors, collapse = ", ") else "none"
+    )
+  }
+  sample_vz_order <- vz_subcluster_order[vz_subcluster_order %in% observed_vz_labels]
+  if (!length(sample_vz_order)) stop(sample_id, " contains no mapped VZ subclusters.")
+  obj$VZ_subcluster <- factor(as.character(obj$VZ_subcluster), levels = sample_vz_order)
+
   stats <- obj@meta.data %>%
     group_by(VZ_subcluster) %>%
-    summarise(cell_count = n()) %>%
+    summarise(cell_count = n(), .groups = "drop") %>%
     mutate(percentage = (cell_count / sum(cell_count)) * 100)
-  
-  write.csv(stats, file.path(sample_plot_dir, paste0(sample_id, "_cluster_counts.csv")), row.names = FALSE)
-  
-  #----------------------------
-  #HELPER: Internal Highlight Function (Using Cairo TIFF)
-  #----------------------------
-  save_highlight <- function(seurat_obj, targets, title_suffix, filename) {
-    
-    group_name <- paste0("plot_", title_suffix)
-    
-    seurat_obj[[group_name]] <- ifelse(
-      seurat_obj$VZ_subcluster %in% targets,
-      as.character(seurat_obj$VZ_subcluster),
-      "Other"
-    )
-    
-    # Explicit factor ordering: Other first (bottom), targets later (top)
-    level_order <- c("Other", as.character(targets))
-    
-    seurat_obj[[group_name]] <- factor(
-      seurat_obj[[group_name]][,1],
-      levels = level_order
-    )
-    
-    current_cols <- c("Other" = bg_color, vz_palette[targets])
-    
-    p <- ImageDimPlot(
-      seurat_obj,
-      group.by = group_name,
-      cols = current_cols,
-      size = 1.5
-    ) +
-      ggtitle(paste(sample_id, title_suffix)) +
-      theme(
-        legend.title = element_blank(),
-        legend.position = "right",
-        plot.margin = margin(0, 0, 0, 0, "pt")
-      )
-    
-    Cairo::CairoTIFF(
-      filename = file.path(sample_plot_dir, filename),
-      width = 10,
-      height = 8,
-      units = "in",
-      res = 600,
-      bg = "black"
-    )
-    print(p)
-    grDevices::dev.off()
-  }
-  
-  
-  # ----------------------------
-  # GENERATE & SAVE PLOTS
-  # ----------------------------
-  
-  # A. Global Spatial
-  p_global <- ImageDimPlot(obj, # Removed the subset() here
-                           group.by = "VZ_subcluster",
-                           cols = vz_palette,
-                           size = 1.5,
-                           na.value = alpha("gray20", 0.3)) +
-    ggtitle(paste(sample_id, "VZ Subclusters"))
-  
-  Cairo::CairoTIFF(
-    filename = file.path(sample_plot_dir, paste0(sample_id, "_Global_Spatial_pt1.5.tif")),
-    width = 10,
-    height = 8,
-    units = "in",
-    res = 600
+
+  spatial_data <- prepare_spatial_plot_data(
+    object = obj,
+    cluster_column = "VZ_subcluster",
+    cluster_order = sample_vz_order,
+    sample_id = sample_id
   )
-  print(p_global)
-  grDevices::dev.off()
-  
-  # B. Group Highlights
-  save_highlight(obj, c("VZPs", "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs"),
-                 "Purkinje_Lineage", paste0(sample_id, "_Purkinje_Spatial_pt1.5.tif"))
-  save_highlight(obj, c("VZPs", "RG Progenitors", "BG", "Astrocytes/Ependyma"),
-                 "Glia_Lineage", paste0(sample_id, "_Glia_Spatial_pt1.5.tif"))
-  save_highlight(obj, c("VZPs", "GABA Progenitors", "Golgi Cells", "MLIs", "iCN"),
-                 "GABA_Lineage", paste0(sample_id, "_GABA_Spatial_pt1.5.tif"))
-  
-  #C. Faceted Spatial
-  coords <- GetTissueCoordinates(obj, type = "Xenium")
-  if (!"cell" %in% colnames(coords)) stop("Spatial coordinates lack the cell identifier column.")
-  coordinate_cells <- match(as.character(coords$cell), colnames(obj))
-  if (anyNA(coordinate_cells)) stop("Spatial coordinates do not align with ", sample_id, ".")
-  plot_data <- cbind(coords, cluster = obj$VZ_subcluster[coordinate_cells])
-  p_facet <- plot_data %>%
-    filter(!is.na(cluster)) %>%
-    ggplot(aes(x = y, y = x, color = cluster)) +
-    geom_point(size = 0.3) +
-    facet_wrap(~cluster, ncol = 5) +
-    scale_color_manual(values = vz_palette) +
-    coord_fixed() + 
-    theme_void() +
-    theme(
-      legend.position = "none", 
-      panel.background = element_rect(fill = "black", color = "black"),
-      plot.background = element_rect(fill = "black", color = "black"), 
-      strip.text = element_text(color = "white"),
-      strip.placement = "inside",
-      plot.margin = margin(10, 10, 10, 10)
-    )
-  
-  Cairo::CairoTIFF(
-    filename = file.path(sample_plot_dir, paste0(sample_id, "_Faceted_Clusters_pt0.3.tif")),
-    width = 12,
-    height = 10,
-    units = "in",
-    res = 600
+
+  p_global <- build_layered_spatial_plot(
+    spatial_data,
+    vz_palette,
+    paste(sample_id, "VZ Subclusters"),
+    targets = sample_vz_order
   )
-  print(p_facet)
-  grDevices::dev.off()
-  
-  # D. Marker DotPlot
-  rev_levels <- factor(as.character(obj$VZ_subcluster), levels = rev(vz_subcluster_order))
-  names(rev_levels) <- Cells(obj)
-  obj <- AddMetaData(obj, metadata = rev_levels, col.name = "subcluster_rev")
-  
-  Idents(obj) <- "subcluster_rev"
+  vz_lineage_clusters <- c(
+    "VZPs", "Cycling VZPs",
+    "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs",
+    "GABA Progenitors", "Golgi Cells", "MLIs", "iCN", "RG Progenitors", "BG",
+    "Cycling Glia", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs"
+  )
+  p_global_no_other <- build_layered_spatial_plot(
+    spatial_data,
+    vz_palette,
+    paste(sample_id, "VZ Lineages"),
+    targets = vz_lineage_clusters
+  )
+  highlight_definitions <- list(
+    Purkinje_Lineage = c(
+      "VZPs", "Cycling VZPs", "Maturing PCs", "Early-born PCs",
+      "Late-born PCs", "Patterning PCs"
+    ),
+    Glia_Lineage = c(
+      "VZPs", "Cycling VZPs", "RG Progenitors", "Cycling Glia",
+      "BG", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs"
+    ),
+    GABA_Lineage = c(
+      "VZPs", "Cycling VZPs", "GABA Progenitors", "Golgi Cells", "MLIs", "iCN"
+    )
+  )
+  highlight_plots <- lapply(names(highlight_definitions), function(plot_name) {
+    build_layered_spatial_plot(
+      spatial_data,
+      vz_palette,
+      paste(sample_id, plot_name),
+      targets = highlight_definitions[[plot_name]]
+    )
+  })
+  names(highlight_plots) <- names(highlight_definitions)
+
+  lineage_rows <- list(
+    c(
+      "VZPs", "Cycling VZPs", "Maturing PCs", "Early-born PCs",
+      "Late-born PCs", "Patterning PCs"
+    ),
+    c("GABA Progenitors", "Golgi Cells", "MLIs", "iCN"),
+    c("RG Progenitors", "Cycling Glia", "BG", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs")
+  )
+  other_rows <- list(
+    c("RL VZ", "Immature UBCs", "Mature UBCs", "eCN"),
+    c("Cycling Cells", "Microglia")
+  )
+  p_facet <- build_faceted_spatial_rows(spatial_data, vz_palette, lineage_rows)
+  p_other <- build_faceted_spatial_rows(spatial_data, vz_palette, other_rows)
+
+  # Pre-rasterize only the spatial panels embedded in the PDF report. The
+  # standalone TIFFs use direct points so their nominal sizes remain exact.
+  p_global_report <- build_layered_spatial_plot(
+    spatial_data,
+    vz_palette,
+    paste(sample_id, "VZ Subclusters"),
+    targets = sample_vz_order,
+    rasterize = TRUE
+  )
+  p_global_no_other_report <- build_layered_spatial_plot(
+    spatial_data,
+    vz_palette,
+    paste(sample_id, "VZ Lineages"),
+    targets = vz_lineage_clusters,
+    rasterize = TRUE
+  )
+  p_facet_report <- build_faceted_spatial_rows(
+    spatial_data,
+    vz_palette,
+    lineage_rows,
+    rasterize = TRUE
+  )
+
   plotted_cells <- Cells(obj)[!is.na(obj$VZ_subcluster)]
   if (!length(plotted_cells)) stop(sample_id, " contains no mapped VZ cells.")
-  obj_plot <- subset(obj, cells = plotted_cells)
-  existing_vz_markers <- lapply(vz_markers, function(x) intersect(x, rownames(obj_plot)))
-  existing_vz_markers <- existing_vz_markers[lengths(existing_vz_markers) > 0L]
-  if (!length(existing_vz_markers)) stop("No VZ marker genes are present in ", sample_id, ".")
+  dotplot_identity <- as.character(obj$VZ_subcluster)
+  dotplot_identity[is.na(dotplot_identity)] <- ".not_plotted"
+  obj$subcluster_rev <- factor(
+    dotplot_identity,
+    levels = c(rev(sample_vz_order), ".not_plotted")
+  )
+  Idents(obj) <- "subcluster_rev"
+  xenium_features <- rownames(obj[["Xenium"]])
+  requested_compact_vz_markers <- unlist(
+    vz_all_compact_markers, use.names = FALSE
+  )
+  missing_compact_vz_markers <- setdiff(
+    requested_compact_vz_markers, xenium_features
+  )
+  if (length(missing_compact_vz_markers)) {
+    stop(
+      sample_id,
+      " is missing compact VZ DotPlot marker genes from the Xenium assay: ",
+      paste(missing_compact_vz_markers, collapse = ", ")
+    )
+  }
+  dotplot_width <- max(18, 0.45 * length(requested_compact_vz_markers))
 
-  p_dot <- DotPlot(obj_plot, features = existing_vz_markers, cols = c("lightgrey", "red"),
-                   dot.scale = 6, cluster.idents = FALSE) +
+  p_dot <- DotPlot(
+    obj,
+    features = vz_all_compact_markers,
+    assay = "Xenium",
+    idents = rev(sample_vz_order),
+    cols = c("lightgrey", "red"),
+    dot.scale = 6,
+    cluster.idents = FALSE,
+    scale = length(sample_vz_order) > 1L
+  ) +
     RotatedAxis() +
-    theme(axis.text.x = element_text(size = 8, face = "italic"),
-          axis.text.y = element_text(size = 10, face = "bold")) +
+    theme(
+      axis.text.x = element_text(size = 8, face = "italic"),
+      axis.text.y = element_text(size = 10, face = "bold")
+    ) +
     ggtitle(paste(sample_id, "VZ Markers"))
-  
-  Cairo::CairoTIFF(
-    filename = file.path(sample_plot_dir, paste0(sample_id, "_Markers_DotPlot.tif")),
+
+  p_report <- build_spatial_report_page(
+    p_global_report,
+    p_global_no_other_report,
+    p_facet_report,
+    p_dot,
+    sample_id
+  )
+
+  # Build every plot before writing files so a DotPlot error cannot leave a partial report.
+  write.csv(
+    stats,
+    file.path(sample_plot_dir, paste0(output_stem, "_cluster_counts.csv")),
+    row.names = FALSE
+  )
+  save_cairo_tiff(
+    p_global,
+    file.path(sample_plot_dir, paste0(output_stem, "_Global_Spatial_pt0.75.tif")),
+    width = 10,
+    height = 8
+  )
+  save_cairo_tiff(
+    p_global_no_other,
+    file.path(sample_plot_dir, paste0(output_stem, "_Global_Spatial_NoOther_pt0.75.tif")),
+    width = 10,
+    height = 8
+  )
+  highlight_files <- c(
+    Purkinje_Lineage = "_Purkinje_Spatial_pt0.75.tif",
+    Glia_Lineage = "_Glia_Spatial_pt0.75.tif",
+    GABA_Lineage = "_GABA_Spatial_pt0.75.tif"
+  )
+  for (plot_name in names(highlight_files)) {
+    save_cairo_tiff(
+      highlight_plots[[plot_name]],
+      file.path(sample_plot_dir, paste0(output_stem, highlight_files[[plot_name]])),
+      width = 10,
+      height = 8
+    )
+  }
+  save_cairo_tiff(
+    p_facet,
+    file.path(sample_plot_dir, paste0(output_stem, "_Faceted_Clusters_pt0.6.tif")),
+    width = 18,
+    height = 12
+  )
+  save_cairo_tiff(
+    p_other,
+    file.path(sample_plot_dir, paste0(output_stem, "_Faceted_Other_pt0.6.tif")),
     width = 14,
-    height = 7,
-    units = "in",
-    res = 600
+    height = 8
   )
-  print(p_dot)
-  grDevices::dev.off()
+  save_cairo_tiff(
+    p_dot,
+    file.path(sample_plot_dir, paste0(output_stem, "_Markers_DotPlot.tif")),
+    width = dotplot_width,
+    height = 10,
+    background = "white"
+  )
   ggplot2::ggsave(
-    file.path(sample_plot_dir, paste0(sample_id, "_Markers_DotPlot.pdf")),
-    plot = p_dot, device = grDevices::cairo_pdf, width = 14, height = 7
+    file.path(sample_plot_dir, paste0(output_stem, "_Markers_DotPlot.pdf")),
+    plot = p_dot,
+    device = grDevices::cairo_pdf,
+    width = dotplot_width,
+    height = 10,
+    bg = "white"
   )
-  
-  # Clean up memory
-  message(paste("Finished sample:", sample_id))
-  rm(obj, obj_plot, p_global, p_facet, p_dot, plot_data, coords, stats)
+  save_spatial_report_pdf(
+    p_report,
+    file.path(sample_plot_dir, paste0(output_stem, "_Spatial_Report.pdf"))
+  )
+
+  message("Finished sample: ", sample_id)
+  rm(
+    obj, p_global, p_global_no_other, p_facet, p_other, p_dot, p_report,
+    p_global_report, p_global_no_other_report, p_facet_report, spatial_data, stats
+  )
   gc()
 }
+
+options(bitmapType = "cairo")
