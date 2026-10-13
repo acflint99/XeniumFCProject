@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-# Process the complete combined VZ/RL merge, or create plots from the saved
+# Process the complete combined VZ/RL/residual merge, or create plots from the saved
 # processed object without repeating integration.
 
 rm(list = ls())
@@ -107,6 +107,9 @@ if (process_only) {
   required_metadata <- c(
     "orig.ident", "comb_subcluster", "consensus_label", "VZ_subcluster",
     "RL_subcluster", "VZ_subset_reason", "RL_subset_reason",
+    "residual_subcluster", "residual_reference_route",
+    "residual_subset_reason", "residual_annotation_confidence",
+    "residual_annotation_status",
     "regional_assignment", "PCW"
   )
   missing_metadata <- setdiff(required_metadata, colnames(merged_obj[[]]))

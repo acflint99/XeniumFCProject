@@ -1,0 +1,4 @@
+reference,min_broad_winner_score,min_broad_top2_margin,min_broad_winner_cell_fraction,approved,review_notes
+Aldinger,0.55,0,0,TRUE,Approved 2026-10-13 using the high-coverage operating point; systematic high-confidence disagreements remain eligible for 2-of-3 consensus or unresolved status
+Sepp,0.45,0.05,0,TRUE,Approved 2026-10-13 using the high-coverage operating point; the margin gate prevents the observed incorrect known-population reassignment
+Science,0.45,0,0,TRUE,Approved 2026-10-13 using the high-coverage operating point; additional margin or cell-fraction gates increased abstention without improving known-label accuracy

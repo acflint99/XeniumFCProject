@@ -90,7 +90,7 @@ if (file.exists(merge_manifest_path)) {
   manifest_rows <- nrow(merge_manifest_preview)
   manifest_columns_match <- all(c(
     "sample_id", "input_path", "cells", "configured_broad_cells",
-    "shared_unknown_cells", "sample_qualified_unknown_labels", "PCW"
+    "reference_routed_unknown_cells", "sample_qualified_unknown_labels", "PCW"
   ) %in% names(merge_manifest_preview))
   manifest_ids_match <- "sample_id" %in% names(merge_manifest_preview) &&
     setequal(as.character(merge_manifest_preview$sample_id), sample_ids)
@@ -98,7 +98,7 @@ if (file.exists(merge_manifest_path)) {
     manifest_cells <- suppressWarnings(as.numeric(merge_manifest_preview$cells))
     manifest_pcw <- as.character(merge_manifest_preview$PCW)
     manifest_broad <- suppressWarnings(as.numeric(merge_manifest_preview$configured_broad_cells))
-    manifest_unknown <- suppressWarnings(as.numeric(merge_manifest_preview$shared_unknown_cells))
+    manifest_unknown <- suppressWarnings(as.numeric(merge_manifest_preview$reference_routed_unknown_cells))
     manifest_qualified <- as.character(merge_manifest_preview$sample_qualified_unknown_labels)
     manifest_values_valid <- all(is.finite(manifest_cells) & manifest_cells > 0) &&
       all(is.finite(manifest_broad) & manifest_broad >= 0) &&
@@ -288,7 +288,8 @@ if (plots_only) {
   required_metadata <- c(
     "orig.ident", "consensus_label", "regional_consensus_label",
     "regional_consensus_label_pooled", "regional_unknown_label",
-    "VZ_subset_reason", "PCW"
+    "VZ_subset_reason", "unknown_reference_route",
+    "unknown_reference_route_support_n", "PCW"
   )
   missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
   if (length(missing_metadata)) stop("Merged VZ input lacks metadata: ", paste(missing_metadata, collapse = ", "))
@@ -314,22 +315,31 @@ if (plots_only) {
     stop("Merged VZ cell count does not match its merge manifest.")
   }
   if (anyNA(obj$VZ_subset_reason) || any(!obj$VZ_subset_reason %in%
-      c("configured_broad_label", "shared_unknown"))) {
+      c("configured_broad_label", "reference_route_vz"))) {
     stop("Merged VZ input has missing or invalid VZ_subset_reason values.")
   }
   observed_unknown <- vapply(sample_ids, function(sample_id) {
     sample_cells <- as.character(obj$orig.ident) == sample_id
-    sum(obj$VZ_subset_reason[sample_cells] == "shared_unknown")
+    sum(obj$VZ_subset_reason[sample_cells] == "reference_route_vz")
   }, integer(1))
-  expected_unknown <- as.integer(merge_manifest_preview$shared_unknown_cells[manifest_order])
+  expected_unknown <- as.integer(merge_manifest_preview$reference_routed_unknown_cells[manifest_order])
   if (!identical(unname(observed_unknown), unname(expected_unknown)) || !all(
-    (obj$VZ_subset_reason == "shared_unknown") ==
+    (obj$VZ_subset_reason == "reference_route_vz") ==
       is_unknown_consensus_label(obj$consensus_label)
   )) {
-    stop("Merged VZ shared-Unknown provenance does not match its manifest or labels.")
+    stop("Merged VZ reference-routed Unknown provenance does not match its manifest or labels.")
   }
   if (!validate_regional_unknown_labels(obj, obj$orig.ident)) {
     stop("Merged VZ sample-qualified Unknown labels are invalid.")
+  }
+  unknown_index <- is_unknown_consensus_label(obj$consensus_label)
+  if (any(unknown_index & (
+      is.na(obj$unknown_reference_route) |
+        obj$unknown_reference_route != "route_vz" |
+        is.na(obj$unknown_reference_route_support_n) |
+        obj$unknown_reference_route_support_n < 2L
+  ))) {
+    stop("Merged VZ Unknown cells lack supported VZ reference routes.")
   }
   observed_qualified <- vapply(sample_ids, function(sample_id) {
     sample_cells <- as.character(obj$orig.ident) == sample_id

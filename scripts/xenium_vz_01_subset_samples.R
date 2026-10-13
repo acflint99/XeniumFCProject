@@ -1,5 +1,8 @@
 #!/usr/bin/env Rscript
 
+# Build one VZ regional subset from configured VZ identities plus retained
+# sample-qualified Unknown populations with two-of-three VZ reference support.
+
 rm(list = ls())
 
 suppressPackageStartupMessages({
@@ -9,10 +12,13 @@ suppressPackageStartupMessages({
 
 source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "consensus_labels.R"))
+source(here("scripts", "R", "xenium_unknown_qc_review.R"))
+source(here("scripts", "R", "xenium_unknown_reference_routes.R"))
+
 config <- load_pipeline_config()
 samples <- load_sample_manifest(config)
-production_paths <- get_production_output_paths(config)
-task_map <- data.frame(task_id = seq_len(nrow(samples)), sample_id = samples$sample_id)
+sample_ids <- as.character(samples$sample_id)
+task_map <- data.frame(task_id = seq_along(sample_ids), sample_id = sample_ids)
 
 args <- commandArgs(trailingOnly = TRUE)
 if (identical(args, "--list")) {
@@ -29,64 +35,119 @@ task_args <- args[!args %in% valid_options]
 if (length(task_args) > 1L) {
   stop("Usage: Rscript scripts/xenium_vz_01_subset_samples.R [--dry-run|--overwrite] [TASK_ID]")
 }
-task_value <- if (length(task_args) == 1L) task_args[[1]] else Sys.getenv("SLURM_ARRAY_TASK_ID", unset = "")
+task_value <- if (length(task_args) == 1L) task_args[[1]] else {
+  Sys.getenv("SLURM_ARRAY_TASK_ID", unset = "")
+}
 task_id <- suppressWarnings(as.integer(task_value))
-if (is.na(task_id) || task_id < 1L || task_id > nrow(samples)) {
-  stop("TASK_ID must be between 1 and ", nrow(samples), ". Use --list to inspect the mapping.")
+if (is.na(task_id) || task_id < 1L || task_id > nrow(task_map)) {
+  stop("TASK_ID must be between 1 and ", nrow(task_map), ". Use --list to inspect the mapping.")
 }
 
-current_sample <- samples$sample_id[[task_id]]
+current_sample <- sample_ids[[task_id]]
+route_paths <- unknown_reference_route_paths(config)
 output_root <- here(config$project$outputs_dir)
-input_path <- file.path(
-  production_paths$consensus_rds_dir,
-  paste0(current_sample, "_Consensus_annotated.rds")
-)
 output_dir <- file.path(output_root, "xenium", "vz", "01_subsets", "rds")
 output_path <- file.path(output_dir, paste0(current_sample, "_VZsubset.rds"))
 
+manifest_state <- tryCatch({
+  inputs <- load_unknown_reviewed_input_manifest(config)
+  routes <- load_unknown_reference_routes(config)
+  list(valid = TRUE, inputs = inputs, routes = routes)
+}, error = function(error) list(valid = FALSE, error = conditionMessage(error)))
+
 if (dry_run) {
   compact_dry_run(
-    paste0("VZ subset task ", task_id, "/", nrow(samples), " [", current_sample, "]"),
-    inputs = input_path,
+    paste0("VZ routed subset task ", task_id, "/", nrow(task_map), " [", current_sample, "]"),
+    inputs = c(route_paths$input_manifest, route_paths$route_manifest),
     outputs = output_path,
-    checks = c(
-      include_unknown_in_both_branches = identical(
-        config$regional_subsets$include_unknown_in_both_branches, TRUE
-      )
-    )
+    checks = c(route_manifests_valid = isTRUE(manifest_state$valid))
   )
+  if (!isTRUE(manifest_state$valid)) cat("  Route error: ", manifest_state$error, "\n", sep = "")
   quit(save = "no", status = 0L)
 }
-if (!file.exists(input_path)) stop("Consensus-labelled input not found: ", input_path)
+if (!isTRUE(manifest_state$valid)) stop("Unknown routing is not ready: ", manifest_state$error)
+
+input_row <- manifest_state$inputs[
+  manifest_state$inputs$sample_id == current_sample, , drop = FALSE
+]
+if (nrow(input_row) != 1L) stop("Expected one reviewed input row for ", current_sample, ".")
+input_path <- as.character(input_row$mapping_input_path[[1]])
+if (!file.exists(input_path)) stop("Reviewed consensus input not found: ", input_path)
+input_info <- file.info(input_path)
+if (!isTRUE(all.equal(
+      as.numeric(input_row$mapping_input_size[[1]]), as.numeric(input_info$size)
+    )) || !isTRUE(all.equal(
+      as.numeric(input_row$mapping_input_mtime[[1]]), as.numeric(input_info$mtime)
+    ))) {
+  stop("Reviewed input provenance changed for ", current_sample, ".")
+}
 if (file.exists(output_path) && !overwrite) {
   stop("Refusing to overwrite existing VZ subset: ", output_path, "\nUse --overwrite only after review.")
 }
 
 obj <- readRDS(input_path)
-if (!"consensus_label" %in% colnames(obj[[]])) {
-  stop("Input object lacks 'consensus_label': ", input_path)
+if (anyDuplicated(colnames(obj))) stop("Duplicate cell IDs in ", current_sample, ".")
+if (ncol(obj) != as.integer(input_row$remaining_cells[[1]])) {
+  stop("Reviewed input cell count differs from its manifest for ", current_sample, ".")
 }
-Idents(obj) <- "consensus_label"
-target_clusters <- unlist(config$regional_subsets$vz_broad_labels, use.names = FALSE)
-existing_clusters <- intersect(target_clusters, levels(Idents(obj)))
-if (!length(existing_clusters)) stop("No configured VZ consensus labels found in ", current_sample, ".")
-missing_clusters <- setdiff(target_clusters, existing_clusters)
-if (length(missing_clusters)) {
-  warning("VZ labels absent from ", current_sample, ": ", paste(missing_clusters, collapse = ", "))
+if (!"consensus_label" %in% colnames(obj[[]])) {
+  stop("Input object lacks consensus_label: ", input_path)
+}
+labels <- trimws(as.character(obj$consensus_label))
+if (anyNA(labels) || any(!nzchar(labels))) stop("Blank consensus labels in ", current_sample, ".")
+
+sample_routes <- manifest_state$routes[
+  manifest_state$routes$sample_id == current_sample, , drop = FALSE
+]
+kept_routes <- sample_routes[tolower(sample_routes$qc_decision) == "keep", , drop = FALSE]
+included_unknown_labels <- as.character(
+  kept_routes$consensus_label[kept_routes$reference_route == "route_vz"]
+)
+missing_routed_labels <- setdiff(included_unknown_labels, unique(labels))
+if (length(missing_routed_labels)) {
+  stop("Kept VZ-routed Unknown label(s) are absent from ", current_sample, ": ",
+       paste(missing_routed_labels, collapse = ", "))
+}
+removed_labels_present <- intersect(
+  as.character(sample_routes$consensus_label[tolower(sample_routes$qc_decision) == "remove"]),
+  unique(labels)
+)
+if (length(removed_labels_present)) {
+  stop("Reviewed-removed Unknown label(s) remain in the input: ",
+       paste(removed_labels_present, collapse = ", "))
 }
 
-if (!identical(config$regional_subsets$include_unknown_in_both_branches, TRUE)) {
-  stop("Configuration must include unresolved identities in both regional branches.")
+target_labels <- unlist(config$regional_subsets$vz_broad_labels, use.names = FALSE)
+configured_present <- intersect(target_labels, unique(labels))
+if (!length(configured_present)) stop("No configured VZ consensus labels found in ", current_sample, ".")
+missing_configured <- setdiff(target_labels, configured_present)
+if (length(missing_configured)) {
+  warning("VZ labels absent from ", current_sample, ": ", paste(missing_configured, collapse = ", "))
 }
-unknown_clusters <- levels(Idents(obj))[is_unknown_consensus_label(levels(Idents(obj)))]
-subset_clusters <- unique(c(existing_clusters, unknown_clusters))
-obj_subset <- subset(obj, idents = subset_clusters)
-unknown_cells <- is_unknown_consensus_label(obj_subset$consensus_label)
+
+include <- labels %in% c(configured_present, included_unknown_labels)
+if (!any(include)) stop("VZ routing retained no cells for ", current_sample, ".")
+obj_subset <- subset(obj, cells = colnames(obj)[include])
+subset_labels <- trimws(as.character(obj_subset$consensus_label))
+unknown_cells <- is_unknown_consensus_label(subset_labels)
+route_index <- match(subset_labels, sample_routes$consensus_label)
+if (any(unknown_cells & is.na(route_index))) {
+  stop("A VZ-subset Unknown cell lacks a sample-qualified reference route.")
+}
+obj_subset$unknown_reference_route <- ifelse(
+  unknown_cells, as.character(sample_routes$reference_route[route_index]), NA_character_
+)
+obj_subset$unknown_reference_route_support_n <- ifelse(
+  unknown_cells,
+  as.integer(sample_routes$reference_route_support_n[route_index]),
+  NA_integer_
+)
 obj_subset$VZ_subset_reason <- ifelse(
-  unknown_cells, "shared_unknown", "configured_broad_label"
+  unknown_cells, "reference_route_vz", "configured_broad_label"
 )
 Idents(obj_subset) <- "consensus_label"
-input_info <- file.info(input_path)
+
+production_paths <- get_production_output_paths(config)
 obj_subset@misc$whole_tissue_production_source <- list(
   resolution = production_paths$resolution,
   consensus_stage = config$production$consensus_label_stage,
@@ -96,16 +157,21 @@ obj_subset@misc$whole_tissue_production_source <- list(
 )
 obj_subset@misc$regional_subset_provenance <- list(
   branch = "VZ",
-  configured_broad_labels = target_clusters,
-  included_unknown_identities = unknown_clusters,
+  configured_broad_labels = target_labels,
+  included_unknown_identities = sort(included_unknown_labels),
   configured_broad_cells = sum(!unknown_cells),
-  shared_unknown_cells = sum(unknown_cells),
-  include_unknown_in_both_branches = TRUE
+  reference_routed_unknown_cells = sum(unknown_cells),
+  routing_method = config$regional_subsets$unknown_routing_method,
+  minimum_reference_support = as.integer(
+    config$regional_subsets$unknown_route_min_reference_support
+  ),
+  route_manifest = normalizePath(route_paths$route_manifest, mustWork = TRUE),
+  input_manifest = normalizePath(route_paths$input_manifest, mustWork = TRUE)
 )
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 saveRDS(obj_subset, output_path, compress = FALSE)
 message(
-  "Saved VZ consensus subset for ", current_sample, ": ", output_path,
+  "Saved VZ subset for ", current_sample, ": ", output_path,
   " (", sum(!unknown_cells), " configured-label cells; ",
-  sum(unknown_cells), " shared Unknown cells)."
+  sum(unknown_cells), " VZ-routed Unknown cells)."
 )

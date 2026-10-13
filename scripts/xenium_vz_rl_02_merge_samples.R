@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # Remove spatial/QC overhead and merge the complete manifest-defined set of
-# combined VZ/RL whole-tissue objects.
+# combined VZ/RL/residual whole-tissue objects.
 
 rm(list = ls())
 
@@ -72,7 +72,8 @@ merge_manifest <- data.frame(
   sample_id = sample_ids, input_path = input_paths, clean_path = clean_paths,
   cells = integer(length(sample_ids)), PCW = character(length(sample_ids)),
   vz_cells = integer(length(sample_ids)), rl_cells = integer(length(sample_ids)),
-  shared_unknown_cells = integer(length(sample_ids)),
+  residual_cells = integer(length(sample_ids)),
+  residual_retained_unknown_cells = integer(length(sample_ids)),
   unassigned_consensus_cells = integer(length(sample_ids)),
   stringsAsFactors = FALSE
 )
@@ -84,7 +85,10 @@ for (i in seq_along(sample_ids)) {
   obj <- readRDS(input_paths[[i]])
   required_metadata <- c(
     "comb_subcluster", "consensus_label", "VZ_subcluster", "RL_subcluster",
-    "VZ_subset_reason", "RL_subset_reason", "regional_assignment", "PCW"
+    "VZ_subset_reason", "RL_subset_reason", "residual_subcluster",
+    "residual_reference_route", "residual_subset_reason",
+    "residual_annotation_confidence", "residual_annotation_status",
+    "regional_assignment", "PCW"
   )
   missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
   if (length(missing_metadata)) stop(sample_id, " lacks metadata: ", paste(missing_metadata, collapse = ", "))
@@ -92,14 +96,23 @@ for (i in seq_along(sample_ids)) {
   pcw_values <- unique(as.character(obj$PCW))
   pcw_values <- pcw_values[!is.na(pcw_values) & nzchar(pcw_values)]
   if (length(pcw_values) != 1L) stop(sample_id, " must contain exactly one nonblank PCW value.")
-  overlap <- !is.na(obj$VZ_subcluster) & !is.na(obj$RL_subcluster)
-  if (any(overlap & !is_unknown_consensus_label(obj$consensus_label))) {
-    stop(sample_id, " contains a non-Unknown VZ/RL overlap.")
+  branch_count <- as.integer(!is.na(obj$VZ_subcluster)) +
+    as.integer(!is.na(obj$RL_subcluster)) +
+    as.integer(!is.na(obj$residual_subcluster))
+  if (any(branch_count > 1L)) {
+    stop(sample_id, " contains an overlap among VZ, RL, and residual branches.")
   }
   assignment <- as.character(obj$regional_assignment)
-  allowed_assignments <- c("VZ", "RL", "shared_unknown_overlap", "unassigned_consensus")
+  allowed_assignments <- c("VZ", "RL", "Residual", "unassigned_consensus")
   if (anyNA(assignment) || any(!assignment %in% allowed_assignments)) {
     stop(sample_id, " has missing or invalid regional_assignment values.")
+  }
+  expected_assignment <- rep("unassigned_consensus", ncol(obj))
+  expected_assignment[!is.na(obj$VZ_subcluster)] <- "VZ"
+  expected_assignment[!is.na(obj$RL_subcluster)] <- "RL"
+  expected_assignment[!is.na(obj$residual_subcluster)] <- "Residual"
+  if (!identical(assignment, expected_assignment)) {
+    stop(sample_id, " regional_assignment does not match branch metadata.")
   }
 
   if ("scale.data" %in% Layers(obj[["Xenium"]])) obj[["Xenium"]]@layers$scale.data <- NULL
@@ -116,7 +129,11 @@ for (i in seq_along(sample_ids)) {
   merge_manifest$PCW[[i]] <- pcw_values[[1]]
   merge_manifest$vz_cells[[i]] <- sum(assignment == "VZ")
   merge_manifest$rl_cells[[i]] <- sum(assignment == "RL")
-  merge_manifest$shared_unknown_cells[[i]] <- sum(assignment == "shared_unknown_overlap")
+  merge_manifest$residual_cells[[i]] <- sum(assignment == "Residual")
+  merge_manifest$residual_retained_unknown_cells[[i]] <- sum(
+    assignment == "Residual" & obj$residual_annotation_status == "retained_unknown",
+    na.rm = TRUE
+  )
   merge_manifest$unassigned_consensus_cells[[i]] <- sum(assignment == "unassigned_consensus")
   obj <- RenameCells(obj, add.cell.id = sample_id)
   if (is.null(merged_obj)) {
@@ -134,7 +151,7 @@ if (ncol(merged_obj) != sum(merge_manifest$cells)) {
 }
 assignment_totals <- with(
   merge_manifest,
-  vz_cells + rl_cells + shared_unknown_cells + unassigned_consensus_cells
+  vz_cells + rl_cells + residual_cells + unassigned_consensus_cells
 )
 if (!identical(as.integer(assignment_totals), as.integer(merge_manifest$cells))) {
   stop("Combined regional-assignment counts do not equal per-sample cell counts.")

@@ -84,6 +84,9 @@ obj <- readRDS(input_path)
 required_metadata <- c(
   "sample_id", "orig.ident", "consensus_label", "comb_subcluster",
   "VZ_subcluster", "RL_subcluster", "VZ_subset_reason", "RL_subset_reason",
+  "residual_subcluster", "residual_reference_route",
+  "residual_subset_reason", "residual_annotation_confidence",
+  "residual_annotation_status",
   "regional_assignment", "PCW"
 )
 missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))

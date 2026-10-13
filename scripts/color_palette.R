@@ -462,9 +462,16 @@ if (!setequal(c(rl_lineage_subclusters, rl_other_subclusters), rl_subcluster_ord
   stop("RL lineage and Other DotPlot groups do not cover the full RL taxonomy.")
 }
 
+# Residual-only identities that are not present in the reviewed VZ or RL maps.
+# Keep them in the shared lookup so downstream combined plots cannot silently
+# convert an approved residual label to NA.
+residual_palette <- c(
+  "Pericytes" = "#8B4513"
+)
+
 # Merge all palettes into one master lookup for the combined column
 # using 'c()' on named vectors merges them
-subcluster_palette <- c(vz_palette, rl_palette, cluster_colors)
+subcluster_palette <- c(vz_palette, rl_palette, residual_palette, cluster_colors)
 
 # Remove any duplicate names (e.g., if "Purkinje" is in both) 
 # to keep the vector clean
@@ -479,5 +486,6 @@ master_subcluster_order <- c(
   "RL VZ", "RL SVZ", "Immature UBCs", "Mature UBCs", "eCN",
   "Prolif GCPs", "Maturing GCPs",
   "Differentiating GCs", "Migrating GCs", "Mature GCs",
-  "Cycling Cells", "Meninges", "Microglia", "Endothelial", "Immune", "Unknown"
+  "Cycling Cells", "Pericytes", "Meninges", "Microglia", "Endothelial",
+  "Immune", "Unknown"
 )

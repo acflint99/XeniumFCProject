@@ -24,7 +24,11 @@ manifests:
   slides: "config/slides.csv"
   sample_metadata: "metadata/samples_meta.xlsx"
   resolution2_pilot_samples: "config/resolution2_pilot_samples.csv"
+  reviewed_unknown_qc: "config/reviewed_unknown_qc.csv"
   reviewed_unknown_relabels: "config/reviewed_unknown_relabels.csv"
+  reference_broad_taxonomy: "config/reference_broad_taxonomy.csv"
+  reviewed_broad_reference_thresholds: "config/reviewed_broad_reference_thresholds.csv"
+  reviewed_residual_subcluster_labels: "config/reviewed_residual_subcluster_labels.csv"
 
 runtime:
   r_version: "4.4.1"
@@ -38,6 +42,7 @@ runtime:
 inputs:
   cerebellum_cell_stats_file: "cerebellum_cells_stats.csv"
   xenium_panel_json_example: "/data/user/acflint/FCXeniumProject/FB124_X_G/gene_panel.json"
+  xenium_panel_genes: "inputs/xenium_5k_genes.rds"
   published_data_root: "/data/user/acflint/FC_published"
   references:
     aldinger: "outputs/references/aldinger/rds/Aldinger_newClusters_newUMAPv2_5k.rds"
@@ -77,10 +82,11 @@ label_transfer:
     min_top2_mean_score_margin: 0.05
 
 regional_subsets:
-  # Unresolved whole-tissue consensus identities are intentionally carried
-  # through both regional branches. Their overlap is preserved explicitly
-  # when VZ and RL labels are recombined; neither branch receives priority.
-  include_unknown_in_both_branches: true
+  # Sample-qualified Unknown populations enter a regional branch only when at
+  # least two of the three existing reference votes agree after labels are
+  # collapsed to the configured VZ, RL, or nonregional categories.
+  unknown_routing_method: "reference_broad_2of3"
+  unknown_route_min_reference_support: 2
   vz_broad_labels:
     - "VZ"
     - "Glia"
@@ -91,6 +97,10 @@ regional_subsets:
     - "RL"
     - "Granule"
     - "UBC"
+  nonregional_broad_labels:
+    - "Meninges"
+    - "Endothelial"
+    - "Immune"
   integration_dimensions_default: 30
   post_qc_dimensions_observed: 30
   umap_neighbors_post_qc: 30

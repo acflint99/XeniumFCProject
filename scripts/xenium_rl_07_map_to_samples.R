@@ -125,11 +125,11 @@ if (anyNA(all_new_labels) || any(!nzchar(all_new_labels))) {
 }
 if (anyDuplicated(names(all_new_labels))) stop("Master RL object contains duplicate cell names.")
 if (anyNA(all_subset_reasons) ||
-    any(!all_subset_reasons %in% c("configured_broad_label", "shared_unknown"))) {
+    any(!all_subset_reasons %in% c("configured_broad_label", "reference_route_rl"))) {
   stop("Master RL object contains missing or invalid RL_subset_reason values.")
 }
 if (!all(
-  (all_subset_reasons == "shared_unknown") ==
+  (all_subset_reasons == "reference_route_rl") ==
     is_unknown_consensus_label(master_obj$consensus_label)
 )) {
   stop("Master RL subset provenance does not match consensus Unknown identities.")
@@ -197,12 +197,12 @@ mapping_rows <- future_lapply(seq_along(sample_ids), function(i) {
   if (sum(!is.na(temp_obj$RL_subcluster)) != expected_cells) {
     stop(sample_id, ": RL_subcluster metadata failed post-injection validation.")
   }
-  mapped_unknown_cells <- sum(temp_obj$RL_subset_reason == "shared_unknown", na.rm = TRUE)
+  mapped_unknown_cells <- sum(temp_obj$RL_subset_reason == "reference_route_rl", na.rm = TRUE)
   expected_unknown_cells <- sum(
-    relevant_reasons == "shared_unknown", na.rm = TRUE
+    relevant_reasons == "reference_route_rl", na.rm = TRUE
   )
   if (mapped_unknown_cells != expected_unknown_cells) {
-    stop(sample_id, ": RL shared-Unknown provenance failed post-injection validation.")
+    stop(sample_id, ": RL reference-routed Unknown provenance failed post-injection validation.")
   }
   saveRDS(temp_obj, output_paths[[i]], compress = FALSE)
   data.frame(
@@ -221,8 +221,8 @@ if (sum(mapping_manifest$mapped_rl_cells) != length(all_new_labels)) {
   stop("Mapped RL cell total does not equal the master RL object cell count.")
 }
 if (sum(mapping_manifest$mapped_rl_unknown_cells) !=
-    sum(all_subset_reasons == "shared_unknown")) {
-  stop("Mapped RL shared-Unknown total does not equal the master RL object count.")
+    sum(all_subset_reasons == "reference_route_rl")) {
+  stop("Mapped RL reference-routed Unknown total does not equal the master RL object count.")
 }
 write.csv(mapping_manifest, manifest_path, row.names = FALSE)
 message("Mapped every master RL identity across all configured samples.")

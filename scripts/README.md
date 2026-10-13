@@ -36,6 +36,9 @@ Prepare Aldinger / Sepp / Science reference objects and subset to Xenium panel g
                  v
 RPCA label transfer -> compare references -> consensus-labelled samples
                  |
+                 v
+Unknown QC audit/review -> apply approved removals -> broad 2-of-3 reference routing
+                 |
           +------+------+
           |             |
           v             v
@@ -1681,14 +1684,183 @@ Regional artifacts now use semantic names such as `Xenium_VZ_integrated.rds`,
 contract. Numerical `Res_0.5`, `Res_0.8`, and `Res_1` plot names still describe
 the regional clustering resolutions actually evaluated by the scripts.
 
-Both regional stage-1 scripts include every configured branch label plus every
-consensus identity matching `Unknown` or `Unknown-##`. This behavior is
-explicitly enabled by
-`regional_subsets.include_unknown_in_both_branches: true`. The subsets carry
-`VZ_subset_reason` or `RL_subset_reason` metadata, and merge manifests report
-configured-label and shared-Unknown cell counts separately. Changing this flag
-would change regional cell composition and is intentionally rejected by config
-validation.
+Before either regional branch starts, sample-qualified Unknown populations pass
+through the independent post-consensus workflow below:
+
+#### Broad-reference calibration and consensus
+
+Broad routing is now evaluated at the VZ/RL/Other level for every cluster,
+not only for populations already called Unknown. Original reference identities
+and the established detailed `consensus_label` are preserved. `Other` is a
+routing category defined by `config/reference_broad_taxonomy.csv`; reference
+objects are not relabelled to a literal cell type named Other.
+
+The protected calibration workflow is:
+
+```bash
+Rscript scripts/xenium_broad_01_validate_references.R --dry-run
+sbatch scripts/run_xenium_broad_01_validate_references.slurm
+
+Rscript scripts/xenium_broad_02_score_clusters.R --list
+Rscript scripts/xenium_broad_02_score_clusters.R --dry-run 1
+sbatch scripts/run_xenium_broad_02_score_clusters.slurm
+
+Rscript scripts/xenium_broad_03_compile_calibration.R --dry-run
+sbatch scripts/run_xenium_broad_03_compile_calibration.slurm
+```
+
+Stage 1 confirms that the production `_5k.rds` references contain no genes
+outside `inputs/xenium_5k_genes.rds` and that every `clusters_refined` identity
+maps exactly once to VZ, RL, or Other. Stage 2 reads the existing 102 annotated
+reference/sample RDS objects, sums fine-label prediction probabilities within
+each broad category at the cell level, and then reports cluster-level winner,
+margin, winner-cell fraction, and entropy. It does not rerun label transfer.
+Stage 3 evaluates prespecified score, margin, and cell-support grids separately
+for each reference. Agreement of the other two raw broad winners is an internal
+concordance target, not biological ground truth. It also audits all established
+known clusters so threshold selection is not optimized only on Unknowns.
+
+Review `Xenium_Broad_Reference_Threshold_Sensitivity.csv`, known-label
+conflicts, and the current-numeric-threshold diagnostic. Then copy explicitly
+chosen values and review notes to
+`config/reviewed_broad_reference_thresholds.csv`, set all three `approved`
+values to `TRUE`, and run:
+
+```bash
+Rscript scripts/xenium_broad_04_apply_reviewed_thresholds.R --dry-run
+sbatch scripts/run_xenium_broad_04_apply_reviewed_thresholds.slurm
+```
+
+The apply stage refuses unapproved or incomplete thresholds. It writes a
+versioned broad consensus beneath `05_broad_reference_consensus/`, preserves
+the detailed consensus, and reports known-label conflicts without silently
+relabeling them. Do not choose thresholds merely because they minimize the
+Unknown count.
+
+Expected runtime is about 5–20 minutes for reference validation; 2–15 minutes
+per broad-score task and about 35 minutes–4.5 hours total at concurrency six;
+2–10 minutes for calibration compilation; and under 2–10 minutes for reviewed
+threshold application. These are low-confidence static estimates until matching
+`sacct` observations are collected. Requested limits are 45 minutes, 2 hours,
+30 minutes, and 30 minutes, respectively.
+
+1. `xenium_unknown_01_audit_qc.R` audits one production sample without
+   filtering or relabeling it. It joins `cell_area`, `nucleus_area`, and
+   `nucleus_count` from the sample's raw Xenium `cells.csv.gz` or `cells.csv`
+   by exact cell ID, verifies that raw and retained-object cell areas agree
+   within the 0.00501-square-micrometer tolerance required by the retained
+   table's two-decimal area rounding, and derives cell:nucleus area ratio and
+   transcripts per cell area. The validation tolerance and maximum observed
+   difference are written to each sample's provenance table.
+2. `xenium_unknown_02_compile_qc_review.R` combines all 34 audits and writes the
+   review template, then merges all sample QC PDFs in `config/samples.csv`
+   order into `Xenium_Unknown_QC_All_Samples.pdf`.
+3. `xenium_unknown_03_apply_qc_review.R` applies explicit whole-population
+   `keep`/`remove` decisions one sample at a time.
+4. `xenium_unknown_04_build_reference_routes.R` consumes the reviewed
+   broad-reference votes and requires agreement from at least two references
+   for VZ, RL, or Other. A reference abstains when its reviewed broad score,
+   margin, or winner-cell-fraction requirement fails.
+   - Optional: `xenium_unknown_04a_compile_reference_evidence.R` is a
+     read-only review diagnostic. It joins each Unknown population to all
+     three references' continuous winner/runner-up scores, score margins,
+     threshold distances, and abstention reasons plus its whole-tissue top-20
+     marker summary. It does not alter QC decisions, routes, labels, or RDS
+     objects and is not an input to either regional branch.
+5. `xenium_unknown_05_report_unrouted.R` reports retained `route_other` and
+   `route_unresolved` populations without clustering or relabeling them.
+
+These are separate, single-purpose entry points; production users do not select
+review/apply/combine modes within one driver. Only standard `--list`,
+`--dry-run`, and protected `--overwrite` options are exposed where relevant.
+The older multi-mode annotation audit remains available for the established
+resolution pilot launchers but is not the production entry point.
+
+The production order is:
+
+```bash
+Rscript scripts/xenium_unknown_01_audit_qc.R --list
+Rscript scripts/xenium_unknown_01_audit_qc.R --dry-run 1
+sbatch scripts/run_xenium_unknown_01_audit_qc.slurm
+
+Rscript scripts/xenium_unknown_02_compile_qc_review.R --dry-run
+sbatch scripts/run_xenium_unknown_02_compile_qc_review.slurm
+
+# Review the generated evidence, then populate config/reviewed_unknown_qc.csv.
+Rscript scripts/xenium_unknown_03_apply_qc_review.R --dry-run 1
+sbatch scripts/run_xenium_unknown_03_apply_qc_review.slurm
+
+Rscript scripts/xenium_unknown_04_build_reference_routes.R --dry-run
+sbatch scripts/run_xenium_unknown_04_build_reference_routes.slurm
+
+# Optional score/margin and marker evidence table.
+Rscript scripts/xenium_unknown_04a_compile_reference_evidence.R --dry-run
+sbatch scripts/run_xenium_unknown_04a_compile_reference_evidence.slurm
+
+Rscript scripts/xenium_unknown_05_report_unrouted.R --dry-run
+sbatch scripts/run_xenium_unknown_05_report_unrouted.slurm
+```
+
+The first production QC audit (job 40905015), before raw Xenium morphology was
+added, completed in 42–75 seconds per sample with a peak task MaxRSS of about
+11.6 GiB. Reading the selected columns from `cells.csv.gz` should add seconds
+to a few minutes per task, so a repeat is expected to take approximately 1–3
+minutes per task and 12–36 minutes total at the launcher's three-task
+concurrency, excluding queue time. This updated estimate is low-confidence
+until the first morphology-enabled run; the requested limit remains 30 minutes
+and 32 GiB per task. The first table compilation (job 40905016) completed in
+28 seconds. Compilation plus
+the new PDF merge should normally finish in under 1–2 minutes, while its
+launcher requests 15 minutes. Applying reviewed QC decisions should take about
+1–5 minutes per sample and 12–60 minutes total at concurrency three, with a
+30-minute requested limit; this estimate remains low-confidence until its first
+production run. Reference routing, optional reference-score/marker evidence
+compilation, and the unrouted report should each finish in under 1–5 minutes
+and request 15 minutes. The evidence compilation reads small CSV tables and
+marker workbooks only; it does not load RDS objects.
+
+QC tail fractions and cell-level tests are descriptive evidence only. They do
+not automatically remove a population. Every removal requires an exact
+`sample_id + consensus_label` decision with review notes. The default review
+decision should be `keep` unless multiple QC measures support an artifact.
+Upper-tail comparisons use values strictly above the within-sample q90, and a
+metric with no variation among any audited cells is recorded as non-informative
+with blank tail fractions rather than classifying tied zero values as high QC
+tails.
+
+Morphology evidence is also descriptive. The combined evidence reports median
+nucleus area, cell:nucleus area ratio, transcript density, and nucleus count;
+the fractions below the known-cell q10 for nucleus area and transcript density;
+both q10 and q90 tails for the cell:nucleus ratio; missing or zero nucleus area;
+zero nuclei; and nucleus counts other than one. Nucleus-area summaries and
+tails use finite measurements only, while missing area is retained as a
+separate fraction and is not imputed. These additions do not change the
+original QC thresholds or automatically remove cells. Raw morphology joins and
+source-file provenance are validated before outputs are written.
+
+Reference routing uses the reviewed per-reference broad thresholds. Fine-label
+scores are summed within VZ, RL, and Other before broad score and margin gates
+are evaluated. `VZ`, `Glia`, `GABA`, `Purkinje`, and `OPC` map to `route_vz`;
+`RL`, `Granule`, and `UBC` map to `route_rl`; `Meninges`, `Endothelial`, and
+`Immune` map to `route_other`. A failed broad vote abstains. Populations without
+two-reference broad agreement receive `route_unresolved`.
+
+The optional Stage-4a evidence table is written to
+`04_unknown_reference_routing/tables/Xenium_Unknown_Reference_Score_Marker_Evidence.csv`.
+It contains one row per sample-qualified Unknown population. Marker adjusted
+P-value counts are descriptive: no adjusted-significant positive top-20
+markers means that the population lacks a distinctive program in that
+one-versus-rest contrast, but does not by itself establish failed cell QC or
+authorize removal. Score and margin distances are also diagnostic only and do
+not relax the configured 0.4 winner-score or 0.05 top-two-margin thresholds.
+
+Regional Stage 1 includes configured branch labels plus only retained Unknown
+populations assigned to that branch. `route_other` and `route_unresolved`
+cells remain in reviewed whole-tissue and combined outputs as `Unknown`, but do
+not enter VZ or RL integration. The subsets carry `VZ_subset_reason` or
+`RL_subset_reason`, the broad route, and reference-support count. Merge
+manifests report configured-label and reference-routed Unknown cells
+separately.
 
 `Unknown-##` numbering is local to each sample and therefore must not imply
 cross-sample identity. During both regional merges, the original
@@ -1702,16 +1874,17 @@ pooled into one grey category. Known consensus labels are unchanged in all
 three regional metadata columns. Each merge manifest records the exact
 sample-qualified Unknown identities in `sample_qualified_unknown_labels`.
 
-Because shared Unknown cells change both regional cell sets, all existing VZ
-and RL outputs from stage 1 onward are stale, even when an early-stage filename
-did not change. Do not mix old and new stages. First run the stage-1 `--list`
-and `--dry-run` checks, then deliberately regenerate the two stage-1 arrays.
+Because exclusive reference routing changes both regional cell sets, all
+existing VZ and RL outputs from stage 1 onward are stale, even when an
+early-stage filename did not change. Do not mix old and new stages. First run
+the Stage-1 `--list` and `--dry-run` checks, then deliberately regenerate the
+two Stage-1 arrays.
 Existing stage-1 subsets and stage-2 merges are protected, so replacement
 requires the branch's explicit `*_SUBSET_OVERWRITE=true` and
 `*_MERGE_OVERWRITE=true` launcher variables after the old files have been
 reviewed or archived. VZ and RL stages 1 through 7 can then proceed as
-independent branches. Their stage-6 review evidence and label application must
-be regenerated because the added Unknown cells can change regional neighbors,
+independent branches. Their Stage-6 review evidence and label application must
+be regenerated because routed Unknown cells can change regional neighbors,
 clusters, marker rankings, and therefore the scientifically appropriate
 cluster-to-label mapping. Combined and spatial VZ/RL outputs are stale until
 both refreshed stage-7 mappings exist.
@@ -1721,11 +1894,17 @@ The VZ branch generally follows this order:
 1. `xenium_vz_01_subset_samples.R` – extracts configured consensus identities per sample.
 2. `xenium_vz_02_merge_samples.R` – verifies and incrementally merges all 34 sample subsets after removing spatial overhead.
 3. `xenium_vz_03_integrate.R` – validates the complete merge, then runs normalization, PCA, Harmony integration, UMAP, and clustering.
+   `xenium_vz_03a_audit_harmony.R` separately quantifies sample mixing,
+   biological-label preservation, developmental-stage neighborhood change,
+   and pre/post neighbor retention without changing the integrated object.
 4. `xenium_vz_04_review_qc.R` – 4a reviews merged-cluster QC; 4b records the
    decision and conditionally materializes filtered sample objects.
 5. `xenium_vz_05_reintegrate_post_qc.R` – reuses Stage-3 results after a
    zero-removal decision, or removes failed cells and recomputes after removals.
-6. `xenium_vz_06_annotate_subclusters.R` – VZ subcluster annotation and marker analysis.
+6. `xenium_vz_06a_build_replicate_marker_evidence.R` – builds sample-aware
+   positive and anti-marker candidates; `xenium_vz_06_annotate_subclusters.R`
+   retains cell-level Wilcoxon rankings as descriptive review evidence and
+   applies explicitly reviewed labels.
 7. `xenium_vz_07_map_to_samples.R` – maps refined VZ labels back to all 34 configured samples.
 8. `xenium_vz_plot_sample.R` and `xenium_vz_08_plot_samples.R` – manifest-defined per-sample spatial reports.
 9. `xenium_vz_09_plot_counts.R` – VZ cell/subcluster counts.
@@ -1743,6 +1922,42 @@ Every VZ Stage-8 per-sample filename begins `<sample>_VZ_`; the corresponding
 RL outputs begin `<sample>_RL_`, so copied artifacts remain branch-identifiable
 outside their original directories. Combined reports use the same branch-aware
 one-page report names as inputs.
+
+After Stage 3, run the quantitative Harmony audit independently:
+
+```bash
+Rscript scripts/xenium_vz_03a_audit_harmony.R --dry-run
+sbatch scripts/run_xenium_vz_03a_audit_harmony.slurm
+Rscript scripts/xenium_rl_03a_audit_harmony.R --dry-run
+sbatch scripts/run_xenium_rl_03a_audit_harmony.slurm
+```
+
+Each audit uses a fixed-seed stratified sample of at most 100,000 cells and 30
+neighbors. Increased cross-sample mixing is interpreted only alongside
+retention of biological-label purity, PCW neighborhood structure, and pre/post
+neighbor overlap. Expected runtime is approximately 10–45 minutes per branch,
+low confidence; each launcher requests 2 hours and 64 GB on `express`.
+
+After the post-QC objects exist and before final label application, generate
+sample-aware marker evidence:
+
+```bash
+Rscript scripts/xenium_vz_06a_build_replicate_marker_evidence.R --dry-run
+sbatch scripts/run_xenium_vz_06a_build_replicate_marker_evidence.slurm
+Rscript scripts/xenium_rl_06a_build_replicate_marker_evidence.R --dry-run
+sbatch scripts/run_xenium_rl_06a_build_replicate_marker_evidence.slurm
+```
+
+These stages compare each raw subcluster with the remaining branch cells within
+each biological sample, then summarize direction, magnitude, detection
+contrast, and a sample-level sign test. They output separately ranked positive
+and anti-marker candidates. Cell-level Wilcoxon tables remain useful for
+descriptive ranking, but their P-values are not treated as biological-replicate
+inference. The production resolution-0.8 VZ/RL review and label-application
+steps now require these five evidence files and verify their input-RDS,
+cluster-column, size, and modification-time provenance before proceeding.
+Expected runtime is approximately 20–120 minutes per branch,
+low confidence; the launchers request 4 hours.
 
 Each VZ Stage-8 global or lineage-highlight plot renders opaque grey context
 cells at size 0.5 first and colored subcluster points at size 0.75 second, so
@@ -1791,7 +2006,7 @@ Rscript scripts/xenium_vz_02_merge_samples.R --dry-run
 The merge requires exactly the 34 manifest-defined subset files and writes
 `outputs/xenium/vz/02_merged/rds/Xenium_Merged_VZSubsets.rds` plus a CSV
 manifest under `02_merged/tables/` with each sample's input path, total cell
-count, configured-label count, shared-Unknown count, and PCW.
+count, configured-label count, reference-routed Unknown count, and PCW.
 
 After that merge exists, inspect processing readiness without loading it:
 
@@ -2141,7 +2356,7 @@ retain the prior strict Stage-4-directory checks. The stage refuses to replace
 existing outputs unless given `--overwrite`, verifies that every cell in the
 master VZ object maps exactly once, and writes
 `Xenium_VZ_Mapping_manifest.csv` with per-sample cell counts, mapped
-shared-Unknown counts, and PCW. Per-sample mapped objects use the neutral name
+reference-routed Unknown counts, and PCW. Per-sample mapped objects use the neutral name
 `<sample>_VZ_QC_Subclusters.rds`.
 
 Inspect the VZ plotting task map and one sample without creating plots:
@@ -2271,7 +2486,8 @@ Rscript scripts/xenium_rl_02_merge_samples.R --dry-run
 
 The stable merged output is
 `outputs/xenium/rl/02_merged/rds/Xenium_Merged_RLSubsets.rds`, accompanied by
-the corresponding input, configured-label, shared-Unknown, total-cell, and PCW
+the corresponding input, configured-label, reference-routed Unknown,
+total-cell, and PCW
 manifest under `02_merged/tables/`.
 Both merge scripts refuse partial input sets, unexpected top-level RDS files,
 and accidental output replacement.
@@ -2352,6 +2568,10 @@ RL stage 4 also writes
 `Xenium_RL_RawSubcluster_BySample_QC_Summary.csv`, containing count and feature
 quartiles, within-sample median ratios, sample and cluster fractions, and
 RL/Granule/UBC/Unknown composition for every observed sample/cluster pair.
+Its raw-cluster marker table is named
+`Xenium_RL_RawSubcluster_top10_Markers_Res0.8.csv`, matching the `Xenium_RL`
+prefix used by the neighboring Stage-4 outputs. The equivalent VZ table is
+`Xenium_VZ_RawSubcluster_top10_Markers_Res0.8.csv`.
 `Xenium_RL_RawSubcluster_BySample_QC_Heatmaps.pdf` shows the log2 median count
 and feature ratios relative to all RL-branch cells from the same sample, while
 `Xenium_RL_RawSubcluster_SampleComposition_Heatmap.pdf` shows the fraction of
@@ -2622,13 +2842,74 @@ as VZ, including `GZFB_22_X_G_4` for PCW19. Inspect it
 with `Rscript scripts/xenium_rl_09_plot_counts.R --dry-run` and submit it with
 `run_xenium_rl_09_plot_counts.slurm`.
 
-### 8. Combined VZ/RL objects
+### 7a. Residual Other/unresolved branch
+
+Retained high-quality Unknown populations assigned `route_other` or
+`route_unresolved` enter an independent residual branch instead of being
+forced into VZ or RL. This branch is deliberately non-spatial through label
+review; spatial plots remain subsequent validation.
+
+```bash
+Rscript scripts/xenium_residual_01_subset_samples.R --list
+Rscript scripts/xenium_residual_01_subset_samples.R --dry-run 1
+sbatch scripts/run_xenium_residual_01_subset_samples.slurm
+
+Rscript scripts/xenium_residual_02_merge_samples.R --dry-run
+sbatch scripts/run_xenium_residual_02_merge_samples.slurm
+
+Rscript scripts/xenium_residual_03_integrate.R --dry-run
+sbatch scripts/run_xenium_residual_03_integrate.slurm
+
+Rscript scripts/xenium_residual_04_review_subclusters.R --dry-run
+sbatch scripts/run_xenium_residual_04_review_subclusters.slurm
+```
+
+Stage 1 records a status table for every manifest sample and writes an RDS only
+when retained residual cells are present. Stage 2 validates all 34 statuses and
+merges only declared nonempty subsets. Stage 3 reuses the approved regional
+30-dimensional Harmony and resolution 0.5/0.8/1.0 settings. Stage 4 generates
+replicate-aware positive and anti-marker evidence plus a blank label-review
+template. Copy the completed reviewed rows to
+`config/reviewed_residual_subcluster_labels.csv`; every cluster requires an
+explicit decision, confidence, evidence summaries, notes, and `approved=TRUE`.
+`final_label=Unknown` is allowed when no defensible winner exists. Then run:
+
+The approved resolution-0.8 residual map assigns clusters `0` to `eCN`, `1`
+to `BG`, `2` to `Immature UBCs`, `3` to `Microglia`, `4` to `Pericytes`, `5`
+to `Mature UBCs`, `6` to `Unknown`, `7` to `GABA Progenitors`, and `8` to
+`Cycling Cells`. The retained `Unknown` records the absence of a defensible
+canonical lineage winner rather than forcing a label from generic immature
+neuronal markers.
+
+```bash
+Rscript scripts/xenium_residual_05_apply_reviewed_labels.R --dry-run
+sbatch scripts/run_xenium_residual_05_apply_reviewed_labels.slurm
+
+Rscript scripts/xenium_residual_06_map_to_samples.R --dry-run
+sbatch scripts/run_xenium_residual_06_map_to_samples.slurm
+```
+
+Stage 6 maps the reviewed residual identities back to all 34 reviewed
+whole-tissue inputs by exact cell ID. It writes one
+`<sample>_Residual_Subclusters.rds` object for every manifest sample, including
+samples with zero residual cells, plus
+`06_mapped/tables/Xenium_Residual_Mapping_Manifest.csv`. The mapping fails if
+the Stage-1 input provenance or cell counts changed, if a residual identity is
+assigned to a non-Unknown cell, or if any master cell cannot be mapped exactly
+once. Existing Stage-6 outputs are protected unless `--overwrite` is supplied.
+
+Observed runtimes were about 1–2 minutes per Stage-1 task (roughly 12–20
+minutes total at concurrency three), 2.5 minutes for merge, 2 minutes for
+integration, 1 minute for marker review, and 1 minute for label application.
+Stage 6 is expected to take 5–30 minutes; this estimate is low confidence and
+is based on four concurrent whole-tissue RDS reads/writes plus exact metadata
+joins, so collect its first `sacct` record to refine it. Requested limits are
+30 minutes, 2 hours, 12 hours, 4 hours, 1 hour, and 4 hours, respectively.
+
+### 8. Combined VZ/RL/residual objects
 
 The refined regional labels are combined and analyzed with:
 
-- `xenium_vz_rl_00_compare_unknown_annotations.R` – compares VZ and RL labels
-  on the same sample-qualified consensus Unknown cells and creates a protected
-  review template without changing an RDS object;
 - `xenium_vz_rl_01_combine_labels.R` – combines refined labels in all 34 configured individual samples;
 - `xenium_vz_rl_02_merge_samples.R` – cleans and merges per-sample objects;
 - `xenium_vz_rl_03_process_and_plot.R` – processes and visualizes the combined object;
@@ -2638,55 +2919,16 @@ The refined regional labels are combined and analyzed with:
 
 Combined outputs are organized under `outputs/xenium/vz_rl/`:
 
-- `00_unknown_annotation_review/` contains cell-level and population-level
-  VZ/RL comparisons, annotation-pair tables, a review template, input
-  provenance, and a multi-page comparison PDF;
 - `01_combined_labels/` contains all 34 labelled sample objects, per-sample spatial plots, and count tables;
 - `02_merged/` contains the cleaned sample objects, merged RDS, and merge manifest;
 - `03_processed/` contains the integrated object, provenance manifest, summary plots, and cluster-count plots;
 - `spatial/01_merged/` and `spatial/02_integrated/` contain the spatial-preserving branch.
 
-After both Stage-7 regional mappings exist, inspect the Stage-00 comparison
-without loading any RDS objects:
-
-```bash
-Rscript scripts/xenium_vz_rl_00_compare_unknown_annotations.R --dry-run
-```
-
-The dry-run checks paths, the active manifest-defined sample set, and unexpected
-mapped-stage files only. It does not load large Seurat objects. Run the
-protected comparison with:
-
-```bash
-sbatch scripts/run_xenium_vz_rl_00_compare_unknown_annotations.slurm
-```
-
-For every original sample-qualified Unknown population, the comparison reports
-the base cell count; cells annotated by VZ, RL, both, or neither branch;
-dominant branch labels; and exact shared label agreement. It also writes the
-cell-level audit table and counts for every observed
-`sample_id + consensus_label + VZ_subcluster + RL_subcluster` combination.
-The PDF begins with the global VZ-by-RL cross-tabulation and then provides one
-page per sample-qualified Unknown population. Cells removed by either regional
-QC branch remain visible in the availability summaries but are not eligible
-for the final combined object, matching the established combine-stage filter.
-
-Review
-`Xenium_VZRL_Unknown_Relabel_Review_Template.csv` under
-`00_unknown_annotation_review/tables/`, fill both `final_label` and
-`review_notes`, and then deliberately replace the header-only
-`config/reviewed_unknown_relabels.csv` with the reviewed rows. A final label
-may be one of the original non-Unknown broad labels or a registered regional
-subcluster such as `eCN`. Do not infer a VZ-over-RL or RL-over-VZ priority:
-each observed annotation pair receives its own explicit decision. If the
-regional inputs change, rerun Stage 00 and re-review the resulting template.
-
-Stage 00 is expected to take approximately 2–6 hours for all manifest samples
-(low confidence, based on static inspection of sequentially loading three RDS
-objects per sample; timing the first completed job will improve the estimate).
-The requested Slurm time limit is 8 hours, with one CPU and 128 GB on `short`;
-queue wait is excluded. Current Cheaha documentation permits up to 12 hours on
-`short`.
+The earlier `xenium_vz_rl_00_compare_unknown_annotations.R` dual-branch
+comparison and `config/reviewed_unknown_relabels.csv` are retained only as
+historical/sensitivity tools. They are not production prerequisites after
+exclusive reference routing. Do not run the comparison unless a reviewer asks
+for the prior include-in-both-branches sensitivity analysis.
 
 The spatial branch has a separate validated merge because it preserves the
 FOV/image data removed from the smaller non-spatial merge. Inspect both stages
@@ -2714,21 +2956,20 @@ tables, inspect input completeness and existing outputs with:
 Rscript scripts/xenium_vz_rl_01_combine_labels.R --dry-run
 ```
 
-This stage reads sample IDs from `config/samples.csv`, requires the 34 approved
-whole-tissue consensus objects plus all 34 independently mapped VZ and RL
-objects, the current Stage-00 comparison provenance, and a complete reviewed
-decision manifest. It refuses to replace any existing output unless given
-`--overwrite`. It validates all joins by exact cell ID and unchanged consensus
-label, rejects stale comparison inputs, and requires the reviewed keys to match
-the observed annotation pairs exactly. Known regional cells receive their VZ
-or RL subcluster. A shared Unknown cell is retained only when it survived both
-regional reviews; its `comb_subcluster` becomes the explicitly reviewed broad
-or retained subcluster label. The original `consensus_label` remains unchanged,
-and `unknown_relabel`, `unknown_relabel_key`, and `unknown_relabel_status`
-preserve the decision provenance. The `regional_assignment` column and
-per-sample assignment table continue to record VZ, RL, shared-Unknown overlap,
-and unassigned-consensus counts; a new per-sample relabel table records the
-VZ/RL pair, reviewed final label, notes, and cell count.
+This stage reads sample IDs from `config/samples.csv`, requires the reviewed
+whole-tissue input manifest, the reference-route manifest, and all 34
+independently mapped VZ, RL, and residual objects. It refuses to replace any
+existing output unless given `--overwrite`. Exact cell IDs and unchanged
+consensus labels validate every join. Known regional cells receive their VZ or
+RL subcluster. A routed Unknown population can receive a fine label from only
+its supported branch. Retained `route_other` and `route_unresolved`
+populations receive their explicitly reviewed residual label; the approved
+residual `Unknown` cluster remains `Unknown` rather than being forced. The
+original `consensus_label`, `unknown_reference_route`, residual reference
+route, confidence, and annotation status preserve provenance.
+`regional_assignment` records VZ, RL, `Residual`, or
+`unassigned_consensus`, and a per-sample routing table records the resulting
+cell counts. Any overlap among VZ, RL, and residual assignments is an error.
 Submit it with `run_xenium_vz_rl_01_combine_labels.slurm`.
 The combined-label stage is expected to take approximately 4–12 hours for all
 manifest samples (low confidence, based on static inspection of 34 sequential
@@ -2738,12 +2979,13 @@ The existing launcher requests 24 hours on `medium`; queue wait is excluded.
 Collecting `Elapsed` and `MaxRSS` from the first reviewed run will substantially
 improve this estimate.
 
-Applying or changing the reviewed Unknown mapping makes every existing combined
-Stage-1 output and all downstream VZ/RL merge, processed, spatial, count, and
+Applying or changing the reviewed Unknown QC decisions, reference-route
+manifest, or reviewed residual labels makes every existing combined Stage-1
+output and all downstream VZ/RL/residual merge, processed, spatial, count, and
 trajectory-derived outputs stale. Regenerate them only after reviewing the
-Stage-00 tables/PDF and confirming the intended mapping. A rollback is simply
-the prior reviewed CSV plus the corresponding protected Stage-1 outputs; the
-whole-tissue consensus and regional Stage-7 objects are never modified.
+Unknown-QC, route, and residual-label tables. A rollback is the prior reviewed
+QC and residual-label CSVs plus the corresponding protected Stage-1 outputs;
+the whole-tissue consensus and mapped branch objects are never modified.
 
 The subsequent clean/merge stage also requires all 34 inputs and removes
 spatial images, scale data, and control assays before merging:

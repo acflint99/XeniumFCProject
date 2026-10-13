@@ -1,0 +1,12 @@
+fine_label,broad_label,review_notes
+VZ,VZ,ventricular-zone broad identity
+Glia,VZ,developmental VZ-associated glial identity
+GABA,VZ,VZ-derived inhibitory lineage
+Purkinje,VZ,VZ-derived Purkinje lineage
+OPC,VZ,VZ-associated oligodendrocyte precursor lineage
+RL,RL,rhombic-lip broad identity
+Granule,RL,rhombic-lip-derived granule lineage
+UBC,RL,rhombic-lip-derived unipolar brush cell lineage
+Meninges,Other,nonregional identity retained under its original reference label
+Endothelial,Other,nonregional identity retained under its original reference label
+Immune,Other,nonregional identity retained under its original reference label

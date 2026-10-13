@@ -82,6 +82,14 @@ review_top50_marker_path <- file.path(
     ".csv"
   )
 )
+review_top50_antimarker_path <- file.path(
+  table_path,
+  paste0(
+    "RL_RawSubcluster_postQC_top50_AntiMarkers_Res",
+    subcluster_resolution_label,
+    ".csv"
+  )
+)
 review_manifest_path <- file.path(
   table_path,
   paste0(
@@ -122,8 +130,22 @@ review_focused_dotplot_pdf_path <- file.path(
     ".pdf"
   )
 )
+replicate_marker_dir <- file.path(
+  table_path, "replicate_marker_evidence"
+)
+replicate_marker_paths <- file.path(replicate_marker_dir, c(
+  "Xenium_RL_ReplicateAware_Marker_Evidence.csv",
+  "Xenium_RL_Positive_Marker_Candidates.csv",
+  "Xenium_RL_AntiMarker_Candidates.csv",
+  "Xenium_RL_Marker_Sample_Coverage.csv",
+  "Xenium_RL_ReplicateAware_Marker_Provenance.csv"
+))
+production_replicate_evidence_required <- identical(
+  subcluster_resolution_label, "0.8"
+)
 review_outputs <- c(
   review_top10_marker_path, review_top50_marker_path,
+  review_top50_antimarker_path,
   review_manifest_path, review_umap_path,
   review_focused_marker_availability_path,
   review_focused_dotplot_tiff_path, review_focused_dotplot_pdf_path
@@ -152,6 +174,43 @@ file_is_nonempty <- function(path) {
   file.exists(path) && !is.na(info$size) && info$size > 0
 }
 
+file_set_signature <- function(paths) {
+  if (!all(vapply(paths, file_is_nonempty, logical(1)))) return(NA_character_)
+  info <- file.info(paths)
+  paste(
+    paste(
+      normalizePath(paths, mustWork = TRUE),
+      as.numeric(info$size), as.numeric(info$mtime), sep = "::"
+    ),
+    collapse = "||"
+  )
+}
+
+replicate_marker_provenance_matches_input <- function() {
+  provenance_path <- tail(replicate_marker_paths, 1L)
+  if (!file.exists(merged_path) || !file.exists(provenance_path)) return(FALSE)
+  provenance <- tryCatch(
+    read.csv(provenance_path, stringsAsFactors = FALSE, check.names = FALSE),
+    error = function(e) NULL
+  )
+  required <- c(
+    "input_rds", "input_size", "input_mtime", "cluster_column",
+    "inference_unit", "cell_level_p_values_used_for_inference"
+  )
+  if (is.null(provenance) || nrow(provenance) != 1L ||
+      !all(required %in% names(provenance))) return(FALSE)
+  input_info <- file.info(merged_path)
+  identical(
+    as.character(provenance$input_rds),
+    normalizePath(merged_path, mustWork = TRUE)
+  ) &&
+    isTRUE(all.equal(as.numeric(provenance$input_size), as.numeric(input_info$size))) &&
+    isTRUE(all.equal(as.numeric(provenance$input_mtime), as.numeric(input_info$mtime))) &&
+    identical(as.character(provenance$cluster_column), cluster_column) &&
+    identical(as.character(provenance$inference_unit), "biological sample") &&
+    identical(as.logical(provenance$cell_level_p_values_used_for_inference), FALSE)
+}
+
 review_manifest_matches_input_file <- function() {
   if (!file.exists(merged_path) || !file.exists(review_manifest_path)) return(FALSE)
   review <- tryCatch(
@@ -176,15 +235,40 @@ if (dry_run) {
   } else {
     "RL plot refresh"
   }
+  dry_inputs <- if (review_only) {
+    c(
+      merged_path,
+      if (production_replicate_evidence_required) replicate_marker_paths else character()
+    )
+  } else if (apply_reviewed_labels) {
+    c(
+      merged_path, review_outputs,
+      if (production_replicate_evidence_required) replicate_marker_paths else character()
+    )
+  } else {
+    output_path
+  }
+  dry_checks <- if (review_only && production_replicate_evidence_required) {
+    c(
+      replicate_marker_outputs_nonempty = all(vapply(
+        replicate_marker_paths, file_is_nonempty, logical(1)
+      )),
+      replicate_marker_provenance_matches_input =
+        replicate_marker_provenance_matches_input()
+    )
+  } else if (apply_reviewed_labels) {
+    c(
+      review_outputs_nonempty = all(vapply(review_outputs, file_is_nonempty, logical(1))),
+      review_manifest_matches_input = review_manifest_matches_input_file(),
+      replicate_marker_outputs_nonempty = !production_replicate_evidence_required ||
+        all(vapply(replicate_marker_paths, file_is_nonempty, logical(1))),
+      replicate_marker_provenance_matches_input = !production_replicate_evidence_required ||
+        replicate_marker_provenance_matches_input()
+    )
+  } else logical()
   compact_dry_run(
     mode_label,
-    inputs = if (review_only) {
-      merged_path
-    } else if (apply_reviewed_labels) {
-      c(merged_path, review_outputs)
-    } else {
-      output_path
-    },
+    inputs = dry_inputs,
     outputs = if (review_only) {
       review_outputs
     } else if (apply_reviewed_labels) {
@@ -192,14 +276,12 @@ if (dry_run) {
     } else {
       plot_refresh_outputs
     },
-    checks = if (apply_reviewed_labels) {
-      c(
-        review_outputs_nonempty = all(vapply(review_outputs, file_is_nonempty, logical(1))),
-        review_manifest_matches_input = review_manifest_matches_input_file()
-      )
-    } else logical()
+    checks = dry_checks
   )
-  quit(save = "no", status = 0L)
+  quit(
+    save = "no",
+    status = if (all(file.exists(dry_inputs)) && all(dry_checks)) 0L else 1L
+  )
 }
 
 if (plots_only) {
@@ -220,6 +302,25 @@ if (apply_reviewed_labels) {
   ]
   if (length(empty_review_outputs)) {
     stop("RL review outputs are empty:\n- ", paste(empty_review_outputs, collapse = "\n- "))
+  }
+}
+if ((review_only || apply_reviewed_labels) &&
+    production_replicate_evidence_required) {
+  missing_replicate_outputs <- replicate_marker_paths[
+    !vapply(replicate_marker_paths, file_is_nonempty, logical(1))
+  ]
+  if (length(missing_replicate_outputs)) {
+    stop(
+      "Run xenium_rl_06a_build_replicate_marker_evidence.R before the ",
+      "production resolution-0.8 review. Missing or empty:\n- ",
+      paste(missing_replicate_outputs, collapse = "\n- ")
+    )
+  }
+  if (!replicate_marker_provenance_matches_input()) {
+    stop(
+      "RL replicate-aware marker evidence does not match the current ",
+      "post-QC object and resolution-0.8 cluster column; rerun Stage 06a."
+    )
   }
 }
 mode_outputs <- if (review_only) {
@@ -347,7 +448,7 @@ if (review_only) {
   all_markers <- with_future_workers(
     FindAllMarkers(
       obj,
-      only.pos = TRUE,
+      only.pos = FALSE,
       min.pct = 0.25,
       logfc.threshold = 0.25,
       test.use = "wilcox",
@@ -356,16 +457,25 @@ if (review_only) {
     )
   )
   if (!nrow(all_markers)) stop("No RL post-QC markers were returned for review.")
-  top10_markers <- all_markers %>%
+  positive_markers <- all_markers %>% filter(avg_log2FC > 0)
+  anti_markers <- all_markers %>% filter(avg_log2FC < 0)
+  if (!nrow(positive_markers)) stop("No positive RL post-QC markers were returned for review.")
+  if (!nrow(anti_markers)) stop("No RL post-QC anti-markers were returned for review.")
+  top10_markers <- positive_markers %>%
     group_by(cluster) %>%
     slice_max(n = 10, order_by = avg_log2FC, with_ties = FALSE) %>%
     ungroup()
-  top50_markers <- all_markers %>%
+  top50_markers <- positive_markers %>%
     group_by(cluster) %>%
     slice_max(n = 50, order_by = avg_log2FC, with_ties = FALSE) %>%
     ungroup()
   write.csv(top10_markers, review_top10_marker_path, row.names = FALSE)
   write.csv(top50_markers, review_top50_marker_path, row.names = FALSE)
+  top50_antimarkers <- anti_markers %>%
+    group_by(cluster) %>%
+    slice_min(n = 50, order_by = avg_log2FC, with_ties = FALSE) %>%
+    ungroup()
+  write.csv(top50_antimarkers, review_top50_antimarker_path, row.names = FALSE)
 
   p_review <- DimPlot(
     obj,
@@ -421,7 +531,7 @@ if (review_only) {
       min_pct = 0.25,
       logfc_threshold = 0.25,
       max_cells_per_ident = 1000,
-      marker_table_depths = "10|50",
+      marker_table_depths = "10_positive|50_positive|50_anti",
       focused_marker_panel = paste(
         "rl_focused_review_markers",
         "color_palette.R::rl_markers",
@@ -430,6 +540,13 @@ if (review_only) {
       focused_marker_signature = focused_marker_set_signature(
         rl_review_marker_sets
       ),
+      replicate_marker_evidence_signature = if (
+        production_replicate_evidence_required
+      ) file_set_signature(replicate_marker_paths) else "not_required_nonproduction_resolution",
+      replicate_marker_inference_unit = if (
+        production_replicate_evidence_required
+      ) "biological sample" else "not_required_nonproduction_resolution",
+      cell_level_marker_use = "descriptive ranking and visual review only",
       stringsAsFactors = FALSE
     ),
     review_manifest_path,
@@ -443,7 +560,8 @@ review <- read.csv(review_manifest_path, stringsAsFactors = FALSE)
 required_review_columns <- c(
   "input_rds", "input_size", "input_mtime", "cells", "cluster_column", "clusters",
   "random_seed", "marker_table_depths", "focused_marker_panel",
-  "focused_marker_signature"
+  "focused_marker_signature", "replicate_marker_evidence_signature",
+  "replicate_marker_inference_unit", "cell_level_marker_use"
 )
 if (nrow(review) != 1L || !all(required_review_columns %in% names(review))) {
   stop("RL review manifest is invalid; rerun --review-only.")
@@ -457,7 +575,10 @@ review_is_current <-
   identical(as.character(review$cluster_column), cluster_column) &&
   identical(as.character(review$clusters), paste(current_clusters, collapse = "|")) &&
   identical(as.integer(review$random_seed), as.integer(config$runtime$random_seed)) &&
-  identical(as.character(review$marker_table_depths), "10|50") &&
+  identical(
+    as.character(review$marker_table_depths),
+    "10_positive|50_positive|50_anti"
+  ) &&
   identical(
     as.character(review$focused_marker_panel),
     "rl_focused_review_markers + color_palette.R::rl_markers"
@@ -465,6 +586,22 @@ review_is_current <-
   identical(
     as.character(review$focused_marker_signature),
     focused_marker_set_signature(rl_review_marker_sets)
+  ) &&
+  identical(
+    as.character(review$replicate_marker_evidence_signature),
+    if (production_replicate_evidence_required) {
+      file_set_signature(replicate_marker_paths)
+    } else "not_required_nonproduction_resolution"
+  ) &&
+  identical(
+    as.character(review$replicate_marker_inference_unit),
+    if (production_replicate_evidence_required) {
+      "biological sample"
+    } else "not_required_nonproduction_resolution"
+  ) &&
+  identical(
+    as.character(review$cell_level_marker_use),
+    "descriptive ranking and visual review only"
   )
 if (!review_is_current) {
   stop("RL post-QC input or clusters changed after review; rerun --review-only.")

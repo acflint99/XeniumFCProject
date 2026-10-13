@@ -60,7 +60,7 @@ summary_path <- file.path(table_dir, "Xenium_VZ_RawSubcluster_QC_Summary.csv")
 cluster_sample_summary_path <- file.path(
   table_dir, "Xenium_VZ_RawSubcluster_BySample_QC_Summary.csv"
 )
-marker_path <- file.path(table_dir, "VZ_RawSubcluster_top10_Markers_Res0.8.csv")
+marker_path <- file.path(table_dir, "Xenium_VZ_RawSubcluster_top10_Markers_Res0.8.csv")
 review_path <- file.path(table_dir, "Xenium_VZ_QC_review_manifest.csv")
 pdf_path <- file.path(plot_dir, "Xenium_VZ_RawSubcluster_QC_Violins.pdf")
 cluster_sample_qc_heatmap_path <- file.path(

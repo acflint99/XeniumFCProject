@@ -1,9 +1,8 @@
 #!/usr/bin/env Rscript
 
-# Join independently reviewed VZ and RL subcluster labels to the approved
-# whole-tissue consensus objects. Shared Unknown cells receive only explicitly
-# reviewed labels from the VZ/RL annotation-pair decision manifest; the
-# original consensus_label remains unchanged as provenance.
+# Join independently reviewed VZ, RL, and residual subcluster labels to the
+# reviewed whole-tissue inputs. Each Unknown population can enter at most one
+# branch; residual labels may remain Unknown when no defensible winner exists.
 
 rm(list = ls())
 options(bitmapType = "cairo")
@@ -17,7 +16,8 @@ suppressPackageStartupMessages({
 
 source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "consensus_labels.R"))
-source(here("scripts", "R", "xenium_vz_rl_unknown_relabel.R"))
+source(here("scripts", "R", "xenium_unknown_qc_review.R"))
+source(here("scripts", "R", "xenium_unknown_reference_routes.R"))
 source(here("scripts", "color_palette.R"))
 
 config <- load_pipeline_config()
@@ -36,32 +36,33 @@ overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
-base_input_dir <- production_paths$consensus_rds_dir
 vz_input_dir <- file.path(output_root, "xenium", "vz", "07_mapped", "rds")
 rl_input_dir <- file.path(output_root, "xenium", "rl", "07_mapped", "rds")
+residual_input_dir <- file.path(output_root, "xenium", "residual", "06_mapped", "rds")
 rds_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "rds")
 plot_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "plots", "combined")
 table_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "tables")
-review_dir <- file.path(
-  output_root, "xenium", "vz_rl", "00_unknown_annotation_review", "tables"
-)
-comparison_pair_path <- file.path(
-  review_dir, "Xenium_VZRL_Unknown_VZ_RL_Pairs.csv"
-)
-comparison_manifest_path <- file.path(
-  review_dir, "Xenium_VZRL_Unknown_Annotation_Comparison_manifest.csv"
-)
-reviewed_relabel_path <- resolve_config_path(
-  config$manifests$reviewed_unknown_relabels, config
-)
-
-base_input_names <- paste0(sample_ids, "_Consensus_annotated.rds")
+route_paths <- unknown_reference_route_paths(config)
+routing_state <- tryCatch({
+  input_manifest <- load_unknown_reviewed_input_manifest(config)
+  routes <- load_unknown_reference_routes(config)
+  list(valid = TRUE, input_manifest = input_manifest, routes = routes)
+}, error = function(error) list(valid = FALSE, error = conditionMessage(error)))
+base_input_paths <- if (isTRUE(routing_state$valid)) {
+  as.character(routing_state$input_manifest$mapping_input_path)
+} else {
+  file.path(
+    production_paths$consensus_rds_dir,
+    paste0(sample_ids, "_Consensus_annotated.rds")
+  )
+}
 vz_input_names <- paste0(sample_ids, "_VZ_QC_Subclusters.rds")
 rl_input_names <- paste0(sample_ids, "_RL_QC_Subclusters.rds")
+residual_input_names <- paste0(sample_ids, "_Residual_Subclusters.rds")
 output_names <- paste0(sample_ids, "_VZ_RL_QC_Subclusters.rds")
-base_input_paths <- file.path(base_input_dir, base_input_names)
 vz_input_paths <- file.path(vz_input_dir, vz_input_names)
 rl_input_paths <- file.path(rl_input_dir, rl_input_names)
+residual_input_paths <- file.path(residual_input_dir, residual_input_names)
 rds_paths <- file.path(rds_dir, output_names)
 plot_suffixes <- c(
   "_combSubcluster_GlobalSpatial_pt0.6.tif",
@@ -79,7 +80,7 @@ table_paths <- lapply(sample_ids, function(sample_id) {
       sample_id,
       c(
         "_counts_consensus_label.csv", "_counts_VZ&RLsubclusters.csv",
-        "_counts_regional_assignment.csv", "_reviewed_unknown_relabels.csv"
+        "_counts_regional_assignment.csv", "_unknown_reference_routing.csv"
       )
     )
   )
@@ -94,81 +95,17 @@ observed_vz_names <- if (dir.exists(vz_input_dir)) {
 observed_rl_names <- if (dir.exists(rl_input_dir)) {
   list.files(rl_input_dir, pattern = "\\.rds$", full.names = FALSE)
 } else character()
+observed_residual_names <- if (dir.exists(residual_input_dir)) {
+  list.files(residual_input_dir, pattern = "\\.rds$", full.names = FALSE)
+} else character()
 all_input_paths <- c(
-  base_input_paths, vz_input_paths, rl_input_paths,
-  comparison_pair_path, comparison_manifest_path, reviewed_relabel_path
+  base_input_paths, vz_input_paths, rl_input_paths, residual_input_paths,
+  route_paths$input_manifest, route_paths$route_manifest
 )
 missing_paths <- all_input_paths[!file.exists(all_input_paths)]
 unexpected_vz_names <- setdiff(observed_vz_names, c(vz_input_names, "Xenium_VZ_Mapping_manifest.csv"))
 unexpected_rl_names <- setdiff(observed_rl_names, c(rl_input_names, "Xenium_RL_Mapping_manifest.csv"))
-
-expected_comparison_inputs <- rbind(
-  data.frame(
-    sample_id = sample_ids, input_type = "consensus",
-    input_path = base_input_paths, stringsAsFactors = FALSE
-  ),
-  data.frame(
-    sample_id = sample_ids, input_type = "VZ",
-    input_path = vz_input_paths, stringsAsFactors = FALSE
-  ),
-  data.frame(
-    sample_id = sample_ids, input_type = "RL",
-    input_path = rl_input_paths, stringsAsFactors = FALSE
-  )
-)
-
-review_validation <- tryCatch({
-  required_review_files <- c(comparison_pair_path, comparison_manifest_path)
-  missing_review_files <- required_review_files[!file.exists(required_review_files)]
-  if (length(missing_review_files)) {
-    stop(
-      "Missing Stage-00 comparison file(s): ",
-      paste(missing_review_files, collapse = "; ")
-    )
-  }
-  comparison_pairs <- read.csv(
-    comparison_pair_path, stringsAsFactors = FALSE, na.strings = character()
-  )
-  comparison_manifest <- read.csv(
-    comparison_manifest_path, stringsAsFactors = FALSE, na.strings = character()
-  )
-  reviewed_relabels <- load_reviewed_unknown_relabels(config)
-  allowed_final_labels <- setdiff(
-    unique(c(celltype_order, master_subcluster_order)), "Unknown"
-  )
-  validate_unknown_relabel_review(
-    reviewed_relabels, sample_ids, allowed_final_labels,
-    require_complete_labels = TRUE
-  )
-  validate_unknown_comparison_provenance(
-    comparison_manifest, sample_ids, expected_comparison_inputs
-  )
-  comparison_keys <- unknown_relabel_key(comparison_pairs)
-  reviewed_keys <- unknown_relabel_key(reviewed_relabels)
-  if (anyDuplicated(comparison_keys)) {
-    stop("Unknown annotation-pair comparison contains duplicate keys.")
-  }
-  if (!setequal(comparison_keys, reviewed_keys)) {
-    stop(
-      "Reviewed Unknown decisions do not exactly match the current comparison ",
-      "template. Missing decisions: ", length(setdiff(comparison_keys, reviewed_keys)),
-      "; unused decisions: ", length(setdiff(reviewed_keys, comparison_keys)), "."
-    )
-  }
-  missing_colors <- setdiff(unique(reviewed_relabels$final_label), names(subcluster_palette))
-  if (length(missing_colors)) {
-    stop(
-      "Reviewed Unknown final labels lack plotting colors: ",
-      paste(missing_colors, collapse = ", ")
-    )
-  }
-  list(
-    valid = TRUE,
-    reviewed_relabels = reviewed_relabels,
-    reviewed_keys = reviewed_keys,
-    allowed_final_labels = allowed_final_labels
-  )
-}, error = function(error) list(valid = FALSE, error = conditionMessage(error)))
+unexpected_residual_names <- setdiff(observed_residual_names, residual_input_names)
 
 if (dry_run) {
   compact_dry_run(
@@ -178,7 +115,8 @@ if (dry_run) {
     checks = c(
       no_unexpected_vz_inputs = !length(unexpected_vz_names),
       no_unexpected_rl_inputs = !length(unexpected_rl_names),
-      reviewed_unknown_relabels = isTRUE(review_validation$valid)
+      no_unexpected_residual_inputs = !length(unexpected_residual_names),
+      reviewed_reference_routing = isTRUE(routing_state$valid)
     )
   )
   if (length(unexpected_vz_names)) cat(
@@ -187,8 +125,12 @@ if (dry_run) {
   if (length(unexpected_rl_names)) cat(
     "  Unexpected RL inputs: ", paste(unexpected_rl_names, collapse = "; "), "\n"
   )
-  if (!isTRUE(review_validation$valid)) {
-    cat("  Unknown-relabel review: ", review_validation$error, "\n")
+  if (length(unexpected_residual_names)) cat(
+    "  Unexpected residual inputs: ",
+    paste(unexpected_residual_names, collapse = "; "), "\n"
+  )
+  if (!isTRUE(routing_state$valid)) {
+    cat("  Unknown routing: ", routing_state$error, "\n")
   }
   quit(save = "no", status = 0L)
 }
@@ -196,21 +138,20 @@ if (dry_run) {
 if (length(missing_paths)) {
   stop("Cannot combine subclusters; missing files:\n- ", paste(missing_paths, collapse = "\n- "))
 }
-if (length(unexpected_vz_names) || length(unexpected_rl_names)) {
+if (length(unexpected_vz_names) || length(unexpected_rl_names) ||
+    length(unexpected_residual_names)) {
   stop(
     "Cannot combine subclusters; unexpected top-level regional RDS files:\n- ",
-    paste(c(unexpected_vz_names, unexpected_rl_names), collapse = "\n- ")
+    paste(
+      c(unexpected_vz_names, unexpected_rl_names, unexpected_residual_names),
+      collapse = "\n- "
+    )
   )
 }
-if (!isTRUE(review_validation$valid)) {
-  stop("Cannot combine subclusters; Unknown-relabel review is not ready: ", review_validation$error)
+if (!isTRUE(routing_state$valid)) {
+  stop("Cannot combine subclusters; Unknown routing is not ready: ", routing_state$error)
 }
-reviewed_relabels <- review_validation$reviewed_relabels
-reviewed_keys <- review_validation$reviewed_keys
-reviewed_final_labels <- setNames(
-  as.character(reviewed_relabels$final_label), reviewed_keys
-)
-reviewed_notes <- setNames(as.character(reviewed_relabels$review_notes), reviewed_keys)
+routes <- routing_state$routes
 combined_label_order <- unique(c(master_subcluster_order, celltype_order))
 expected_outputs <- unlist(expected_by_sample, use.names = FALSE)
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
@@ -232,35 +173,49 @@ for (i in seq_along(sample_ids)) {
   base_obj <- readRDS(base_input_paths[[i]])
   vz_obj <- readRDS(vz_input_paths[[i]])
   rl_obj <- readRDS(rl_input_paths[[i]])
+  residual_obj <- readRDS(residual_input_paths[[i]])
 
   required_base_metadata <- c("consensus_label", "PCW")
   required_vz_metadata <- c("consensus_label", "VZ_subcluster", "VZ_subset_reason")
   required_rl_metadata <- c("consensus_label", "RL_subcluster", "RL_subset_reason")
+  required_residual_metadata <- c(
+    "consensus_label", "residual_subcluster", "residual_reference_route",
+    "residual_subset_reason", "residual_annotation_confidence",
+    "residual_annotation_status"
+  )
   missing_base <- setdiff(required_base_metadata, colnames(base_obj[[]]))
   missing_vz <- setdiff(required_vz_metadata, colnames(vz_obj[[]]))
   missing_rl <- setdiff(required_rl_metadata, colnames(rl_obj[[]]))
-  if (length(c(missing_base, missing_vz, missing_rl))) {
+  missing_residual <- setdiff(required_residual_metadata, colnames(residual_obj[[]]))
+  if (length(c(missing_base, missing_vz, missing_rl, missing_residual))) {
     stop(
-      sample_id, " lacks required metadata (base/VZ/RL): ",
-      paste(c(missing_base, missing_vz, missing_rl), collapse = ", ")
+      sample_id, " lacks required metadata (base/VZ/RL/residual): ",
+      paste(c(missing_base, missing_vz, missing_rl, missing_residual), collapse = ", ")
     )
   }
   if (anyDuplicated(colnames(base_obj)) || anyDuplicated(colnames(vz_obj)) ||
-      anyDuplicated(colnames(rl_obj))) {
+      anyDuplicated(colnames(rl_obj)) || anyDuplicated(colnames(residual_obj))) {
     stop(sample_id, " has duplicate cell IDs in a base or regional object.")
   }
   if (!all(colnames(vz_obj) %in% colnames(base_obj)) ||
-      !all(colnames(rl_obj) %in% colnames(base_obj))) {
+      !all(colnames(rl_obj) %in% colnames(base_obj)) ||
+      !identical(colnames(residual_obj), colnames(base_obj))) {
     stop(sample_id, " regional object contains cell IDs absent from the consensus object.")
   }
   base_consensus <- setNames(as.character(base_obj$consensus_label), colnames(base_obj))
   vz_consensus <- as.character(vz_obj$consensus_label)
   rl_consensus <- as.character(rl_obj$consensus_label)
+  residual_consensus <- as.character(residual_obj$consensus_label)
   expected_vz_consensus <- unname(base_consensus[colnames(vz_obj)])
   expected_rl_consensus <- unname(base_consensus[colnames(rl_obj)])
-  if (anyNA(c(vz_consensus, rl_consensus, expected_vz_consensus, expected_rl_consensus)) ||
+  expected_residual_consensus <- unname(base_consensus[colnames(residual_obj)])
+  if (anyNA(c(
+        vz_consensus, rl_consensus, residual_consensus,
+        expected_vz_consensus, expected_rl_consensus, expected_residual_consensus
+      )) ||
       !identical(unname(vz_consensus), expected_vz_consensus) ||
-      !identical(unname(rl_consensus), expected_rl_consensus)) {
+      !identical(unname(rl_consensus), expected_rl_consensus) ||
+      !identical(unname(residual_consensus), expected_residual_consensus)) {
     stop(sample_id, " consensus labels changed between the base and regional objects.")
   }
   pcw_values <- unique(as.character(base_obj$PCW))
@@ -271,16 +226,55 @@ for (i in seq_along(sample_ids)) {
   rl_labels <- setNames(as.character(rl_obj$RL_subcluster), colnames(rl_obj))
   vz_reasons <- setNames(as.character(vz_obj$VZ_subset_reason), colnames(vz_obj))
   rl_reasons <- setNames(as.character(rl_obj$RL_subset_reason), colnames(rl_obj))
+  residual_labels <- setNames(
+    as.character(residual_obj$residual_subcluster), colnames(residual_obj)
+  )
+  residual_routes <- setNames(
+    as.character(residual_obj$residual_reference_route), colnames(residual_obj)
+  )
+  residual_reasons <- setNames(
+    as.character(residual_obj$residual_subset_reason), colnames(residual_obj)
+  )
+  residual_confidence <- setNames(
+    as.character(residual_obj$residual_annotation_confidence), colnames(residual_obj)
+  )
+  residual_status <- setNames(
+    as.character(residual_obj$residual_annotation_status), colnames(residual_obj)
+  )
   base_cells <- colnames(base_obj)
   is_unknown <- is_unknown_consensus_label(base_consensus)
+  sample_routes <- routes[routes$sample_id == sample_id, , drop = FALSE]
+  sample_route_lookup <- setNames(
+    as.character(sample_routes$reference_route),
+    as.character(sample_routes$consensus_label)
+  )
+  sample_route_support_lookup <- setNames(
+    as.integer(sample_routes$reference_route_support_n),
+    as.character(sample_routes$consensus_label)
+  )
+  sample_route_status_lookup <- setNames(
+    as.character(sample_routes$reference_route_status),
+    as.character(sample_routes$consensus_label)
+  )
+  unknown_routes <- unname(sample_route_lookup[base_consensus])
+  if (any(is_unknown & is.na(unknown_routes))) {
+    stop(sample_id, " has a retained Unknown population without a reference route.")
+  }
   is_vz_target <- base_consensus %in% unlist(
     config$regional_subsets$vz_broad_labels, use.names = FALSE
-  ) | is_unknown
+  ) | (is_unknown & !is.na(unknown_routes) & unknown_routes == "route_vz")
   is_rl_target <- base_consensus %in% unlist(
     config$regional_subsets$rl_broad_labels, use.names = FALSE
-  ) | is_unknown
+  ) | (is_unknown & !is.na(unknown_routes) & unknown_routes == "route_rl")
+  is_residual_target <- is_unknown & !is.na(unknown_routes) &
+    unknown_routes %in% c("route_other", "route_unresolved")
   vz_kept <- !is.na(vz_labels[base_cells]) & nzchar(vz_labels[base_cells])
   rl_kept <- !is.na(rl_labels[base_cells]) & nzchar(rl_labels[base_cells])
+  residual_kept <- !is.na(residual_labels[base_cells]) &
+    nzchar(residual_labels[base_cells])
+  if (!identical(unname(residual_kept), unname(is_residual_target))) {
+    stop(sample_id, " residual mapping does not exactly match Other/unresolved targets.")
+  }
   keep_cells <- (!is_vz_target | vz_kept) & (!is_rl_target | rl_kept)
   obj <- subset(base_obj, cells = base_cells[keep_cells])
   retained_cells <- colnames(obj)
@@ -288,83 +282,94 @@ for (i in seq_along(sample_ids)) {
   obj$RL_subcluster <- unname(rl_labels[retained_cells])
   obj$VZ_subset_reason <- unname(vz_reasons[retained_cells])
   obj$RL_subset_reason <- unname(rl_reasons[retained_cells])
+  obj$residual_subcluster <- unname(residual_labels[retained_cells])
+  obj$residual_reference_route <- unname(residual_routes[retained_cells])
+  obj$residual_subset_reason <- unname(residual_reasons[retained_cells])
+  obj$residual_annotation_confidence <- unname(residual_confidence[retained_cells])
+  obj$residual_annotation_status <- unname(residual_status[retained_cells])
 
   has_vz <- !is.na(obj$VZ_subcluster) & nzchar(obj$VZ_subcluster)
   has_rl <- !is.na(obj$RL_subcluster) & nzchar(obj$RL_subcluster)
+  has_residual <- !is.na(obj$residual_subcluster) & nzchar(obj$residual_subcluster)
   retained_unknown <- is_unknown_consensus_label(obj$consensus_label)
+  retained_routes <- unname(sample_route_lookup[as.character(obj$consensus_label)])
   expected_vz <- as.character(obj$consensus_label) %in% unlist(
     config$regional_subsets$vz_broad_labels, use.names = FALSE
-  ) | retained_unknown
+  ) | (retained_unknown & !is.na(retained_routes) & retained_routes == "route_vz")
   expected_rl <- as.character(obj$consensus_label) %in% unlist(
     config$regional_subsets$rl_broad_labels, use.names = FALSE
-  ) | retained_unknown
-  if (!all(has_vz == expected_vz) || !all(has_rl == expected_rl)) {
+  ) | (retained_unknown & !is.na(retained_routes) & retained_routes == "route_rl")
+  expected_residual <- retained_unknown & !is.na(retained_routes) &
+    retained_routes %in% c("route_other", "route_unresolved")
+  if (!all(has_vz == expected_vz) || !all(has_rl == expected_rl) ||
+      !all(has_residual == expected_residual)) {
     stop(sample_id, " retained regional targets do not have one mapped branch label each.")
   }
   invalid_vz_reason <- has_vz & (
     is.na(obj$VZ_subset_reason) |
-      (obj$VZ_subset_reason == "shared_unknown") != retained_unknown
+      (obj$VZ_subset_reason == "reference_route_vz") != retained_unknown
   )
   invalid_rl_reason <- has_rl & (
     is.na(obj$RL_subset_reason) |
-      (obj$RL_subset_reason == "shared_unknown") != retained_unknown
+      (obj$RL_subset_reason == "reference_route_rl") != retained_unknown
   )
   if (any(invalid_vz_reason) || any(invalid_rl_reason)) {
     stop(sample_id, " regional subset provenance does not match consensus Unknown identities.")
   }
-  overlap <- has_vz & has_rl
-  if (any(overlap & !is_unknown_consensus_label(obj$consensus_label))) {
-    stop(sample_id, " has a VZ/RL label overlap outside a consensus Unknown identity.")
+  invalid_residual <- has_residual & (
+    is.na(obj$residual_reference_route) |
+      !obj$residual_reference_route %in% c("route_other", "route_unresolved") |
+      obj$residual_reference_route != retained_routes |
+      is.na(obj$residual_subset_reason) |
+      obj$residual_subset_reason != "retained_high_quality_other_or_unresolved" |
+      is.na(obj$residual_annotation_status) |
+      !obj$residual_annotation_status %in% c("reviewed_label", "retained_unknown")
+  )
+  if (any(invalid_residual)) {
+    stop(sample_id, " residual metadata does not match reviewed route and label provenance.")
   }
-  if (any(overlap & (
-    is.na(obj$VZ_subset_reason) | is.na(obj$RL_subset_reason) |
-      obj$VZ_subset_reason != "shared_unknown" |
-      obj$RL_subset_reason != "shared_unknown"
-  ))) {
-    stop(sample_id, " has overlapping regional labels without shared-Unknown provenance.")
+  branch_count <- as.integer(has_vz) + as.integer(has_rl) + as.integer(has_residual)
+  if (any(branch_count > 1L)) {
+    stop(sample_id, " has cells assigned to more than one regional/residual branch.")
   }
   combined_labels <- as.character(obj$consensus_label)
-  combined_labels[has_vz & !has_rl] <- as.character(obj$VZ_subcluster[has_vz & !has_rl])
-  combined_labels[has_rl & !has_vz] <- as.character(obj$RL_subcluster[has_rl & !has_vz])
-  unknown_relabel <- rep(NA_character_, ncol(obj))
-  unknown_relabel_key_value <- rep(NA_character_, ncol(obj))
-  if (any(overlap)) {
-    overlap_data <- data.frame(
-      sample_id = sample_id,
-      consensus_label = as.character(obj$consensus_label[overlap]),
-      VZ_subcluster = as.character(obj$VZ_subcluster[overlap]),
-      RL_subcluster = as.character(obj$RL_subcluster[overlap]),
-      stringsAsFactors = FALSE
-    )
-    overlap_keys <- unknown_relabel_key(overlap_data)
-    if (any(!overlap_keys %in% reviewed_keys)) {
-      stop(sample_id, " has shared Unknown annotation pairs without reviewed decisions.")
-    }
-    unknown_relabel[overlap] <- unname(reviewed_final_labels[overlap_keys])
-    unknown_relabel_key_value[overlap] <- paste0(
-      "sample_id=", overlap_data$sample_id,
-      ";consensus_label=", overlap_data$consensus_label,
-      ";VZ_subcluster=", overlap_data$VZ_subcluster,
-      ";RL_subcluster=", overlap_data$RL_subcluster
-    )
-    combined_labels[overlap] <- unknown_relabel[overlap]
-  }
-  obj$unknown_relabel <- unknown_relabel
-  obj$unknown_relabel_key <- unknown_relabel_key_value
+  combined_labels[has_vz] <- as.character(obj$VZ_subcluster[has_vz])
+  combined_labels[has_rl] <- as.character(obj$RL_subcluster[has_rl])
+  combined_labels[has_residual] <- as.character(obj$residual_subcluster[has_residual])
+  obj$unknown_reference_route <- ifelse(
+    retained_unknown, retained_routes, NA_character_
+  )
+  obj$unknown_reference_route_support_n <- ifelse(
+    retained_unknown,
+    unname(sample_route_support_lookup[as.character(obj$consensus_label)]),
+    NA_integer_
+  )
+  obj$unknown_reference_route_status <- ifelse(
+    retained_unknown,
+    unname(sample_route_status_lookup[as.character(obj$consensus_label)]),
+    NA_character_
+  )
   obj$unknown_relabel_status <- factor(
-    ifelse(overlap, "reviewed_annotation_pair", "not_applicable"),
-    levels = c("not_applicable", "reviewed_annotation_pair")
+    ifelse(
+      has_residual & obj$residual_annotation_status == "reviewed_label",
+      "reviewed_residual_label",
+      ifelse(
+        has_residual & obj$residual_annotation_status == "retained_unknown",
+        "retained_unknown", "not_applicable"
+      )
+    ),
+    levels = c("not_applicable", "reviewed_residual_label", "retained_unknown")
   )
   regional_assignment <- rep("unassigned_consensus", ncol(obj))
-  regional_assignment[has_vz & !has_rl] <- "VZ"
-  regional_assignment[has_rl & !has_vz] <- "RL"
-  regional_assignment[overlap] <- "shared_unknown_overlap"
+  regional_assignment[has_vz] <- "VZ"
+  regional_assignment[has_rl] <- "RL"
+  regional_assignment[has_residual] <- "Residual"
   obj$regional_assignment <- factor(
     regional_assignment,
-    levels = c("VZ", "RL", "shared_unknown_overlap", "unassigned_consensus")
+    levels = c("VZ", "RL", "Residual", "unassigned_consensus")
   )
   if (anyNA(combined_labels) || any(!nzchar(combined_labels))) {
-    stop(sample_id, " has cells without a VZ, RL, or consensus label.")
+    stop(sample_id, " has cells without a VZ, RL, residual, or consensus label.")
   }
   unexpected_labels <- setdiff(
     unique(combined_labels)[!is_unknown_consensus_label(unique(combined_labels))],
@@ -396,39 +401,31 @@ for (i in seq_along(sample_ids)) {
   assignment_counts$Retained_Cells <- ncol(obj)
   assignment_counts$Removed_By_VZ <- sum(is_vz_target & !vz_kept)
   assignment_counts$Removed_By_RL <- sum(is_rl_target & !rl_kept)
+  assignment_counts$Removed_By_Residual <- sum(is_residual_target & !residual_kept)
   write.csv(consensus_counts, table_paths[[i]][[1]], row.names = FALSE)
   write.csv(combined_counts, table_paths[[i]][[2]], row.names = FALSE)
   write.csv(assignment_counts, table_paths[[i]][[3]], row.names = FALSE)
-  if (any(overlap)) {
-    overlap_key_data <- data.frame(
-      sample_id = sample_id,
-      consensus_label = as.character(obj$consensus_label[overlap]),
-      VZ_subcluster = as.character(obj$VZ_subcluster[overlap]),
-      RL_subcluster = as.character(obj$RL_subcluster[overlap]),
-      stringsAsFactors = FALSE
-    )
-    overlap_keys <- unknown_relabel_key(overlap_key_data)
-    relabel_counts <- aggregate(
-      list(Cell_Count = rep(1L, sum(overlap))),
+  unknown_index <- is_unknown_consensus_label(obj$consensus_label)
+  if (any(unknown_index)) {
+    route_counts <- aggregate(
+      list(Cell_Count = rep(1L, sum(unknown_index))),
       by = data.frame(
-        Original_Consensus_Label = as.character(obj$consensus_label[overlap]),
-        VZ_Subcluster = as.character(obj$VZ_subcluster[overlap]),
-        RL_Subcluster = as.character(obj$RL_subcluster[overlap]),
-        Reviewed_Final_Label = as.character(obj$unknown_relabel[overlap]),
-        Review_Notes = unname(reviewed_notes[overlap_keys]),
+        Original_Consensus_Label = as.character(obj$consensus_label[unknown_index]),
+        Reference_Route = as.character(obj$unknown_reference_route[unknown_index]),
+        Final_Combined_Label = as.character(obj$comb_subcluster[unknown_index]),
+        Regional_Assignment = as.character(obj$regional_assignment[unknown_index]),
         stringsAsFactors = FALSE
       ),
       FUN = sum
     )
   } else {
-    relabel_counts <- data.frame(
-      Original_Consensus_Label = character(), VZ_Subcluster = character(),
-      RL_Subcluster = character(), Reviewed_Final_Label = character(),
-      Review_Notes = character(), Cell_Count = integer(),
-      stringsAsFactors = FALSE
+    route_counts <- data.frame(
+      Original_Consensus_Label = character(), Reference_Route = character(),
+      Final_Combined_Label = character(), Regional_Assignment = character(),
+      Cell_Count = integer(), stringsAsFactors = FALSE
     )
   }
-  write.csv(relabel_counts, table_paths[[i]][[4]], row.names = FALSE)
+  write.csv(route_counts, table_paths[[i]][[4]], row.names = FALSE)
 
   p_comb_06 <- ImageDimPlot(
     obj, group.by = "comb_subcluster", cols = plot_colors, size = 0.6
@@ -474,8 +471,14 @@ for (i in seq_along(sample_ids)) {
 
   saveRDS(obj, rds_paths[[i]], compress = FALSE)
   message("Saved ", ncol(obj), " cells for ", sample_id, " (", pcw_values[[1]], ").")
-  rm(base_obj, vz_obj, rl_obj, obj, p_comb_06, p_comb_085, p_consensus_06, p_consensus_085)
+  rm(
+    base_obj, vz_obj, rl_obj, residual_obj, obj,
+    p_comb_06, p_comb_085, p_consensus_06, p_consensus_085
+  )
   gc()
 }
 
-message("Combined VZ/RL/consensus labels for all ", length(sample_ids), " configured samples.")
+message(
+  "Combined VZ/RL/residual/consensus labels for all ",
+  length(sample_ids), " configured samples."
+)

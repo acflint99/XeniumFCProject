@@ -1,0 +1,24 @@
+#!/bin/bash
+#SBATCH --job-name=Xen_residual_review
+#SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/%x_%j.out
+#SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/%x_%j.err
+#SBATCH --time=04:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=96G
+#SBATCH --partition=short
+#SBATCH --account=acflint
+#SBATCH --qos=normal
+#SBATCH --constraint=intel
+#SBATCH --mail-user=acflint@uab.edu
+#SBATCH --mail-type=END,FAIL,INVALID_DEPEND
+module purge
+module load rc-base
+module load R/4.4.1-foss-2023b
+cd /home/acflint/R/Projects/XeniumFCProject || exit 1
+export RENV_CONFIG_SANDBOX_ENABLED=FALSE
+driver_options=()
+if [[ "${RESIDUAL_REVIEW_OVERWRITE:-false}" == "true" ]]; then driver_options+=(--overwrite); fi
+Rscript --max-ppsize=500000 \
+  scripts/xenium_residual_04_review_subclusters.R --dry-run || exit 2
+Rscript --max-ppsize=500000 \
+  scripts/xenium_residual_04_review_subclusters.R "${driver_options[@]}"

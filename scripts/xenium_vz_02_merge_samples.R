@@ -74,7 +74,7 @@ merge_manifest <- data.frame(
   input_path = subset_paths,
   cells = integer(length(sample_ids)),
   configured_broad_cells = integer(length(sample_ids)),
-  shared_unknown_cells = integer(length(sample_ids)),
+  reference_routed_unknown_cells = integer(length(sample_ids)),
   sample_qualified_unknown_labels = character(length(sample_ids)),
   PCW = character(length(sample_ids)),
   stringsAsFactors = FALSE
@@ -85,7 +85,10 @@ for (i in seq_along(sample_ids)) {
   sample_id <- sample_ids[[i]]
   message("Reading VZ subset ", i, " of ", length(sample_ids), ": ", sample_id)
   obj <- readRDS(subset_paths[[i]])
-  required_metadata <- c("consensus_label", "VZ_subset_reason", "PCW")
+  required_metadata <- c(
+    "consensus_label", "VZ_subset_reason", "unknown_reference_route",
+    "unknown_reference_route_support_n", "PCW"
+  )
   missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
   if (length(missing_metadata)) {
     stop(sample_id, " lacks metadata: ", paste(missing_metadata, collapse = ", "))
@@ -95,12 +98,21 @@ for (i in seq_along(sample_ids)) {
   if (length(pcw_values) != 1L) stop(sample_id, " must contain exactly one nonblank PCW value.")
   if (ncol(obj) == 0L) stop(sample_id, " VZ subset contains zero cells.")
   expected_unknown <- is_unknown_consensus_label(obj$consensus_label)
-  valid_reasons <- c("configured_broad_label", "shared_unknown")
+  valid_reasons <- c("configured_broad_label", "reference_route_vz")
   if (anyNA(obj$VZ_subset_reason) || any(!obj$VZ_subset_reason %in% valid_reasons)) {
     stop(sample_id, " has missing or invalid VZ_subset_reason values.")
   }
-  if (!all((obj$VZ_subset_reason == "shared_unknown") == expected_unknown)) {
+  if (!all((obj$VZ_subset_reason == "reference_route_vz") == expected_unknown)) {
     stop(sample_id, " VZ_subset_reason does not match its consensus Unknown identities.")
+  }
+  if (any(expected_unknown & (
+      obj$unknown_reference_route != "route_vz" |
+        obj$unknown_reference_route_support_n < 2L
+  ), na.rm = TRUE) || any(expected_unknown & (
+      is.na(obj$unknown_reference_route) |
+        is.na(obj$unknown_reference_route_support_n)
+  ))) {
+    stop(sample_id, " contains an Unknown cell without supported VZ routing.")
   }
 
   obj$orig.ident <- sample_id
@@ -113,7 +125,7 @@ for (i in seq_along(sample_ids)) {
   obj <- RenameCells(obj, add.cell.id = sample_id)
   merge_manifest$cells[[i]] <- ncol(obj)
   merge_manifest$configured_broad_cells[[i]] <- sum(!expected_unknown)
-  merge_manifest$shared_unknown_cells[[i]] <- sum(expected_unknown)
+  merge_manifest$reference_routed_unknown_cells[[i]] <- sum(expected_unknown)
   merge_manifest$sample_qualified_unknown_labels[[i]] <- paste(
     sort(unique(as.character(obj$regional_consensus_label[expected_unknown]))),
     collapse = "|"

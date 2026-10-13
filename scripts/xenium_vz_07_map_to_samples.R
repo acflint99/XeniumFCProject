@@ -125,11 +125,11 @@ if (anyNA(all_new_labels) || any(!nzchar(all_new_labels))) {
 }
 if (anyDuplicated(names(all_new_labels))) stop("Master VZ object contains duplicate cell names.")
 if (anyNA(all_subset_reasons) ||
-    any(!all_subset_reasons %in% c("configured_broad_label", "shared_unknown"))) {
+    any(!all_subset_reasons %in% c("configured_broad_label", "reference_route_vz"))) {
   stop("Master VZ object contains missing or invalid VZ_subset_reason values.")
 }
 if (!all(
-  (all_subset_reasons == "shared_unknown") ==
+  (all_subset_reasons == "reference_route_vz") ==
     is_unknown_consensus_label(master_obj$consensus_label)
 )) {
   stop("Master VZ subset provenance does not match consensus Unknown identities.")
@@ -197,12 +197,12 @@ mapping_rows <- future_lapply(seq_along(sample_ids), function(i) {
   if (sum(!is.na(temp_obj$VZ_subcluster)) != expected_cells) {
     stop(sample_id, ": VZ_subcluster metadata failed post-injection validation.")
   }
-  mapped_unknown_cells <- sum(temp_obj$VZ_subset_reason == "shared_unknown", na.rm = TRUE)
+  mapped_unknown_cells <- sum(temp_obj$VZ_subset_reason == "reference_route_vz", na.rm = TRUE)
   expected_unknown_cells <- sum(
-    relevant_reasons == "shared_unknown", na.rm = TRUE
+    relevant_reasons == "reference_route_vz", na.rm = TRUE
   )
   if (mapped_unknown_cells != expected_unknown_cells) {
-    stop(sample_id, ": VZ shared-Unknown provenance failed post-injection validation.")
+    stop(sample_id, ": VZ reference-routed Unknown provenance failed post-injection validation.")
   }
   saveRDS(temp_obj, output_paths[[i]], compress = FALSE)
   data.frame(
@@ -221,8 +221,8 @@ if (sum(mapping_manifest$mapped_vz_cells) != length(all_new_labels)) {
   stop("Mapped VZ cell total does not equal the master VZ object cell count.")
 }
 if (sum(mapping_manifest$mapped_vz_unknown_cells) !=
-    sum(all_subset_reasons == "shared_unknown")) {
-  stop("Mapped VZ shared-Unknown total does not equal the master VZ object count.")
+    sum(all_subset_reasons == "reference_route_vz")) {
+  stop("Mapped VZ reference-routed Unknown total does not equal the master VZ object count.")
 }
 write.csv(mapping_manifest, manifest_path, row.names = FALSE)
 message("Mapped every master VZ identity across all configured samples.")

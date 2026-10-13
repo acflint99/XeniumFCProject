@@ -31,7 +31,7 @@ removal_path <- file.path(
 )
 stage4_marker_path <- file.path(
   output_root, "xenium", "rl", "04_qc", "tables",
-  "RL_RawSubcluster_top10_Markers_Res0.8.csv"
+  "Xenium_RL_RawSubcluster_top10_Markers_Res0.8.csv"
 )
 stage5_path <- file.path(
   output_root, "xenium", "rl", "05_post_qc", "rds", "Xenium_RL_postQC.rds"

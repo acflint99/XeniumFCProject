@@ -15,6 +15,7 @@ When this directory is moved to the HPC project root, the intended layout is:
 ├── config/
 │   ├── cheaha_slurm_partitions.csv
 │   ├── config.yml
+│   ├── reviewed_unknown_qc.csv
 │   ├── samples.csv
 │   └── slides.csv
 ├── data/
@@ -45,21 +46,25 @@ captured together. Each manually separated sample has its own
 
 `config.yml` records split-slide preprocessing paths, runtime defaults, the
 confirmed v2 reference RDS paths, and the consensus broad labels used for VZ
-and RL subsetting. `regional_subsets.include_unknown_in_both_branches` records
-the approved rule that every consensus `Unknown`/`Unknown-##` identity enters
-both regional branches with explicit provenance. It is not yet the source of
-truth for the full pipeline.
+and RL subsetting. `regional_subsets.unknown_routing_method` records the
+approved rule that a sample-qualified `Unknown-##` population enters only the
+VZ or RL branch supported by at least two of the three existing reference
+votes. Nonregional and unresolved populations remain outside both branches.
+The configured label lists define how existing reference votes collapse to VZ,
+RL, or nonregional routing categories.
 VZ/RL integration settings still differ among scripts and should not be
 unified without checking the intended scientific workflow.
 
-`reviewed_unknown_relabels.csv` is the explicit scientific decision manifest
-used after the independently mapped VZ and RL annotations have been compared.
-Its key is the exact combination of `sample_id`, original `consensus_label`,
-`VZ_subcluster`, and `RL_subcluster`. The committed header-only file is
-intentional: populate it from the protected Stage-00 comparison template only
-after reviewing the paired annotations. Every decision also requires a final
-label and nonblank review notes. The original `consensus_label` is preserved in
-the combined object even after the reviewed label is applied.
+`reviewed_unknown_qc.csv` is the explicit population-level QC decision
+manifest. Its key is `sample_id` plus `consensus_label`; every row requires a
+`keep` or `remove` decision and nonblank review notes. Removal applies to the
+entire sample-qualified Unknown population. The conservative default during
+review is `keep`.
+
+`reviewed_unknown_relabels.csv` is retained for provenance of the earlier
+dual-branch comparison workflow. It is not used by the reference-routed
+production workflow because an Unknown population can enter at most one
+regional branch.
 
 `cheaha_slurm_partitions.csv` is a dated scheduling-policy snapshot rather
 than pipeline configuration. It records the partition classes, node counts,

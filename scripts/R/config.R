@@ -168,6 +168,48 @@ load_reviewed_unknown_relabels <- function(config = load_pipeline_config()) {
   )
 }
 
+load_reviewed_unknown_qc <- function(config = load_pipeline_config()) {
+  path <- resolve_config_path(config$manifests$reviewed_unknown_qc, config)
+  if (!file.exists(path)) stop("Reviewed Unknown-QC manifest not found: ", path)
+  read.csv(
+    path, check.names = FALSE, stringsAsFactors = FALSE,
+    na.strings = character()
+  )
+}
+
+load_reference_broad_taxonomy_manifest <- function(config = load_pipeline_config()) {
+  path <- resolve_config_path(config$manifests$reference_broad_taxonomy, config)
+  if (!file.exists(path)) stop("Reference broad-taxonomy manifest not found: ", path)
+  read.csv(
+    path, check.names = FALSE, stringsAsFactors = FALSE,
+    na.strings = character()
+  )
+}
+
+load_reviewed_broad_reference_threshold_manifest <- function(
+    config = load_pipeline_config()) {
+  path <- resolve_config_path(
+    config$manifests$reviewed_broad_reference_thresholds, config
+  )
+  if (!file.exists(path)) stop("Reviewed broad-threshold manifest not found: ", path)
+  read.csv(
+    path, check.names = FALSE, stringsAsFactors = FALSE,
+    na.strings = c("", "NA")
+  )
+}
+
+load_reviewed_residual_subcluster_labels <- function(
+    config = load_pipeline_config()) {
+  path <- resolve_config_path(
+    config$manifests$reviewed_residual_subcluster_labels, config
+  )
+  if (!file.exists(path)) stop("Reviewed residual-label manifest not found: ", path)
+  read.csv(
+    path, check.names = FALSE, stringsAsFactors = FALSE,
+    na.strings = character()
+  )
+}
+
 get_sample_record <- function(sample_id,
                               samples = NULL,
                               config = load_pipeline_config()) {
@@ -214,7 +256,11 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   samples <- load_sample_manifest(config)
   slides <- load_slide_manifest(config)
   resolution2_pilot <- load_resolution2_pilot_manifest(config)
+  unknown_qc <- load_reviewed_unknown_qc(config)
   unknown_relabels <- load_reviewed_unknown_relabels(config)
+  broad_taxonomy <- load_reference_broad_taxonomy_manifest(config)
+  broad_thresholds <- load_reviewed_broad_reference_threshold_manifest(config)
+  residual_labels <- load_reviewed_residual_subcluster_labels(config)
 
   required_sample_columns <- c(
     "sample_id", "input_directory", "input_layout", "cell_stats_file"
@@ -267,6 +313,39 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
       add_error(
         "Reviewed Unknown-relabel consensus_label values must be Unknown or Unknown-##."
       )
+    }
+  }
+
+  required_unknown_qc_columns <- c(
+    "sample_id", "consensus_label", "decision", "review_notes"
+  )
+  missing_unknown_qc_columns <- setdiff(
+    required_unknown_qc_columns, names(unknown_qc)
+  )
+  if (length(missing_unknown_qc_columns)) {
+    add_error(
+      "Missing reviewed Unknown-QC columns: ",
+      paste(missing_unknown_qc_columns, collapse = ", ")
+    )
+  } else if (nrow(unknown_qc)) {
+    unknown_qc_keys <- paste(
+      trimws(unknown_qc$sample_id), trimws(unknown_qc$consensus_label),
+      sep = "\u001f"
+    )
+    decisions <- tolower(trimws(unknown_qc$decision))
+    if (anyNA(unknown_qc_keys) || any(!nzchar(trimws(unknown_qc$sample_id))) ||
+        any(!grepl("^(Unknown|Unknown-[0-9]{2,})$", trimws(unknown_qc$consensus_label)))) {
+      add_error("Reviewed Unknown-QC keys must contain valid sample and Unknown labels.")
+    }
+    if (anyDuplicated(unknown_qc_keys)) {
+      add_error("Duplicate reviewed Unknown-QC keys found.")
+    }
+    if (any(!unknown_qc$sample_id %in% samples$sample_id)) {
+      add_error("Reviewed Unknown-QC manifest contains sample IDs absent from samples.csv.")
+    }
+    if (any(!decisions %in% c("keep", "remove")) ||
+        any(!nzchar(trimws(unknown_qc$review_notes)))) {
+      add_error("Reviewed Unknown-QC rows require keep/remove decisions and review notes.")
     }
   }
 
@@ -410,6 +489,9 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
 
   vz_labels <- unlist(config$regional_subsets$vz_broad_labels, use.names = FALSE)
   rl_labels <- unlist(config$regional_subsets$rl_broad_labels, use.names = FALSE)
+  nonregional_labels <- unlist(
+    config$regional_subsets$nonregional_broad_labels, use.names = FALSE
+  )
   if (!length(vz_labels) || any(!nzchar(vz_labels)) || anyDuplicated(vz_labels)) {
     add_error("regional_subsets.vz_broad_labels must contain unique, nonblank labels.")
   }
@@ -421,17 +503,153 @@ validate_pipeline_config <- function(config = load_pipeline_config(), check_file
   if (!length(rl_labels) || any(!nzchar(rl_labels)) || anyDuplicated(rl_labels)) {
     add_error("regional_subsets.rl_broad_labels must contain unique, nonblank labels.")
   }
-  if (!identical(config$regional_subsets$include_unknown_in_both_branches, TRUE)) {
+  if (!length(nonregional_labels) || any(!nzchar(nonregional_labels)) ||
+      anyDuplicated(nonregional_labels)) {
     add_error(
-      "regional_subsets.include_unknown_in_both_branches must be true so unresolved ",
-      "consensus identities are retained in both regional branches."
+      "regional_subsets.nonregional_broad_labels must contain unique, nonblank labels."
     )
   }
-  if (length(intersect(vz_labels, rl_labels))) {
-    add_error("VZ and RL configured broad-label lists must not overlap.")
+  all_route_labels <- c(vz_labels, rl_labels, nonregional_labels)
+  if (anyDuplicated(all_route_labels)) {
+    add_error("VZ, RL, and nonregional broad-label lists must not overlap.")
+  }
+  required_taxonomy_columns <- c("fine_label", "broad_label", "review_notes")
+  missing_taxonomy_columns <- setdiff(required_taxonomy_columns, names(broad_taxonomy))
+  if (length(missing_taxonomy_columns)) {
+    add_error(
+      "Missing reference broad-taxonomy columns: ",
+      paste(missing_taxonomy_columns, collapse = ", ")
+    )
+  } else {
+    broad_taxonomy$fine_label <- trimws(as.character(broad_taxonomy$fine_label))
+    broad_taxonomy$broad_label <- trimws(as.character(broad_taxonomy$broad_label))
+    if (anyNA(broad_taxonomy$fine_label) ||
+        any(!nzchar(broad_taxonomy$fine_label)) ||
+        anyDuplicated(broad_taxonomy$fine_label)) {
+      add_error("Reference broad taxonomy requires unique, nonblank fine labels.")
+    }
+    if (anyNA(broad_taxonomy$broad_label) ||
+        any(!broad_taxonomy$broad_label %in% c("VZ", "RL", "Other"))) {
+      add_error("Reference broad taxonomy may use only VZ, RL, and Other.")
+    }
+    expected_taxonomy <- data.frame(
+      fine_label = c(vz_labels, rl_labels, nonregional_labels),
+      broad_label = c(
+        rep("VZ", length(vz_labels)), rep("RL", length(rl_labels)),
+        rep("Other", length(nonregional_labels))
+      ),
+      stringsAsFactors = FALSE
+    )
+    observed_taxonomy <- broad_taxonomy[c("fine_label", "broad_label")]
+    expected_taxonomy <- expected_taxonomy[order(expected_taxonomy$fine_label), ]
+    observed_taxonomy <- observed_taxonomy[order(observed_taxonomy$fine_label), ]
+    rownames(expected_taxonomy) <- NULL
+    rownames(observed_taxonomy) <- NULL
+    if (!identical(expected_taxonomy, observed_taxonomy)) {
+      add_error("Reference broad taxonomy and configured regional label lists disagree.")
+    }
+  }
+
+  required_threshold_columns <- c(
+    "reference", "min_broad_winner_score", "min_broad_top2_margin",
+    "min_broad_winner_cell_fraction", "approved", "review_notes"
+  )
+  missing_threshold_columns <- setdiff(
+    required_threshold_columns, names(broad_thresholds)
+  )
+  if (length(missing_threshold_columns)) {
+    add_error(
+      "Missing reviewed broad-threshold columns: ",
+      paste(missing_threshold_columns, collapse = ", ")
+    )
+  } else {
+    broad_thresholds$reference <- trimws(as.character(broad_thresholds$reference))
+    if (anyDuplicated(broad_thresholds$reference) ||
+        !setequal(broad_thresholds$reference, c("Aldinger", "Sepp", "Science"))) {
+      add_error("Reviewed broad thresholds require one row per production reference.")
+    }
+    approved <- suppressWarnings(as.logical(broad_thresholds$approved))
+    if (anyNA(approved)) {
+      add_error("Reviewed broad-threshold approved values must be TRUE or FALSE.")
+    } else if (any(approved)) {
+      numeric_thresholds <- broad_thresholds[approved, c(
+        "min_broad_winner_score", "min_broad_top2_margin",
+        "min_broad_winner_cell_fraction"
+      ), drop = FALSE]
+      numeric_thresholds[] <- lapply(numeric_thresholds, function(x) {
+        suppressWarnings(as.numeric(x))
+      })
+      threshold_matrix <- as.matrix(numeric_thresholds)
+      if (any(!is.finite(threshold_matrix)) || any(threshold_matrix < 0) ||
+          any(threshold_matrix > 1)) {
+        add_error("Approved broad thresholds must be finite values in [0, 1].")
+      }
+      if (any(!nzchar(trimws(as.character(broad_thresholds$review_notes[approved]))))) {
+        add_error("Approved broad thresholds require review notes.")
+      }
+    }
+  }
+  required_residual_label_columns <- c(
+    "cluster", "final_label", "annotation_confidence",
+    "positive_marker_support", "anti_marker_support",
+    "cross_sample_support", "review_notes", "approved"
+  )
+  missing_residual_label_columns <- setdiff(
+    required_residual_label_columns, names(residual_labels)
+  )
+  if (length(missing_residual_label_columns)) {
+    add_error(
+      "Missing reviewed residual-label columns: ",
+      paste(missing_residual_label_columns, collapse = ", ")
+    )
+  } else if (nrow(residual_labels)) {
+    residual_labels$cluster <- trimws(as.character(residual_labels$cluster))
+    approved <- suppressWarnings(as.logical(residual_labels$approved))
+    if (anyNA(residual_labels$cluster) || any(!nzchar(residual_labels$cluster)) ||
+        anyDuplicated(residual_labels$cluster)) {
+      add_error("Reviewed residual labels require unique, nonblank cluster IDs.")
+    }
+    if (anyNA(approved)) {
+      add_error("Reviewed residual-label approved values must be TRUE or FALSE.")
+    }
+    if (any(approved) && any(vapply(
+      residual_labels[approved, setdiff(required_residual_label_columns, "approved"), drop = FALSE],
+      function(x) anyNA(x) || any(!nzchar(trimws(as.character(x)))), logical(1)
+    ))) {
+      add_error("Every approved residual label row requires complete evidence and review notes.")
+    }
+  }
+  routing_method <- trimws(as.character(
+    config$regional_subsets$unknown_routing_method
+  ))
+  if (!identical(routing_method, "reference_broad_2of3")) {
+    add_error(
+      "regional_subsets.unknown_routing_method must be 'reference_broad_2of3'."
+    )
+  }
+  route_support <- suppressWarnings(as.integer(
+    config$regional_subsets$unknown_route_min_reference_support
+  ))
+  if (length(route_support) != 1L || is.na(route_support) || route_support != 2L) {
+    add_error(
+      "regional_subsets.unknown_route_min_reference_support must remain 2."
+    )
   }
 
   if (isTRUE(check_files)) {
+    panel_path <- resolve_config_path(config$inputs$xenium_panel_genes, config)
+    if (!file.exists(panel_path)) {
+      add_error("Missing Xenium panel gene RDS: ", panel_path)
+    }
+    reference_paths <- unlist(config$inputs$references, use.names = FALSE)
+    reference_paths <- vapply(
+      reference_paths, resolve_config_path, character(1), config = config
+    )
+    missing_references <- reference_paths[!file.exists(reference_paths)]
+    if (length(missing_references)) {
+      add_error("Missing production reference RDS file(s): ",
+                paste(missing_references, collapse = ", "))
+    }
     for (i in seq_len(nrow(samples))) {
       paths <- resolve_sample_paths(samples[i, , drop = FALSE], config)
       if (!dir.exists(paths$input_dir)) {
