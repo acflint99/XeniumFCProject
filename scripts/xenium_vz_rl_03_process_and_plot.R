@@ -201,13 +201,14 @@ grDevices::dev.off()
 existing_markers <- lapply(markers, function(x) intersect(x, rownames(merged_obj)))
 existing_markers <- existing_markers[lengths(existing_markers) > 0L]
 Idents(merged_obj) <- factor(merged_obj$consensus_label, levels = rev(consensus_levels))
-p_dot <- DotPlot(merged_obj, features = existing_markers, assay = "Xenium") +
-  RotatedAxis() + scale_color_gradient(low = "lightgrey", high = "red") +
+p_dot <- workflow_dotplot(merged_obj, features = existing_markers, assay = "Xenium") +
+  RotatedAxis() +
   ggtitle("Xenium Merged Marker Expression (LogNorm)")
-Cairo::CairoTIFF(plot_paths[[3]], width = 14, height = 6, units = "in", res = 600)
+dot_dimensions <- workflow_dotplot_dimensions(p_dot)
+Cairo::CairoTIFF(plot_paths[[3]], width = dot_dimensions[["width"]], height = dot_dimensions[["height"]], units = "in", res = 600)
 print(p_dot)
 grDevices::dev.off()
-ggsave(plot_paths[[4]], p_dot, device = grDevices::cairo_pdf, width = 14, height = 6)
+ggsave(plot_paths[[4]], p_dot, device = grDevices::cairo_pdf, width = dot_dimensions[["width"]], height = dot_dimensions[["height"]])
 
 pc_clusters <- c("Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs")
 pc_markers <- c("FOXP1", "ITPR1", "COL5A1", "VSTM2L", "NDNF", "EBF2", "CALB1",
@@ -217,13 +218,14 @@ pc_subset$VZ_subcluster <- factor(pc_subset$VZ_subcluster, levels = rev(pc_clust
 Idents(pc_subset) <- "VZ_subcluster"
 existing_pc_markers <- intersect(pc_markers, rownames(pc_subset))
 if (!length(existing_pc_markers)) stop("No Purkinje markers are present in the Xenium assay.")
-p_pc <- DotPlot(pc_subset, features = existing_pc_markers, assay = "Xenium",
+p_pc <- workflow_dotplot(pc_subset, features = existing_pc_markers, assay = "Xenium",
                 cols = c("lightgrey", "red"), dot.scale = 8) +
   RotatedAxis() + ggtitle("Purkinje Cell Lineage Marker Expression")
-Cairo::CairoTIFF(plot_paths[[5]], width = 8, height = 5, units = "in", res = 600)
+pc_dimensions <- workflow_dotplot_dimensions(p_pc)
+Cairo::CairoTIFF(plot_paths[[5]], width = pc_dimensions[["width"]], height = pc_dimensions[["height"]], units = "in", res = 600)
 print(p_pc)
 grDevices::dev.off()
-ggsave(plot_paths[[6]], p_pc, device = grDevices::cairo_pdf, width = 8, height = 5)
+ggsave(plot_paths[[6]], p_pc, device = grDevices::cairo_pdf, width = pc_dimensions[["width"]], height = pc_dimensions[["height"]])
 
 Idents(merged_obj) <- factor(merged_obj$consensus_label, levels = consensus_levels)
 heatmap_markers <- FindAllMarkers(

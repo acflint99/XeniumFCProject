@@ -893,7 +893,7 @@ annotate_xenium_from_ref <- function(xenium_obj,
   
   # Weighted DotPlot
   Idents(xenium_obj) <- factor(xenium_obj$cluster_weighted, levels = rev(celltype_order))
-  p_dot_wei <- DotPlot(
+  p_dot_wei <- workflow_dotplot(
     xenium_obj,
     features = existing_markers,
     assay = "Xenium",
@@ -914,7 +914,7 @@ annotate_xenium_from_ref <- function(xenium_obj,
   
   # Majority DotPlot
   Idents(xenium_obj) <- factor(xenium_obj$cluster_majority, levels = rev(celltype_order))
-  p_dot_maj <- DotPlot(
+  p_dot_maj <- workflow_dotplot(
     xenium_obj,
     features = existing_markers,
     assay = "Xenium",

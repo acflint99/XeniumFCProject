@@ -513,9 +513,7 @@ if (review_only) {
     resolution_label = subcluster_resolution_label,
     availability_path = review_focused_marker_availability_path,
     tiff_path = review_focused_dotplot_tiff_path,
-    pdf_path = review_focused_dotplot_pdf_path,
-    width = 21,
-    height = 10
+    pdf_path = review_focused_dotplot_pdf_path
   )
 
   input_info <- file.info(merged_path)
@@ -879,7 +877,7 @@ Idents(obj) <- "RL_subcluster_rev"
 
 # 3. Create the Plot
 # Adding 'assay = "Xenium"' is the safest way to avoid multi-assay conflicts
-p1 <- DotPlot(obj,
+p1 <- workflow_dotplot(obj,
               features = rl_markers,
               assay = "Xenium",
               cols = c("lightgrey", "red"),
@@ -887,20 +885,19 @@ p1 <- DotPlot(obj,
               cluster.idents = FALSE) +
   RotatedAxis() +
   theme(
-    axis.text.x = element_text(size = 8, face = "italic"),
-    axis.text.y = element_text(size = 10, face = "bold")
+    axis.text.x = element_text(size = 12, face = "italic"),
+    axis.text.y = element_text(size = 12, face = "plain")
   ) +
   ggtitle("Xenium Merged RL Subcluster Markers")
 
-dotplot_width <- max(
-  16,
-  0.48 * length(unique(unlist(rl_markers, use.names = FALSE)))
-)
+dotplot_dimensions <- workflow_dotplot_dimensions(p1)
+dotplot_width <- dotplot_dimensions[["width"]]
+dotplot_height <- dotplot_dimensions[["height"]]
 
 Cairo::CairoTIFF(
   filename = file.path(plot_path, paste0("Xenium_RL_SubclusterMarker_DotPlot.tif")),
   width = dotplot_width,
-  height = 8,
+  height = dotplot_height,
   units = "in",
   res = 600
 )
@@ -908,7 +905,7 @@ print(p1)
 grDevices::dev.off()
 ggplot2::ggsave(
   file.path(plot_path, "Xenium_RL_SubclusterMarker_DotPlot.pdf"),
-  p1, device = grDevices::cairo_pdf, width = dotplot_width, height = 8
+  p1, device = grDevices::cairo_pdf, width = dotplot_width, height = dotplot_height
 )
 
 active_rl_lineage <- intersect(rl_lineage_subclusters, active_rl_order)
@@ -918,7 +915,7 @@ if (!length(active_rl_lineage) || !length(active_rl_other)) {
 }
 
 build_rl_split_dotplot <- function(marker_sets, identities, title) {
-  DotPlot(
+  workflow_dotplot(
     obj,
     features = marker_sets,
     assay = "Xenium",
@@ -930,13 +927,16 @@ build_rl_split_dotplot <- function(marker_sets, identities, title) {
   ) +
     RotatedAxis() +
     theme(
-      axis.text.x = element_text(size = 9, face = "italic"),
-      axis.text.y = element_text(size = 10, face = "bold")
+      axis.text.x = element_text(size = 12, face = "italic"),
+      axis.text.y = element_text(size = 12, face = "plain")
     ) +
     ggtitle(title)
 }
 
-save_rl_split_dotplot <- function(plot, filename_stem, width, height) {
+save_rl_split_dotplot <- function(plot, filename_stem) {
+  dimensions <- workflow_dotplot_dimensions(plot)
+  width <- dimensions[["width"]]
+  height <- dimensions[["height"]]
   Cairo::CairoTIFF(
     filename = file.path(plot_path, paste0(filename_stem, ".tif")),
     width = width,
@@ -959,9 +959,7 @@ p_rl_lineage <- build_rl_split_dotplot(
 )
 save_rl_split_dotplot(
   p_rl_lineage,
-  "Xenium_RL_Lineage_SubclusterMarker_DotPlot",
-  width = max(14, 0.45 * length(unlist(rl_compact_lineage_markers))),
-  height = 6
+  "Xenium_RL_Lineage_SubclusterMarker_DotPlot"
 )
 
 p_rl_other <- build_rl_split_dotplot(
@@ -971,9 +969,7 @@ p_rl_other <- build_rl_split_dotplot(
 )
 save_rl_split_dotplot(
   p_rl_other,
-  "Xenium_RL_Other_SubclusterMarker_DotPlot",
-  width = max(12, 0.5 * length(unlist(rl_other_markers))),
-  height = 5
+  "Xenium_RL_Other_SubclusterMarker_DotPlot"
 )
 
 # ----------------------------------------------------------------

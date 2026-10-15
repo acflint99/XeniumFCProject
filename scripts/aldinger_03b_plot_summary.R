@@ -70,7 +70,7 @@ if (!length(existing_markers)) {
   stop("None of the configured broad-cell markers are present in the Aldinger panel object.")
 }
 
-p3 <- DotPlot(
+p3 <- workflow_dotplot(
   AldingerSubset_newUMAP,
   features = existing_markers,
   assay = dotplot_assay,

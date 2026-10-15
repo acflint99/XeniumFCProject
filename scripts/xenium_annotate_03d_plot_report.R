@@ -466,7 +466,7 @@ build_page <- function(
   if (!length(existing_markers)) {
     stop("None of the configured broad-cell markers are present in ", sample_name, ".")
   }
-  p_dot <- DotPlot(
+  p_dot <- workflow_dotplot(
     obj,
     features = existing_markers,
     assay = "Xenium",

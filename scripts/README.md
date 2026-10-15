@@ -2035,11 +2035,29 @@ CPUs, while clustering defaults to one process after three forked clustering
 workers reached 422 GB MaxRSS and failed in VZ job 40676165. The launcher maps
 `VZ_INTEGRATE_CLUSTER_WORKERS` to `XENIUM_STAGE3_CLUSTER_WORKERS`; leave it
 unset at the safe default of 1 unless new memory evidence supports increasing
-it. Before clustering, stage 3 writes the provenance-checked restart object
+it. The launcher requests 600 GB on `medium`, retaining four CPUs for the
+pre-clustering UMAP while clustering remains single-worker. This resource-only
+increase follows two separate October 13 node losses during the same VZ
+clustering phase: full Stage-3 job 40925744 lost `c0194` after 2 hours 43
+minutes, and precluster-resume job 40930904 lost `c0191` after 58 minutes.
+Both jobs requested 256 GB, both nodes became non-responsive before MaxRSS
+could be returned, and neither failure supplied evidence that the scientific
+parameters were invalid. The larger request reserves headroom for the large
+SNN graph and reduces co-tenancy on the 754-GB Intel nodes without changing
+dimensions, UMAP neighbors, graph construction, resolutions, seed, or labels.
+
+Before clustering, stage 3 writes the provenance-checked restart object
 `Xenium_VZ_precluster_checkpoint.rds`; immediately after clustering it writes
 `Xenium_VZ_postcluster_checkpoint.rds` before creating any plots. Resume mode
 automatically prefers the post-clustering checkpoint when it exists, otherwise
-it uses the pre-clustering checkpoint. Each stage-3 script also parses its
+it uses the pre-clustering checkpoint. Checkpoints are written to a temporary
+file in the destination directory and atomically renamed only after a nonempty
+write completes, preventing a node loss during `saveRDS()` from replacing the
+last valid checkpoint with a partial file. The launcher explicitly permits
+requeue, appends logs across attempts, and automatically selects checkpoint
+resume when `SLURM_RESTART_COUNT` is positive and a checkpoint exists. Slurm
+therefore does not repeat normalization, PCA, Harmony, UMAP, and neighbor
+construction after a node-level restart. Each stage-3 script also parses its
 complete source at startup so a damaged later line fails before loading data or
 running analysis. If a job fails after either checkpoint, inspect and resume:
 
@@ -2048,6 +2066,13 @@ Rscript scripts/xenium_vz_03_integrate.R --resume-checkpoint --dry-run
 sbatch --export=ALL,VZ_INTEGRATE_RESUME_CHECKPOINT=true,VZ_INTEGRATE_OVERWRITE=true \
   scripts/run_xenium_vz_03_integrate.slurm
 ```
+
+A precluster resume is expected to take approximately 1-4 hours, excluding
+queue wait; this is low confidence because both recent attempts lost their
+nodes during clustering before reporting final resource use. The launcher
+retains a 24-hour limit to provide margin. After the first successful 600-GB
+run, collect `JobID`, `Elapsed`, `State`, `MaxRSS`, `ReqMem`, `AllocCPUS`, and
+`ExitCode` with `sacct` before reducing the request.
 
 Stage 3 writes
 `Xenium_VZ_UnknownClusters_BySample_UMAP.tif`, where each independently
@@ -3188,6 +3213,29 @@ Most outputs are written beneath `outputs/` in stage-specific directories. Commo
 Some reference-preparation and optional comparison artifacts still use manually
 assigned dates. The primary Xenium preprocessing, annotation, and VZ/RL branch
 contracts use stable stage names.
+
+### Shared DotPlot presentation
+
+Current reference, label-transfer, consensus, VZ/RL, and focused-marker DotPlots
+use `R/dotplot_helpers.R` (normally sourced through `color_palette.R`). Dot size
+always maps 0–100% to the same radius range (0–6); expression colors always use
+light grey to red with limits −2.5 to 2.5. Both legends appear above the plot,
+with Percent Expressed first. Gene and identity labels use 12-point text;
+cluster/subcluster labels use plain text. VZ/RL standalone figure dimensions
+follow the displayed gene and identity counts to avoid oversized spacing.
+
+The shared color range is a display convention, not a pooled normalization:
+Seurat still scales each gene within the plotted dataset. Existing single-identity
+plots retain `scale = FALSE` and explicitly label the legend as log-normalized;
+their expression values must not be interpreted as z-scores. Values outside the
+shared color limits saturate at the endpoints. No normalization, QC, clustering,
+annotation, identity selection, or saved analysis object changes are implied.
+
+Existing TIFF/PDF figures and reports must be regenerated to show this styling;
+RDS outputs remain valid. Review protected plot-only modes and output paths
+before authorizing replacement. Local syntax checks should take under 10 seconds
+per script and path-only dry-runs under 1 minute (static-inspection estimates);
+full figure regeneration depends on object size and should be timed on the HPC.
 
 ## Reproducibility notes and known caveats
 

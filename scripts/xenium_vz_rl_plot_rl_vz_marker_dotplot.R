@@ -183,7 +183,6 @@ cluster_summary <- data.frame(
 )
 write.csv(cluster_summary, cluster_summary_path, row.names = FALSE)
 
-plot_height <- max(10, min(18, 4 + 0.32 * length(cluster_levels)))
 write_focused_marker_dotplot(
   object = obj,
   marker_sets = rl_vz_diagnostic_markers,
@@ -193,9 +192,7 @@ write_focused_marker_dotplot(
   resolution_label = resolution_label,
   availability_path = availability_path,
   tiff_path = plot_tiff_path,
-  pdf_path = plot_pdf_path,
-  width = 22,
-  height = plot_height
+  pdf_path = plot_pdf_path
 )
 
 input_info <- file.info(input_path)

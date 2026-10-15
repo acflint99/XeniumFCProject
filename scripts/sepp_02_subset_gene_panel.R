@@ -123,7 +123,7 @@ if (!length(existing_markers)) {
   stop("None of the configured broad-cell markers are present in the Sepp panel object.")
 }
 
-p3 <- DotPlot(
+p3 <- workflow_dotplot(
   SeppSubset_newUMAP,
   features = existing_markers,
   assay = dotplot_assay,

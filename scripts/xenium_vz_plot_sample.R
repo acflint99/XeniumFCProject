@@ -154,9 +154,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
       paste(missing_compact_vz_markers, collapse = ", ")
     )
   }
-  dotplot_width <- max(18, 0.45 * length(requested_compact_vz_markers))
-
-  p_dot <- DotPlot(
+  p_dot <- workflow_dotplot(
     obj,
     features = vz_all_compact_markers,
     assay = "Xenium",
@@ -168,10 +166,12 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   ) +
     RotatedAxis() +
     theme(
-      axis.text.x = element_text(size = 8, face = "italic"),
-      axis.text.y = element_text(size = 10, face = "bold")
+      axis.text.x = element_text(size = 12, face = "italic"),
+      axis.text.y = element_text(size = 12, face = "plain")
     ) +
     ggtitle(paste(sample_id, "VZ Markers"))
+
+  dotplot_dimensions <- workflow_dotplot_dimensions(p_dot)
 
   p_report <- build_spatial_report_page(
     p_global_report,
@@ -227,16 +227,16 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   save_cairo_tiff(
     p_dot,
     file.path(sample_plot_dir, paste0(output_stem, "_Markers_DotPlot.tif")),
-    width = dotplot_width,
-    height = 10,
+    width = dotplot_dimensions[["width"]],
+    height = dotplot_dimensions[["height"]],
     background = "white"
   )
   ggplot2::ggsave(
     file.path(sample_plot_dir, paste0(output_stem, "_Markers_DotPlot.pdf")),
     plot = p_dot,
     device = grDevices::cairo_pdf,
-    width = dotplot_width,
-    height = 10,
+    width = dotplot_dimensions[["width"]],
+    height = dotplot_dimensions[["height"]],
     bg = "white"
   )
   save_spatial_report_pdf(

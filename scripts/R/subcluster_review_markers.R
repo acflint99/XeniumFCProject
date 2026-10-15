@@ -1,3 +1,5 @@
+source(here::here("scripts", "R", "dotplot_helpers.R"))
+
 # Focused lineage-marker panels and plotting utilities for raw VZ/RL
 # subcluster review. Marker availability is checked against the Xenium assay so
 # the review remains usable if the targeted panel changes.
@@ -157,7 +159,7 @@ focused_marker_set_signature <- function(marker_sets) {
 
 write_focused_marker_dotplot <- function(
     object, marker_sets, assay, group_by, branch, resolution_label,
-    availability_path, tiff_path, pdf_path, width = 21, height = 10) {
+    availability_path, tiff_path, pdf_path) {
   validate_focused_marker_sets(marker_sets)
   if (!assay %in% SeuratObject::Assays(object)) {
     stop("Focused marker DotPlot assay is absent: ", assay)
@@ -209,7 +211,7 @@ write_focused_marker_dotplot <- function(
     )
   }
 
-  plot <- Seurat::DotPlot(
+  plot <- workflow_dotplot(
     object,
     # Passing a named list to DotPlot triggers Seurat's legacy facet_grid()
     # interface, which is incompatible with current ggplot2. Add the marker
@@ -236,14 +238,18 @@ write_focused_marker_dotplot <- function(
     ) +
     Seurat::RotatedAxis() +
     ggplot2::theme(
-      axis.text.x = ggplot2::element_text(size = 8, face = "italic"),
-      axis.text.y = ggplot2::element_text(size = 9, face = "bold"),
-      strip.text.x = ggplot2::element_text(size = 9, face = "bold"),
+      axis.text.x = ggplot2::element_text(size = 12, face = "italic"),
+      axis.text.y = ggplot2::element_text(size = 12, face = "plain"),
+      strip.text.x = ggplot2::element_text(size = 12, face = "plain"),
       plot.title = ggplot2::element_text(hjust = 0.5, face = "bold")
     ) +
     ggplot2::ggtitle(
       paste0(branch, " focused lineage markers - resolution ", resolution_label)
     )
+
+  dimensions <- workflow_dotplot_dimensions(plot)
+  width <- dimensions[["width"]]
+  height <- dimensions[["height"]]
 
   Cairo::CairoTIFF(
     filename = tiff_path,

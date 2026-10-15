@@ -10,13 +10,13 @@ source(here::here("scripts", "R", "consensus_labels.R"))
 cluster_colors <- c(
   Purkinje    = "#1E90FF",  # vivid blue
   GABA        = "#39FF14",  # neon green
-  RL          = "#FF7F00",  # bright neon orange
-  UBC         = "#9370DB",  # medium purple
-  Granule     = "#FF00FF",  # bright magenta
+  RL          = "#FF00FF",  # bright magenta
+  UBC         = "#FF7F00",  # bright neon orange
+  Granule     = "#00CED1",  # neon cyan / teal
   VZ          = "#00FFD5",  # neon teal
   Glia        = "#7FBFFF",  # pastel blue
   OPC         = "#FFD700",  # neon yellow
-  Meninges    = "#00CED1",  # neon cyan / teal
+  Meninges    = "#9370DB",  # medium purple
   Endothelial = "#FF1A1A",  # deep red
   Immune      = "#E066FF",   # neon lavender
   Unknown = "grey80"
@@ -113,42 +113,12 @@ celltype_order <- c(
   "Endothelial", "Immune", "Unknown"
 )
 
-# Shared broad-label DotPlot scales. Keeping these fixed makes color, dot size,
-# label order, and legend orientation directly comparable across samples,
-# references, voting methods, and final consensus plots.
-broad_dotplot_col_min <- -2.5
-broad_dotplot_col_max <- 2.5
-broad_dotplot_dot_min <- 0
-broad_dotplot_dot_max <- 100
-broad_dotplot_dot_scale <- 6
+# Shared scales and figure styling for all current workflow DotPlots.
+source(here::here("scripts", "R", "dotplot_helpers.R"))
 
 standardize_broad_dotplot <- function(plot, label_order = celltype_order) {
-  plot +
-    ggplot2::scale_y_discrete(limits = rev(label_order), drop = FALSE) +
-    ggplot2::scale_color_gradient(
-      low = "lightgrey",
-      high = "red",
-      limits = c(broad_dotplot_col_min, broad_dotplot_col_max),
-      breaks = c(broad_dotplot_col_min, 0, broad_dotplot_col_max),
-      oob = scales::squish,
-      name = "Average expression\n(scaled)"
-    ) +
-    ggplot2::scale_radius(
-      range = c(0, broad_dotplot_dot_scale),
-      limits = c(broad_dotplot_dot_min, broad_dotplot_dot_max),
-      breaks = c(0, 25, 50, 75, 100),
-      name = "Percent expressed"
-    ) +
-    ggplot2::guides(
-      size = ggplot2::guide_legend(order = 1, direction = "vertical"),
-      color = ggplot2::guide_colorbar(order = 2, direction = "vertical")
-    ) +
-    ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
-      legend.position = "right",
-      legend.box = "vertical",
-      legend.direction = "vertical"
-    )
+  standardize_workflow_dotplot(plot) +
+    ggplot2::scale_y_discrete(limits = rev(label_order), drop = FALSE)
 }
 
 markers <- list(

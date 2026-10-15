@@ -4,9 +4,11 @@
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_VZ_Integrate_%j.err
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=256G
+#SBATCH --mem=600G
 #SBATCH --partition=medium
 #SBATCH --constraint=intel
+#SBATCH --requeue
+#SBATCH --open-mode=append
 #SBATCH --mail-user=acflint@uab.edu
 #SBATCH --mail-type=END,FAIL,INVALID_DEPEND
 

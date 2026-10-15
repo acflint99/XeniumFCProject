@@ -200,6 +200,36 @@ check_mem <- function(step_label) {
   # sum(m[,2]) gives the memory in MB currently used by R
   message(paste0("\n[", Sys.time(), "] --- ", step_label, " ---"))
   message("Memory in use: ", round(sum(m[, 2]), 1), " MB\n")
+
+  status_path <- "/proc/self/status"
+  if (file.exists(status_path)) {
+    status_lines <- readLines(status_path, warn = FALSE)
+    rss_lines <- grep("^(VmRSS|VmHWM):", status_lines, value = TRUE)
+    if (length(rss_lines)) {
+      message("Process memory: ", paste(trimws(rss_lines), collapse = "; "), "\n")
+    }
+  }
+}
+
+save_checkpoint_atomic <- function(object, path) {
+  job_id <- Sys.getenv("SLURM_JOB_ID", unset = as.character(Sys.getpid()))
+  temporary_path <- paste0(path, ".job-", job_id, ".tmp")
+  if (file.exists(temporary_path) && !file.remove(temporary_path)) {
+    stop("Cannot remove stale temporary checkpoint: ", temporary_path)
+  }
+  on.exit({
+    if (file.exists(temporary_path)) file.remove(temporary_path)
+  }, add = TRUE)
+
+  saveRDS(object, temporary_path, compress = FALSE)
+  temporary_info <- file.info(temporary_path)
+  if (is.na(temporary_info$size) || temporary_info$size <= 0) {
+    stop("Temporary checkpoint is empty or unreadable: ", temporary_path)
+  }
+  if (!file.rename(temporary_path, path)) {
+    stop("Failed to atomically publish checkpoint: ", path)
+  }
+  invisible(path)
 }
 
 # 2. PARALLELIZATION SETUP
@@ -405,7 +435,7 @@ if (plots_only) {
     created_at = format(Sys.time(), tz = "UTC", usetz = TRUE)
   )
   message("Saving restart checkpoint: ", checkpoint_path)
-  saveRDS(obj, checkpoint_path, compress = FALSE)
+  save_checkpoint_atomic(obj, checkpoint_path)
   check_mem("PRE-CLUSTERING CHECKPOINT SAVED")
 }
 
@@ -426,7 +456,7 @@ if (!plots_only && !resume_has_clusters) {
   provenance$postcluster_created_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
   attr(obj, "xenium_stage3_checkpoint") <- provenance
   message("Saving post-clustering checkpoint: ", postcluster_checkpoint_path)
-  saveRDS(obj, postcluster_checkpoint_path, compress = FALSE)
+  save_checkpoint_atomic(obj, postcluster_checkpoint_path)
   check_mem("POST-CLUSTERING CHECKPOINT SAVED")
 } else if (resume_has_clusters) {
   message("Post-clustering checkpoint detected; skipping FindClusters().")

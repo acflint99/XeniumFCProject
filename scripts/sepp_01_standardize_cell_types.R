@@ -228,31 +228,9 @@ p3 <- ggplot(
 ) +
   geom_point() +
   scale_y_discrete(limits = rev(original_celltype_order), drop = FALSE) +
-  scale_color_gradient(
-    low = "lightgrey",
-    high = "red",
-    limits = c(broad_dotplot_col_min, broad_dotplot_col_max),
-    breaks = c(broad_dotplot_col_min, 0, broad_dotplot_col_max),
-    oob = scales::squish,
-    name = "Average expression\n(scaled)"
-  ) +
-  scale_radius(
-    range = c(0, broad_dotplot_dot_scale),
-    limits = c(broad_dotplot_dot_min, broad_dotplot_dot_max),
-    breaks = c(0, 25, 50, 75, 100),
-    name = "Percent expressed"
-  ) +
-  guides(
-    size = guide_legend(order = 1, direction = "vertical"),
-    color = guide_colorbar(order = 2, direction = "vertical")
-  ) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
-    legend.position = "right",
-    legend.box = "vertical",
-    legend.direction = "vertical"
-  ) +
   ggtitle("Standard Marker Expression by Original Sepp Cell Type")
+
+p3 <- standardize_workflow_dotplot(p3)
 
 CairoTIFF(
   filename = file.path(plot_path, "SeppDotPlot_FC_origClusters_markers.tiff"),

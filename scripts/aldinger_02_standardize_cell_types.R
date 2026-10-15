@@ -55,7 +55,7 @@ if (!length(figure_cluster_markers)) {
   stop("None of the configured broad-cell markers are present in the Aldinger RNA assay.")
 }
 
-figure_cluster_dotplot <- DotPlot(
+figure_cluster_dotplot <- workflow_dotplot(
   object = Aldinger,
   features = figure_cluster_markers,
   assay = "RNA",
