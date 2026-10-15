@@ -31,4 +31,4 @@ CURRENT_SAMPLE=${SAMPLES[$SLURM_ARRAY_TASK_ID - 1]}
 echo "Launching Giotto Pipeline for Sample: $CURRENT_SAMPLE"
 
 # Pass the sample name directly to the R script
-Rscript scripts/Xenium_Giotto_BroadCluster_Analysis_array.R "$CURRENT_SAMPLE"
+Rscript --max-ppsize=500000 scripts/Xenium_Giotto_BroadCluster_Analysis_array.R "$CURRENT_SAMPLE"

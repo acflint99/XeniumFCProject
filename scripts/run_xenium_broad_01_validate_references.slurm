@@ -22,11 +22,11 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
-Rscript scripts/xenium_broad_01_validate_references.R --dry-run || exit 2
+Rscript --max-ppsize=500000 scripts/xenium_broad_01_validate_references.R --dry-run || exit 2
 
 driver_options=()
 if [[ "${BROAD_REFERENCE_VALIDATION_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_broad_01_validate_references.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_broad_01_validate_references.R "${driver_options[@]}"

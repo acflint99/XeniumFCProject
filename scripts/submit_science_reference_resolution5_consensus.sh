@@ -40,17 +40,17 @@ fi
 
 # Lightweight structural and path-only checks. These do not load large RDS
 # objects and do not create or replace analysis outputs.
-Rscript scripts/validate_config.R
+Rscript --max-ppsize=500000 scripts/validate_config.R
 if [[ "${downstream_only}" == "false" ]]; then
-  Rscript scripts/science_01_standardize_cell_types.R --dry-run
-  Rscript scripts/science_02_subset_gene_panel.R --dry-run
+  Rscript --max-ppsize=500000 scripts/science_01_standardize_cell_types.R --dry-run
+  Rscript --max-ppsize=500000 scripts/science_02_subset_gene_panel.R --dry-run
 fi
-Rscript scripts/xenium_annotate_01_label_transfer_rpca.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01_label_transfer_rpca.R \
   --all-samples-res5 --list >/dev/null
 printf 'DRY-RUN | Science transfer task map | samples=%s\n' "${manifest_count}"
 
 for task_id in $(seq 1 "${manifest_count}"); do
-  Rscript scripts/xenium_annotate_01_label_transfer_rpca.R \
+  Rscript --max-ppsize=500000 scripts/xenium_annotate_01_label_transfer_rpca.R \
     --all-samples-res5 --dry-run Science "${task_id}"
 done
 

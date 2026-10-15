@@ -26,7 +26,7 @@ export RENV_CONFIG_SANDBOX_ENABLED=FALSE
 export RENV_CONFIG_NAMESPACES_CHECK=FALSE
 export RENV_CONFIG_SYNCHRONIZED_CHECK=FALSE
 
-Rscript scripts/xenium_annotate_01c_reference_sampling_abstention_sensitivity.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01c_reference_sampling_abstention_sensitivity.R \
   --combine --dry-run || exit 2
 
 driver_options=(--combine)
@@ -34,5 +34,5 @@ if [[ "${REFERENCE_SAMPLING_ABSTENTION_COMBINE_OVERWRITE:-false}" == "true" ]]; 
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_01c_reference_sampling_abstention_sensitivity.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01c_reference_sampling_abstention_sensitivity.R \
   "${driver_options[@]}"

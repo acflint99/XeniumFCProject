@@ -27,4 +27,4 @@ if [[ "${RL_POST_QC_DIAGNOSTIC_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_rl_05a_diagnose_post_qc.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_rl_05a_diagnose_post_qc.R "${driver_options[@]}"

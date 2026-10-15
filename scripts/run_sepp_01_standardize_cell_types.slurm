@@ -22,4 +22,4 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
-Rscript scripts/sepp_01_standardize_cell_types.R
+Rscript --max-ppsize=500000 scripts/sepp_01_standardize_cell_types.R

@@ -19,4 +19,4 @@ cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 # submission when the lockfile changes; never mutate the library inside a job.
 
 # Run the analysis using the existing project library
-Rscript scripts/sepp_02_subset_gene_panel.R
+Rscript --max-ppsize=500000 scripts/sepp_02_subset_gene_panel.R

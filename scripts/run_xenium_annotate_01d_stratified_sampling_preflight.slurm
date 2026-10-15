@@ -30,7 +30,7 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
-Rscript scripts/xenium_annotate_01d_stratified_sampling_sensitivity.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01d_stratified_sampling_sensitivity.R \
   --inspect-strata --dry-run || exit 2
 
 driver_options=(--inspect-strata)
@@ -38,5 +38,5 @@ if [[ "${STRATIFIED_SAMPLING_PREFLIGHT_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_01d_stratified_sampling_sensitivity.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01d_stratified_sampling_sensitivity.R \
   "${driver_options[@]}"

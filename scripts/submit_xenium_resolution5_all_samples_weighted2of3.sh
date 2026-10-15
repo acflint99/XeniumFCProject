@@ -18,11 +18,11 @@ if [[ "${manifest_count}" != "34" ]]; then
   exit 2
 fi
 
-Rscript scripts/xenium_preprocess_03b_resolution2_pilot.R \
+Rscript --max-ppsize=500000 scripts/xenium_preprocess_03b_resolution2_pilot.R \
   --all-samples-res5 --list
 
 for task_id in $(seq 1 "${manifest_count}"); do
-  Rscript scripts/xenium_preprocess_03b_resolution2_pilot.R \
+  Rscript --max-ppsize=500000 scripts/xenium_preprocess_03b_resolution2_pilot.R \
     --all-samples-res5 --dry-run "${task_id}"
 done
 

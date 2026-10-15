@@ -26,5 +26,5 @@ driver_options=()
 if [[ "${RESIDUAL_MAPPING_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript scripts/xenium_residual_06_map_to_samples.R --dry-run || exit 2
-Rscript scripts/xenium_residual_06_map_to_samples.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_residual_06_map_to_samples.R --dry-run || exit 2
+Rscript --max-ppsize=500000 scripts/xenium_residual_06_map_to_samples.R "${driver_options[@]}"

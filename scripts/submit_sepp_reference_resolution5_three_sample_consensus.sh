@@ -62,14 +62,14 @@ export RENV_CONFIG_SANDBOX_ENABLED=FALSE
 export RENV_CONFIG_NAMESPACES_CHECK=FALSE
 export RENV_CONFIG_SYNCHRONIZED_CHECK=FALSE
 
-Rscript scripts/validate_config.R
+Rscript --max-ppsize=500000 scripts/validate_config.R
 
 for task_id in "${task_ids[@]}"; do
-  Rscript scripts/xenium_annotate_01_label_transfer_rpca.R \
+  Rscript --max-ppsize=500000 scripts/xenium_annotate_01_label_transfer_rpca.R \
     --all-samples-res5 --dry-run Sepp "${task_id}"
 done
 
-Rscript scripts/xenium_annotate_02_build_consensus.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_02_build_consensus.R \
   --all-samples-res5 --selected-samples --weighted-2of3 --list
 
 if [[ "${dry_run}" == "true" ]]; then

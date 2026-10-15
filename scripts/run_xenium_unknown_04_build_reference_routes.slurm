@@ -20,4 +20,4 @@ driver_options=()
 if [[ "${UNKNOWN_ROUTE_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript scripts/xenium_unknown_04_build_reference_routes.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_unknown_04_build_reference_routes.R "${driver_options[@]}"

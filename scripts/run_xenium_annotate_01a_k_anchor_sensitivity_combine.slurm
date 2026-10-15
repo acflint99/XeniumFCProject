@@ -21,7 +21,7 @@ export RENV_CONFIG_SANDBOX_ENABLED=FALSE
 export RENV_CONFIG_NAMESPACES_CHECK=FALSE
 export RENV_CONFIG_SYNCHRONIZED_CHECK=FALSE
 
-Rscript scripts/xenium_annotate_01a_k_anchor_sensitivity.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01a_k_anchor_sensitivity.R \
   --combine --dry-run || exit 2
 
 driver_options=(--combine)
@@ -29,5 +29,5 @@ if [[ "${K_ANCHOR_SENSITIVITY_COMBINE_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_01a_k_anchor_sensitivity.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01a_k_anchor_sensitivity.R \
   "${driver_options[@]}"

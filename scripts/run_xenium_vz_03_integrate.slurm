@@ -30,8 +30,27 @@ fi
 if [[ "${VZ_INTEGRATE_INCLUDE_UNCORRECTED:-false}" == "true" ]]; then
   driver_options+=(--include-uncorrected)
 fi
-if [[ "${VZ_INTEGRATE_RESUME_CHECKPOINT:-false}" == "true" ]]; then
+
+restart_count="${SLURM_RESTART_COUNT:-0}"
+if ! [[ "${restart_count}" =~ ^[0-9]+$ ]]; then
+  echo "SLURM_RESTART_COUNT must be a non-negative integer when set." >&2
+  exit 2
+fi
+
+checkpoint_dir="outputs/xenium/vz/03_integrated/rds"
+precluster_checkpoint="${checkpoint_dir}/Xenium_VZ_precluster_checkpoint.rds"
+postcluster_checkpoint="${checkpoint_dir}/Xenium_VZ_postcluster_checkpoint.rds"
+resume_requested="${VZ_INTEGRATE_RESUME_CHECKPOINT:-false}"
+
+if (( restart_count > 0 )) && \
+   [[ "${VZ_INTEGRATE_PLOTS_ONLY:-false}" != "true" ]] && \
+   [[ -s "${postcluster_checkpoint}" || -s "${precluster_checkpoint}" ]]; then
+  resume_requested="true"
+  echo "Slurm restart ${restart_count}: resuming the most advanced available VZ checkpoint."
+fi
+
+if [[ "${resume_requested}" == "true" ]]; then
   driver_options+=(--resume-checkpoint)
 fi
 
-Rscript scripts/xenium_vz_03_integrate.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_vz_03_integrate.R "${driver_options[@]}"

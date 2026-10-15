@@ -32,26 +32,26 @@ fi
 
 # Lightweight structural and path-only checks. These do not load large RDS
 # objects and do not create or replace analysis outputs.
-Rscript scripts/validate_config.R
-Rscript scripts/science_01_standardize_cell_types.R --dry-run
-Rscript scripts/science_02_subset_gene_panel.R --dry-run
-Rscript scripts/xenium_annotate_01_label_transfer_rpca.R \
+Rscript --max-ppsize=500000 scripts/validate_config.R
+Rscript --max-ppsize=500000 scripts/science_01_standardize_cell_types.R --dry-run
+Rscript --max-ppsize=500000 scripts/science_02_subset_gene_panel.R --dry-run
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01_label_transfer_rpca.R \
   --all-samples-res5 --list
 
 for task_id in $(seq 1 "${manifest_count}"); do
-  Rscript scripts/xenium_annotate_01_label_transfer_rpca.R \
+  Rscript --max-ppsize=500000 scripts/xenium_annotate_01_label_transfer_rpca.R \
     --all-samples-res5 --dry-run Science "${task_id}"
 done
 
-Rscript scripts/xenium_annotate_02_build_consensus.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_02_build_consensus.R \
   --all-samples-res5 --weighted-2of3 --dry-run
 
 for task_id in $(seq 1 "${manifest_count}"); do
-  Rscript scripts/xenium_annotate_03_apply_consensus.R \
+  Rscript --max-ppsize=500000 scripts/xenium_annotate_03_apply_consensus.R \
     --all-samples-res5 --weighted-2of3 --dry-run "${task_id}"
 done
 
-Rscript scripts/xenium_annotate_03d_plot_report.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03d_plot_report.R \
   --all-samples-res5 --weighted-2of3 --dry-run
 
 if [[ "${dry_run}" == "true" ]]; then

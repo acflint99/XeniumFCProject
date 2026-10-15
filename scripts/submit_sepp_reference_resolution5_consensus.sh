@@ -82,10 +82,10 @@ fi
 # objects and do not create or replace analysis outputs. sepp_02 does not have
 # a dry-run mode, so its two required inputs are checked directly.
 current_stage="configuration validation"
-Rscript scripts/validate_config.R
+Rscript --max-ppsize=500000 scripts/validate_config.R
 
 current_stage="required R package validation"
-Rscript -e '
+Rscript --max-ppsize=500000 -e '
 if (!requireNamespace("writexl", quietly = TRUE)) {
   stop(
     "Required package writexl is unavailable in the project renv library. ",
@@ -111,13 +111,13 @@ if [[ "${downstream_only}" == "false" ]]; then
 fi
 
 current_stage="Sepp transfer task-map validation"
-Rscript scripts/xenium_annotate_01_label_transfer_rpca.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01_label_transfer_rpca.R \
   --all-samples-res5 --list >/dev/null
 printf 'DRY-RUN PASS | Sepp transfer task map | samples=%s | concurrency=6\n' "${manifest_count}"
 
 for task_id in $(seq 1 "${manifest_count}"); do
   current_stage="Sepp transfer dry-run task ${task_id}/${manifest_count}"
-  Rscript scripts/xenium_annotate_01_label_transfer_rpca.R \
+  Rscript --max-ppsize=500000 scripts/xenium_annotate_01_label_transfer_rpca.R \
     --all-samples-res5 --dry-run Sepp "${task_id}"
 done
 

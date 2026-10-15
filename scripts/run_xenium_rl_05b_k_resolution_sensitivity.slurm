@@ -27,4 +27,4 @@ if [[ "${RL_K_RES_SENSITIVITY_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_rl_05b_k_resolution_sensitivity.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_rl_05b_k_resolution_sensitivity.R "${driver_options[@]}"

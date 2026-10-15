@@ -53,4 +53,4 @@ case "${VZ_SUBCLUSTER_MODE:-review}" in
     ;;
 esac
 
-Rscript scripts/xenium_vz_06_annotate_subclusters.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_vz_06_annotate_subclusters.R "${driver_options[@]}"

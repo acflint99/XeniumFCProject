@@ -19,5 +19,5 @@ module load R/4.4.1-foss-2023b
 
 cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 
-Rscript scripts/xenium_annotate_03_apply_consensus.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03_apply_consensus.R \
   --all-samples-res4 --weighted-2of3 --plots-only "${SLURM_ARRAY_TASK_ID}"

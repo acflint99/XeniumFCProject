@@ -19,4 +19,4 @@ if [[ "${CONSENSUS_REPORT_OVERWRITE:-false}" == "true" ]]; then
   report_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_03d_plot_report.R "${report_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03d_plot_report.R "${report_options[@]}"

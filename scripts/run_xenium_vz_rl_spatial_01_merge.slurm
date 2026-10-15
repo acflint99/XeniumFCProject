@@ -19,4 +19,4 @@ driver_options=()
 if [[ "${SPATIAL_MERGE_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript scripts/xenium_vz_rl_spatial_01_merge.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_spatial_01_merge.R "${driver_options[@]}"

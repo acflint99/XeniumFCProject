@@ -34,4 +34,4 @@ if [[ "${RL_INTEGRATE_RESUME_CHECKPOINT:-false}" == "true" ]]; then
   driver_options+=(--resume-checkpoint)
 fi
 
-Rscript scripts/xenium_rl_03_integrate.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_rl_03_integrate.R "${driver_options[@]}"

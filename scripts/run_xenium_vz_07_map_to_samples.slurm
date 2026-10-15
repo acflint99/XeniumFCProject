@@ -23,4 +23,4 @@ driver_options=()
 if [[ "${VZ_MAPPING_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript scripts/xenium_vz_07_map_to_samples.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_vz_07_map_to_samples.R "${driver_options[@]}"

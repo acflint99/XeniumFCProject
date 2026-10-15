@@ -27,5 +27,5 @@ if [[ "${RES5_SELECTED_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_preprocess_03b_resolution2_pilot.R \
+Rscript --max-ppsize=500000 scripts/xenium_preprocess_03b_resolution2_pilot.R \
   "${driver_options[@]}" 1

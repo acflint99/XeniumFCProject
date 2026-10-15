@@ -1,9 +1,9 @@
 #!/bin/bash
-# Submit all 15 manually separated biological samples. At most three heavy
+# Submit all 16 manually separated biological samples. At most three heavy
 # Xenium jobs run concurrently to limit memory and shared-filesystem pressure.
 
 #SBATCH --job-name=Xen_split_preprocess
-#SBATCH --array=1-15%3
+#SBATCH --array=1-16%3
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/split_preprocess_%A_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/split_preprocess_%A_%a.err
 #SBATCH --time=12:00:00
@@ -31,5 +31,5 @@ if [[ "${SPLIT_PREPROCESS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_preprocess_split_slides.R \
+Rscript --max-ppsize=500000 scripts/xenium_preprocess_split_slides.R \
   "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"

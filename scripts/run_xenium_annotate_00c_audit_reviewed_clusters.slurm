@@ -26,7 +26,7 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
-Rscript scripts/xenium_annotate_00c_audit_reviewed_clusters.R --dry-run || exit 2
+Rscript --max-ppsize=500000 scripts/xenium_annotate_00c_audit_reviewed_clusters.R --dry-run || exit 2
 
 driver_options=()
 if [[ "${REVIEWED_CLUSTER_AUDIT_OVERWRITE:-false}" == "true" ]]; then

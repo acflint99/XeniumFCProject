@@ -30,4 +30,4 @@ if [[ "${RL_VZ_MARKER_PLOTS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_vz_rl_plot_rl_vz_marker_dotplot.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_plot_rl_vz_marker_dotplot.R "${driver_options[@]}"

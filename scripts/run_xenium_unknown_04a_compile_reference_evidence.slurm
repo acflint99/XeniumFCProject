@@ -20,5 +20,5 @@ driver_options=()
 if [[ "${UNKNOWN_EVIDENCE_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript scripts/xenium_unknown_04a_compile_reference_evidence.R \
+Rscript --max-ppsize=500000 scripts/xenium_unknown_04a_compile_reference_evidence.R \
   "${driver_options[@]}"

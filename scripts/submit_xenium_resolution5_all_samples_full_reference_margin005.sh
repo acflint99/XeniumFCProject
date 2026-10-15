@@ -34,22 +34,22 @@ if [[ "${manifest_count}" != "34" ]]; then
   exit 2
 fi
 
-Rscript scripts/validate_config.R --check-files
-Rscript scripts/xenium_annotate_01_label_transfer_rpca.R \
+Rscript --max-ppsize=500000 scripts/validate_config.R --check-files
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01_label_transfer_rpca.R \
   --all-samples-res5 --list
 
 for reference in Aldinger Sepp Science; do
   for task_id in $(seq 1 "${manifest_count}"); do
-    Rscript scripts/xenium_annotate_01_label_transfer_rpca.R \
+    Rscript --max-ppsize=500000 scripts/xenium_annotate_01_label_transfer_rpca.R \
       --all-samples-res5 --dry-run "${reference}" "${task_id}"
   done
 done
 
-Rscript scripts/xenium_annotate_02_build_consensus.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_02_build_consensus.R \
   --all-samples-res5 --weighted-2of3 --list
-Rscript scripts/xenium_annotate_03_apply_consensus.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03_apply_consensus.R \
   --all-samples-res5 --weighted-2of3 --list
-Rscript scripts/xenium_annotate_03d_plot_report.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03d_plot_report.R \
   --all-samples-res5 --weighted-2of3 --list
 
 if [[ "${mode}" == "--dry-run" ]]; then

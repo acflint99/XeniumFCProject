@@ -21,5 +21,5 @@ export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 driver_options=()
 if [[ "${RESIDUAL_INTEGRATE_OVERWRITE:-false}" == "true" ]]; then driver_options+=(--overwrite); fi
-Rscript scripts/xenium_residual_03_integrate.R --dry-run || exit 2
-Rscript scripts/xenium_residual_03_integrate.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_residual_03_integrate.R --dry-run || exit 2
+Rscript --max-ppsize=500000 scripts/xenium_residual_03_integrate.R "${driver_options[@]}"

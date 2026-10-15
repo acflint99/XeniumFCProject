@@ -23,5 +23,5 @@ if [[ "${UNKNOWN_QC_AUDIT_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_04_audit_unknown_qc.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_04_audit_unknown_qc.R \
   "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"

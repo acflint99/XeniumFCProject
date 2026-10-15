@@ -17,7 +17,7 @@ module load R/4.4.1-foss-2023b
 
 cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 
-Rscript scripts/xenium_annotate_02_build_consensus.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_02_build_consensus.R \
   --all-samples-res5 --weighted-2of3 --dry-run || exit 2
 
 driver_options=(--all-samples-res5 --weighted-2of3)
@@ -25,4 +25,4 @@ if [[ "${RES5_ALL_CONSENSUS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_02_build_consensus.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_annotate_02_build_consensus.R "${driver_options[@]}"

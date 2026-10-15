@@ -28,5 +28,5 @@ if [[ "${RES5_SELECTED_W2OF3_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_03_apply_consensus.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03_apply_consensus.R \
   "${driver_options[@]}" 1

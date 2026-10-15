@@ -11,8 +11,8 @@ fi
 
 cd /home/acflint/R/Projects/XeniumFCProject
 
-Rscript scripts/xenium_annotate_01d_stratified_sampling_sensitivity.R --list
-Rscript scripts/xenium_annotate_01d_stratified_sampling_sensitivity.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01d_stratified_sampling_sensitivity.R --list
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01d_stratified_sampling_sensitivity.R \
   --inspect-strata --dry-run
 
 if [[ "${1:-}" == "--dry-run" ]]; then

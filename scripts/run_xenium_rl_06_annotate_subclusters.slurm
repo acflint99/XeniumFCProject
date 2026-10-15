@@ -50,4 +50,4 @@ case "${RL_SUBCLUSTER_MODE:-review}" in
     ;;
 esac
 
-Rscript scripts/xenium_rl_06_annotate_subclusters.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_rl_06_annotate_subclusters.R "${driver_options[@]}"

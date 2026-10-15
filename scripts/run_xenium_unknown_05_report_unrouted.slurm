@@ -20,4 +20,4 @@ driver_options=()
 if [[ "${UNKNOWN_REPORT_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript scripts/xenium_unknown_05_report_unrouted.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_unknown_05_report_unrouted.R "${driver_options[@]}"

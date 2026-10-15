@@ -18,5 +18,5 @@ cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 export RENV_CONFIG_SANDBOX_ENABLED=FALSE
 driver_options=()
 if [[ "${RESIDUAL_MERGE_OVERWRITE:-false}" == "true" ]]; then driver_options+=(--overwrite); fi
-Rscript scripts/xenium_residual_02_merge_samples.R --dry-run || exit 2
-Rscript scripts/xenium_residual_02_merge_samples.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_residual_02_merge_samples.R --dry-run || exit 2
+Rscript --max-ppsize=500000 scripts/xenium_residual_02_merge_samples.R "${driver_options[@]}"

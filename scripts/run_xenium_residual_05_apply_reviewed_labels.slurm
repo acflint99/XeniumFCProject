@@ -18,5 +18,5 @@ cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 export RENV_CONFIG_SANDBOX_ENABLED=FALSE
 driver_options=()
 if [[ "${RESIDUAL_LABEL_OVERWRITE:-false}" == "true" ]]; then driver_options+=(--overwrite); fi
-Rscript scripts/xenium_residual_05_apply_reviewed_labels.R --dry-run || exit 2
-Rscript scripts/xenium_residual_05_apply_reviewed_labels.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_residual_05_apply_reviewed_labels.R --dry-run || exit 2
+Rscript --max-ppsize=500000 scripts/xenium_residual_05_apply_reviewed_labels.R "${driver_options[@]}"

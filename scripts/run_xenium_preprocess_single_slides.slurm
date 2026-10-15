@@ -1,9 +1,9 @@
 #!/bin/bash
-# Submit all 19 biological samples from slides containing one sample. At most
+# Submit all 25 biological samples from slides containing one sample. At most
 # three heavy Xenium jobs run concurrently to limit memory and filesystem load.
 
 #SBATCH --job-name=Xen_single_preprocess
-#SBATCH --array=1-19%3
+#SBATCH --array=1-25%3
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/single_preprocess_%A_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/single_preprocess_%A_%a.err
 #SBATCH --time=12:00:00
@@ -31,5 +31,5 @@ if [[ "${SINGLE_PREPROCESS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_preprocess_single_slides.R \
+Rscript --max-ppsize=500000 scripts/xenium_preprocess_single_slides.R \
   "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"

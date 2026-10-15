@@ -11,9 +11,9 @@ fi
 
 cd /home/acflint/R/Projects/XeniumFCProject
 
-Rscript scripts/xenium_annotate_01c_reference_sampling_abstention_sensitivity.R --list
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01c_reference_sampling_abstention_sensitivity.R --list
 for task_id in $(seq 1 18); do
-  Rscript scripts/xenium_annotate_01c_reference_sampling_abstention_sensitivity.R \
+  Rscript --max-ppsize=500000 scripts/xenium_annotate_01c_reference_sampling_abstention_sensitivity.R \
     --dry-run "${task_id}"
 done
 

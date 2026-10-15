@@ -92,6 +92,14 @@ Rscript scripts/validate_config.R --check-files
 
 ## Main analysis stages
 
+### New samples added 2026-10-14
+
+The manifest now contains 41 analyzed samples (25 single-slide and 16 split-slide
+components). The original 34 row/task IDs are preserved. See
+[`NEW_SAMPLES_20261014.md`](NEW_SAMPLES_20261014.md) for the targeted seven-sample
+commands; historical 34-sample run examples below are not submission instructions
+for this cohort. Only section 2 is included from `GZFB124_1_X_G_3__2__1`.
+
 ### 1. Xenium gene panel
 
 `xenium_extract_gene_panel.R` extracts target genes from a Xenium panel JSON file. The resulting gene list is used to restrict the reference datasets to genes measurable by Xenium.

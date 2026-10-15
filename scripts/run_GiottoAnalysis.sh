@@ -22,4 +22,4 @@ export R_LIBS_USER=~/R/Projects/XeniumFCProject/renv/library/linux-rhel-7.9/R-4.
 # changes must be resolved manually before job submission.
 
 # 3. Run the main analysis
-Rscript scripts/Xenium_Giotto_Analysis.R
+Rscript --max-ppsize=500000 scripts/Xenium_Giotto_Analysis.R

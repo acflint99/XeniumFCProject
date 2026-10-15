@@ -24,4 +24,4 @@ if [[ "${VZ_COUNT_PLOTS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_vz_09_plot_counts.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_vz_09_plot_counts.R "${driver_options[@]}"

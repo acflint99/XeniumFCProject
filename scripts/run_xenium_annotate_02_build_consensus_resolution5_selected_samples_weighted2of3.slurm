@@ -27,7 +27,7 @@ export RENV_CONFIG_SANDBOX_ENABLED=FALSE
 export RENV_CONFIG_NAMESPACES_CHECK=FALSE
 export RENV_CONFIG_SYNCHRONIZED_CHECK=FALSE
 
-Rscript scripts/xenium_annotate_02_build_consensus.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_02_build_consensus.R \
   --all-samples-res5 --selected-samples --weighted-2of3 --dry-run || exit 2
 
 driver_options=(--all-samples-res5 --selected-samples --weighted-2of3)
@@ -35,4 +35,4 @@ if [[ "${RES5_SELECTED_CONSENSUS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_02_build_consensus.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_annotate_02_build_consensus.R "${driver_options[@]}"

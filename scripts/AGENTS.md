@@ -50,6 +50,8 @@
 
 ## Slurm conventions
 
+- Start every R process in current Slurm launchers and shell submission helpers with `Rscript --max-ppsize=500000` (or the equivalent option for a direct `R` invocation), including `--list`, `--dry-run`, and inline `-e` calls. This is a runtime safeguard against pointer-protection stack overflow, not an analysis parameter. Keep the option exactly once per invocation; preserve other startup flags. Apply this rule to new/edited launchers and verify with `python3 update_r_launchers_stack_limit.py --check` from scripts/. Leave historical directories untouched.
+
 - Always use the literal HPC username `acflint` in commands, paths, and examples. Do not use `$USER` or substitute another local username.
 - Treat `config/cheaha_slurm_partitions.csv` as a dated partition-policy reference and verify it against current Cheaha information before major resource changes. For CPU batch jobs, prefer `express` for requested limits at or below 2 hours, `short` for limits over 2 and at or below 12 hours, `medium` for limits over 12 and at or below 50 hours, and `long` only above 50 hours. Use `interactive` only for interactive sessions; use GPU, large-memory, or hardware-specific partitions only when the workload requires them.
 - Higher `priority_tier` values in the dated partition table indicate higher scheduling priority, but fair-share, node features, memory availability, and per-researcher node caps can still control actual start time. Do not shorten a scientifically justified time limit merely to reach a higher-priority partition.

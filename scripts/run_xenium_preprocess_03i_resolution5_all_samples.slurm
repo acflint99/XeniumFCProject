@@ -36,7 +36,7 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
-Rscript scripts/xenium_preprocess_03b_resolution2_pilot.R \
+Rscript --max-ppsize=500000 scripts/xenium_preprocess_03b_resolution2_pilot.R \
   --all-samples-res5 --dry-run "${SLURM_ARRAY_TASK_ID}" || exit 2
 
 driver_options=(--all-samples-res5)
@@ -44,5 +44,5 @@ if [[ "${RES5_ALL_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_preprocess_03b_resolution2_pilot.R \
+Rscript --max-ppsize=500000 scripts/xenium_preprocess_03b_resolution2_pilot.R \
   "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"

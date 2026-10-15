@@ -23,5 +23,5 @@ if [[ "${CONSENSUS_DOTPLOT_ONLY:-false}" == "true" ]]; then
   driver_options+=(--dotplot-only)
 fi
 
-Rscript scripts/xenium_annotate_03_apply_consensus.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_03_apply_consensus.R \
   "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"

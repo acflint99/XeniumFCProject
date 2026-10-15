@@ -19,4 +19,4 @@ cd ~/R/Projects/XeniumFCProject
 # submission when the lockfile changes; never mutate the library inside a job.
 
 # Run the analysis using the existing project library
-Rscript scripts/aldinger_03_subset_gene_panel.R
+Rscript --max-ppsize=500000 scripts/aldinger_03_subset_gene_panel.R

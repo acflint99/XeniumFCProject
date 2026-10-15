@@ -32,5 +32,5 @@ if [[ "${RESOLUTION_CONSISTENCY_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/xenium_annotate_05_compare_consensus_across_resolutions.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_05_compare_consensus_across_resolutions.R \
   "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"

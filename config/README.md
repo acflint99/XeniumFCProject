@@ -34,14 +34,15 @@ samples_path <- here::here("config", "samples.csv")
 
 ## Scope
 
-All 34 biological samples are intended to undergo preprocessing, annotation,
+All 41 biological samples are intended to undergo preprocessing, annotation,
 VZ analysis, and RL analysis. The manifest therefore does not contain
 stage-specific inclusion columns. Completion is determined from expected
 outputs rather than stored as changing state in the configuration.
 
 `samples.csv` has one row per biological sample. `slides.csv` has one row per
 physical Xenium input directory and records which biological samples were
-captured together. Each manually separated sample has its own
+included from that directory. For the GZFB124 three-section slide, only section 2
+is included; its declared count of one is the analyzed count. Each manually separated sample has its own
 `cell_stats_file` within the shared input directory.
 
 `config.yml` records split-slide preprocessing paths, runtime defaults, the

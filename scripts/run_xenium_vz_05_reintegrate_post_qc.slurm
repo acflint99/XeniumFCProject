@@ -32,4 +32,4 @@ if [[ "${VZ_POST_QC_RESUME_CHECKPOINT:-false}" == "true" ]]; then
   driver_options+=(--resume-checkpoint)
 fi
 
-Rscript scripts/xenium_vz_05_reintegrate_post_qc.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_vz_05_reintegrate_post_qc.R "${driver_options[@]}"

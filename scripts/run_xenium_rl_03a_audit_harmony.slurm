@@ -18,5 +18,5 @@ cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 export RENV_CONFIG_SANDBOX_ENABLED=FALSE
 driver_options=()
 if [[ "${RL_HARMONY_AUDIT_OVERWRITE:-false}" == "true" ]]; then driver_options+=(--overwrite); fi
-Rscript scripts/xenium_rl_03a_audit_harmony.R --dry-run || exit 2
-Rscript scripts/xenium_rl_03a_audit_harmony.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_rl_03a_audit_harmony.R --dry-run || exit 2
+Rscript --max-ppsize=500000 scripts/xenium_rl_03a_audit_harmony.R "${driver_options[@]}"

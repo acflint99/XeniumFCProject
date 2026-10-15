@@ -33,3 +33,10 @@ GZFB_22_X_G_3,GZFB_22_X_G_5__3__1,multi_sample_slide,GZFB22_3_cerebellum_cells_s
 GZFB_22_X_G_4,GZFB_22_X_G_4__2,multi_sample_slide,GZFB22_4_cerebellum_cells_stats.csv,
 GZFB_22_X_G_5,GZFB_22_X_G_5__3__1,multi_sample_slide,GZFB22_5_cerebellum_cells_stats.csv,
 GZFB_22_X_G_6,GZFB_22_X_G_6,single,,
+GZFB328_1_X_G_1,GZFB328_1_X_G_1,single,,Added 2026-10-14
+GZFB328_1_X_G_2,GZFB328_1_X_G_2,single,,Added 2026-10-14
+GZFB328_1_X_G_3,GZFB328_1_X_G_3,single,,Added 2026-10-14
+GZFB328_1_X_G_4,GZFB328_1_X_G_4,single,,Added 2026-10-14
+GZFB328_1_X_G_5,GZFB328_1_X_G_5,single,,Added 2026-10-14
+GZFB328_1_X_G_6,GZFB328_1_X_G_6,single,,Added 2026-10-14
+GZFB124_1_X_G_2,GZFB124_1_X_G_3__2__1,multi_sample_slide,GZFB124_2_cerebellum_cells_stats.csv,Only section 2 included; sections 1 and 3 excluded by user

@@ -32,7 +32,7 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
-Rscript scripts/xenium_annotate_01b_transfer_diagnostics.R \
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01b_transfer_diagnostics.R \
   --dry-run "${SLURM_ARRAY_TASK_ID}" || exit 2
 
 driver_options=()

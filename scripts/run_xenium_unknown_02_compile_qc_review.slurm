@@ -20,4 +20,4 @@ driver_options=()
 if [[ "${UNKNOWN_QC_COMPILE_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript scripts/xenium_unknown_02_compile_qc_review.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_unknown_02_compile_qc_review.R "${driver_options[@]}"

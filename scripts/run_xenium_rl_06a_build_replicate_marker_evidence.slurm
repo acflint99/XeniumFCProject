@@ -21,5 +21,5 @@ export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 driver_options=()
 if [[ "${RL_MARKER_EVIDENCE_OVERWRITE:-false}" == "true" ]]; then driver_options+=(--overwrite); fi
-Rscript scripts/xenium_rl_06a_build_replicate_marker_evidence.R --dry-run || exit 2
-Rscript scripts/xenium_rl_06a_build_replicate_marker_evidence.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_rl_06a_build_replicate_marker_evidence.R --dry-run || exit 2
+Rscript --max-ppsize=500000 scripts/xenium_rl_06a_build_replicate_marker_evidence.R "${driver_options[@]}"

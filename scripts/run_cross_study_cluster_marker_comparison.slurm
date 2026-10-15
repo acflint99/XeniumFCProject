@@ -33,4 +33,4 @@ export OPENBLAS_NUM_THREADS=1
 # --------------------------
 # Run your R script using the project library
 # --------------------------
-Rscript scripts/cross_study_cluster_marker_comparison.R
+Rscript --max-ppsize=500000 scripts/cross_study_cluster_marker_comparison.R

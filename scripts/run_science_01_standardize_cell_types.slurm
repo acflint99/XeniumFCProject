@@ -20,11 +20,11 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
-Rscript scripts/science_01_standardize_cell_types.R --dry-run || exit 2
+Rscript --max-ppsize=500000 scripts/science_01_standardize_cell_types.R --dry-run || exit 2
 
 driver_options=()
 if [[ "${SCIENCE_REFERENCE_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript scripts/science_01_standardize_cell_types.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/science_01_standardize_cell_types.R "${driver_options[@]}"

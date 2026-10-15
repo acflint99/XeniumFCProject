@@ -24,9 +24,9 @@ for required_table in "${required_existing_tables[@]}"; do
   fi
 done
 
-Rscript scripts/xenium_annotate_01e_reference_cap_convergence.R --list
+Rscript --max-ppsize=500000 scripts/xenium_annotate_01e_reference_cap_convergence.R --list
 for task_id in $(seq 1 27); do
-  Rscript scripts/xenium_annotate_01e_reference_cap_convergence.R \
+  Rscript --max-ppsize=500000 scripts/xenium_annotate_01e_reference_cap_convergence.R \
     --dry-run "${task_id}"
 done
 

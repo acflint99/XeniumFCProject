@@ -24,7 +24,7 @@ fi
 
 case "${plot_mode}" in
   samples)
-    Rscript scripts/xenium_vz_08_plot_samples.R \
+    Rscript --max-ppsize=500000 scripts/xenium_vz_08_plot_samples.R \
       "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"
     ;;
   combine)
@@ -32,7 +32,7 @@ case "${plot_mode}" in
       echo "VZ combine mode must be submitted with --array=1." >&2
       exit 2
     fi
-    Rscript scripts/xenium_vz_08_plot_samples.R \
+    Rscript --max-ppsize=500000 scripts/xenium_vz_08_plot_samples.R \
       --combine "${driver_options[@]}"
     ;;
   *)

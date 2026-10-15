@@ -30,4 +30,4 @@ CURRENT_SAMPLE=${SAMPLES[$INDEX]}
 
 echo "Launching VZ SpaTrack Pipeline for Sample: $CURRENT_SAMPLE"
 
-Rscript scripts/Xenium_VZRL_Subclusters_VZ_SpaTrack.R $CURRENT_SAMPLE
+Rscript --max-ppsize=500000 scripts/Xenium_VZRL_Subclusters_VZ_SpaTrack.R $CURRENT_SAMPLE
