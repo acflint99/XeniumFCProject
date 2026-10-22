@@ -19,4 +19,17 @@ driver_options=()
 if [[ "${COMBINE_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
+
+# Check all three mapping manifests after the dependent VZ mapping job ends.
+Rscript --max-ppsize=500000 scripts/validate_xenium_regional_mapping.R VZ RL RESIDUAL || exit 2
+combine_preflight="$(Rscript --max-ppsize=500000 \
+  scripts/xenium_vz_rl_01_combine_labels.R --dry-run 2>&1)" || {
+  printf '%s\n' "${combine_preflight}" >&2
+  exit 2
+}
+printf '%s\n' "${combine_preflight}"
+if [[ "${combine_preflight}" != *"DRY-RUN PASS"* ]]; then
+  echo "Combined-label input preflight failed; no analysis outputs were written." >&2
+  exit 2
+fi
 Rscript --max-ppsize=500000 scripts/xenium_vz_rl_01_combine_labels.R "${driver_options[@]}"

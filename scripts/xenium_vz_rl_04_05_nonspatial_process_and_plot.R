@@ -16,20 +16,22 @@ suppressPackageStartupMessages({
   library(future)
 })
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "downstream_resource_logging.R"))
 source(here("scripts", "color_palette.R"))
+source(here("scripts", "R", "corrected_broad_labels.R"))
+source(here("scripts", "R", "nonspatial_merge_plots.R"))
 
 config <- load_pipeline_config()
 sample_ids <- load_sample_manifest(config)$sample_id
 workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1")))
 if (is.na(workers) || workers < 1L) stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
 
-# Seurat's uwot implementation derives its thread count from the active future
-# plan. Restrict multisession use to UMAP itself so full Seurat objects are not
-# exported to workers during normalization, scaling, PCA, or Harmony.
+# Keep future evaluation sequential even for UMAP. Allocated CPUs may still
+# serve compiled routines, but do not create full-object R worker sessions.
 run_umap_with_workers <- function(object, ...) {
   old_plan <- future::plan()
   on.exit(future::plan(old_plan), add = TRUE)
-  if (workers > 1L) future::plan(future::multisession, workers = workers)
+  future::plan(future::sequential)
   Seurat::RunUMAP(object, ...)
 }
 
@@ -46,26 +48,30 @@ if (process_only && plots_only) stop("Choose --process-only or --plots-only, not
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
-input_path <- file.path(output_root, "xenium", "vz_rl", "02_merged", "rds", "Xenium_VZRL_merged.rds")
-input_manifest_path <- file.path(output_root, "xenium", "vz_rl", "02_merged", "tables", "Xenium_VZRL_merge_manifest.csv")
-rds_dir <- file.path(output_root, "xenium", "vz_rl", "03_processed", "rds")
-plot_dir <- file.path(output_root, "xenium", "vz_rl", "03_processed", "plots")
-table_dir <- file.path(output_root, "xenium", "vz_rl", "03_processed", "tables")
+nonspatial_root <- file.path(output_root, "xenium", "vz_rl", "nonspatial")
+# Project-relative overrides support isolated reruns from an archived merge.
+# The backup remains read-only; both jobs must use the same overrides.
+rerun_directory <- function(variable, default) {
+  value <- Sys.getenv(variable, unset = "")
+  if (!nzchar(value)) return(default)
+  if (!nzchar(trimws(value))) stop(variable, " must not contain only whitespace.")
+  normalizePath(here(value), mustWork = FALSE)
+}
+merge_dir <- rerun_directory("COMBINED_MERGE_INPUT_DIR", file.path(nonspatial_root, "03_merged"))
+nonspatial_root <- rerun_directory("COMBINED_NONSPATIAL_OUTPUT_DIR", nonspatial_root)
+input_path <- file.path(merge_dir, "rds", "Xenium_VZRL_merged.rds")
+input_manifest_path <- file.path(merge_dir, "tables", "Xenium_VZRL_merge_manifest.csv")
+rds_dir <- file.path(nonspatial_root, "04_processed", "rds")
+plot_dir <- rerun_directory("COMBINED_PLOT_OUTPUT_DIR", file.path(nonspatial_root, "05_plots"))
+table_dir <- file.path(nonspatial_root, "04_processed", "tables")
 processed_path <- file.path(rds_dir, "Xenium_VZRL_processed.rds")
 processed_manifest_path <- file.path(table_dir, "Xenium_VZRL_processed_manifest.csv")
+message("Combined merge input: ", input_path)
+message("Combined processed object: ", processed_path)
+message("Combined plot directory: ", plot_dir)
 
-plot_names <- c(
-  "Xenium_Batch_Comp_UMAP.tif",
-  "Xenium_Merged_ConsensusLabel_UMAP.tif",
-  "Xenium_Merged_consensus_label_DotPlot_markers.tif",
-  "Xenium_Merged_consensus_label_DotPlot_markers.pdf",
-  "Xenium_Purkinje_Specific_DotPlot.tif",
-  "Xenium_Purkinje_Specific_DotPlot.pdf",
-  "Xenium_Merged_Cluster_Top5_Heatmap.tif",
-  "Xenium_Merged_Cluster_Top5_Heatmap.pdf",
-  "Xenium_Signaling_Genes_dual_VlnPlot.tif",
-  "Xenium_Signaling_Genes_dual_VlnPlot.pdf"
-)
+plot_names <- c(nonspatial_plot_spec()$filename, "Xenium_Merged_plot_manifest.csv",
+                "Xenium_Merged_Heatmap_marker_summary.csv")
 plot_paths <- file.path(plot_dir, plot_names)
 
 if (dry_run) {
@@ -75,7 +81,7 @@ if (dry_run) {
       if (process_only) "processing" else if (plots_only) "plotting" else "inspection",
       "]"
     ),
-    inputs = if (plots_only) processed_path else c(input_path, input_manifest_path),
+    inputs = if (plots_only) c(processed_path, processed_manifest_path, input_path) else c(input_path, input_manifest_path),
     outputs = c(processed_path, processed_manifest_path, plot_paths)
   )
   quit(save = "no", status = 0L)
@@ -101,11 +107,13 @@ if (process_only) {
   input_manifest <- read.csv(input_manifest_path, stringsAsFactors = FALSE)
   if (nrow(input_manifest) != length(sample_ids) ||
       !setequal(input_manifest$sample_id, sample_ids)) {
-    stop("Combined input manifest must contain exactly the configured 34 samples.")
+    stop("Combined input manifest must contain exactly the samples in config/samples.csv.")
   }
   merged_obj <- readRDS(input_path)
+  log_downstream_memory("OBJECT LOADED", merged_obj)
   required_metadata <- c(
-    "orig.ident", "comb_subcluster", "consensus_label", "VZ_subcluster",
+    "orig.ident", "comb_subcluster", "consensus_label", "corrected_broad_label",
+    "VZ_subcluster",
     "RL_subcluster", "VZ_subset_reason", "RL_subset_reason",
     "residual_subcluster", "residual_reference_route",
     "residual_subset_reason", "residual_annotation_confidence",
@@ -114,6 +122,10 @@ if (process_only) {
   )
   missing_metadata <- setdiff(required_metadata, colnames(merged_obj[[]]))
   if (length(missing_metadata)) stop("Combined merge lacks metadata: ", paste(missing_metadata, collapse = ", "))
+  if (!identical(as.character(merged_obj$corrected_broad_label),
+                 map_corrected_broad_labels(merged_obj$comb_subcluster))) {
+    stop("Combined merge corrected broad labels differ from the approved fine-label mapping.")
+  }
   if (ncol(merged_obj) != sum(input_manifest$cells)) {
     stop("Combined merge cell count does not match its manifest.")
   }
@@ -125,10 +137,14 @@ if (process_only) {
   plan(sequential)
   DefaultAssay(merged_obj) <- "Xenium"
   merged_obj <- NormalizeData(merged_obj)
+  log_downstream_memory("NormalizeData COMPLETE", merged_obj)
   merged_obj <- FindVariableFeatures(merged_obj, nfeatures = 2000)
   merged_obj <- JoinLayers(merged_obj)
+  log_downstream_memory("JoinLayers COMPLETE", merged_obj)
   merged_obj <- ScaleData(merged_obj)
+  log_downstream_memory("ScaleData COMPLETE", merged_obj)
   merged_obj <- RunPCA(merged_obj, npcs = 30, seed.use = config$runtime$random_seed)
+  log_downstream_memory("RunPCA COMPLETE", merged_obj)
   merged_obj <- run_umap_with_workers(
     merged_obj, reduction = "pca", dims = 1:30,
     reduction.name = "umap.unintegrated", seed.use = config$runtime$random_seed
@@ -170,95 +186,21 @@ if (!input_is_current) stop("Combined merge changed after processing. Rerun --pr
 
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 merged_obj <- readRDS(processed_path)
+log_downstream_memory("OBJECT LOADED", merged_obj)
 if (ncol(merged_obj) != processed_manifest$cells[[1]]) stop("Processed object cell count does not match its manifest.")
+if (!"corrected_broad_label" %in% colnames(merged_obj[[]]) ||
+    !identical(as.character(merged_obj$corrected_broad_label),
+               map_corrected_broad_labels(merged_obj$comb_subcluster))) {
+  stop("Processed object lacks current corrected broad labels.")
+}
 required_reductions <- c("umap.unintegrated", "umap.harmony")
 if (!all(required_reductions %in% Reductions(merged_obj))) {
   stop("Processed object lacks reduction(s): ", paste(setdiff(required_reductions, Reductions(merged_obj)), collapse = ", "))
 }
 set.seed(config$runtime$random_seed)
 
-p_pre <- DimPlot(merged_obj, reduction = "umap.unintegrated", group.by = "orig.ident", raster = TRUE) +
-  ggtitle("Pre-Harmony (PCA UMAP)")
-p_post <- DimPlot(merged_obj, reduction = "umap.harmony", group.by = "orig.ident", raster = TRUE) +
-  ggtitle("Post-Harmony (Harmony UMAP)")
-Cairo::CairoTIFF(plot_paths[[1]], width = 16, height = 7, units = "in", res = 600)
-print(p_pre + p_post)
-grDevices::dev.off()
-
-observed_consensus <- unique(as.character(merged_obj$consensus_label))
-consensus_levels <- order_consensus_levels(observed_consensus, celltype_order)
-validate_palette(consensus_levels)
-consensus_colors <- resolve_cluster_colors(consensus_levels)
-p_consensus <- DimPlot(
-  merged_obj, reduction = "umap.harmony", group.by = "consensus_label",
-  label = TRUE, label.size = 4, label.box = TRUE, raster = TRUE,
-  pt.size = 0.5, alpha = 0.8, cols = consensus_colors
-) + ggtitle("Xenium Merged UMAP: Consensus Labels") + theme_classic()
-Cairo::CairoTIFF(plot_paths[[2]], width = 12, height = 9, units = "in", res = 600)
-print(p_consensus)
-grDevices::dev.off()
-
-existing_markers <- lapply(markers, function(x) intersect(x, rownames(merged_obj)))
-existing_markers <- existing_markers[lengths(existing_markers) > 0L]
-Idents(merged_obj) <- factor(merged_obj$consensus_label, levels = rev(consensus_levels))
-p_dot <- workflow_dotplot(merged_obj, features = existing_markers, assay = "Xenium") +
-  RotatedAxis() +
-  ggtitle("Xenium Merged Marker Expression (LogNorm)")
-dot_dimensions <- workflow_dotplot_dimensions(p_dot)
-Cairo::CairoTIFF(plot_paths[[3]], width = dot_dimensions[["width"]], height = dot_dimensions[["height"]], units = "in", res = 600)
-print(p_dot)
-grDevices::dev.off()
-ggsave(plot_paths[[4]], p_dot, device = grDevices::cairo_pdf, width = dot_dimensions[["width"]], height = dot_dimensions[["height"]])
-
-pc_clusters <- c("Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs")
-pc_markers <- c("FOXP1", "ITPR1", "COL5A1", "VSTM2L", "NDNF", "EBF2", "CALB1",
-                "TRPC3", "NEFL", "ETV1", "PCDH10", "EBF1", "BCL11A", "RORB", "EN1")
-pc_subset <- subset(merged_obj, subset = VZ_subcluster %in% pc_clusters)
-pc_subset$VZ_subcluster <- factor(pc_subset$VZ_subcluster, levels = rev(pc_clusters))
-Idents(pc_subset) <- "VZ_subcluster"
-existing_pc_markers <- intersect(pc_markers, rownames(pc_subset))
-if (!length(existing_pc_markers)) stop("No Purkinje markers are present in the Xenium assay.")
-p_pc <- workflow_dotplot(pc_subset, features = existing_pc_markers, assay = "Xenium",
-                cols = c("lightgrey", "red"), dot.scale = 8) +
-  RotatedAxis() + ggtitle("Purkinje Cell Lineage Marker Expression")
-pc_dimensions <- workflow_dotplot_dimensions(p_pc)
-Cairo::CairoTIFF(plot_paths[[5]], width = pc_dimensions[["width"]], height = pc_dimensions[["height"]], units = "in", res = 600)
-print(p_pc)
-grDevices::dev.off()
-ggsave(plot_paths[[6]], p_pc, device = grDevices::cairo_pdf, width = pc_dimensions[["width"]], height = pc_dimensions[["height"]])
-
-Idents(merged_obj) <- factor(merged_obj$consensus_label, levels = consensus_levels)
-heatmap_markers <- FindAllMarkers(
-  merged_obj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25,
-  max.cells.per.ident = 500, random.seed = config$runtime$random_seed
+render_nonspatial_merge_plots(
+  merged_obj, plot_dir = plot_dir, sample_ids = sample_ids,
+  seed = config$runtime$random_seed, processed_path = processed_path
 )
-top_markers <- heatmap_markers %>% group_by(cluster) %>%
-  slice_max(n = 5, order_by = avg_log2FC, with_ties = FALSE) %>% pull(gene) %>% unique()
-temp_obj <- ScaleData(merged_obj, features = top_markers, verbose = FALSE)
-p_heatmap <- DoHeatmap(
-  subset(temp_obj, downsample = 100), features = rev(top_markers),
-  group.by = "consensus_label", group.colors = consensus_colors,
-  size = 4, angle = 45, draw.lines = TRUE, raster = FALSE
-) + scale_fill_viridis_c(option = "viridis", name = "Z-Score", na.value = "white") +
-  ggtitle("Top 5 Markers per Cluster")
-Cairo::CairoTIFF(plot_paths[[7]], width = 14, height = 12, units = "in", res = 600)
-print(p_heatmap)
-grDevices::dev.off()
-ggsave(plot_paths[[8]], p_heatmap, device = grDevices::cairo_pdf, width = 14, height = 12)
-
-kit_genes <- unique(c("APP", "TNFRSF21", "CADM3", "CADM4", "NECTIN3", "CNTN2", "L1CAM",
-                      "CXCL12", "CXCR4", "EFNB2", "EPHA4", "GJA1", "NCAM1", "NRXN2",
-                      "CLSTN1", "ADGRL1", "DAG1", "LRRTM1", "RELN", "VLDLR", "CD99", "NTF3", "NTRK2"))
-kit_genes <- intersect(kit_genes, rownames(merged_obj))
-kit_idents <- intersect(c("Granule", "Purkinje", "Glia", "GABA", "OPC", "UBC"), levels(Idents(merged_obj)))
-if (!length(kit_genes) || !length(kit_idents)) stop("Signaling-gene violin inputs are absent.")
-p_vln <- VlnPlot(
-  merged_obj, features = kit_genes, pt.size = 0, ncol = 3,
-  cols = cluster_colors[kit_idents], idents = kit_idents
-)
-Cairo::CairoTIFF(plot_paths[[9]], width = 20, height = 20, units = "in", res = 600)
-print(p_vln)
-grDevices::dev.off()
-ggsave(plot_paths[[10]], p_vln, device = grDevices::cairo_pdf, width = 20, height = 20)
-
 message("Saved combined plots without rerunning integration.")

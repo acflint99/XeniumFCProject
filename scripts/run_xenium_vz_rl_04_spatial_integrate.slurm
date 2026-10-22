@@ -4,7 +4,7 @@
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_SpatialProcess_%j.err
 #SBATCH --time=48:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=256G
+#SBATCH --mem=600G
 #SBATCH --partition=medium
 #SBATCH --constraint=intel
 #SBATCH --mail-user=acflint@uab.edu
@@ -19,4 +19,4 @@ driver_options=()
 if [[ "${SPATIAL_PROCESS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript --max-ppsize=500000 scripts/xenium_vz_rl_spatial_02_integrate.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_04_spatial_integrate.R "${driver_options[@]}"

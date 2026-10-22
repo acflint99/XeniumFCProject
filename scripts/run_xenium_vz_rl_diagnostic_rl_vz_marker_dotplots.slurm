@@ -4,8 +4,8 @@
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/RLVZ_MarkerPlots_%A_%a.err
 #SBATCH --array=1-2%2
 #SBATCH --time=02:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=128G
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=256G
 #SBATCH --partition=express
 #SBATCH --constraint=intel
 #SBATCH --mail-user=acflint@uab.edu
@@ -30,4 +30,5 @@ if [[ "${RL_VZ_MARKER_PLOTS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-Rscript --max-ppsize=500000 scripts/xenium_vz_rl_plot_rl_vz_marker_dotplot.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_diagnostic_rl_vz_marker_dotplot.R "${driver_options[@]}"
+

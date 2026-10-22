@@ -17,7 +17,7 @@ config <- load_pipeline_config()
 
 # Define paths
 data_dir <- here("outputs", "xenium", "vz_rl", "01_combined_labels", "rds")
-plot_out_dir <- here("outputs", "xenium", "vz_rl", "03_processed", "plots", "cluster_counts")
+plot_out_dir <- here("outputs", "xenium", "vz_rl", "nonspatial", "05_plots", "cluster_counts")
 if(!dir.exists(plot_out_dir)) dir.create(plot_out_dir, recursive = TRUE)
 
 # 1. Define a named list of your cluster sets
@@ -36,7 +36,7 @@ cluster_sets <- list(
   ),
   "Glial_Lineage" = c(
     "VZPs", "Cycling VZPs", "RG Progenitors", "Cycling Glia",
-    "BG", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs"
+    "BG", "BG Progenitors", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs"
   ),
   "Other_Lineage" = c(
     "Cycling Cells", "Meninges", "Microglia", "Endothelial", "Immune"
@@ -78,11 +78,16 @@ for (set_name in names(cluster_sets)) {
   
   # Filter the master dataframe for the current lineage
   plot_df <- master_plot_df %>%
-    filter(comb_subcluster %in% current_clusters)
+    filter(comb_subcluster %in% current_clusters) %>%
+    # Pool counts across samples at each age before normalizing.
+    group_by(PCW_num, comb_subcluster) %>%
+    summarise(cell_count = sum(cell_count), .groups = "drop") %>%
+    group_by(PCW_num) %>%
+    mutate(percent_abundance = 100 * cell_count / sum(cell_count)) %>%
+    ungroup()
   
   if (nrow(plot_df) == 0) {
-    message("No data found for: ", set_name)
-    next
+    stop("Cannot calculate percent abundance; no lineage cells for: ", set_name)
   }
   
   # Factor leveling for consistent visualization
@@ -91,15 +96,17 @@ for (set_name in names(cluster_sets)) {
                                   levels = intersect(master_subcluster_order, current_clusters))
   
   # Plot
-  p <- ggplot(plot_df, aes(x = PCW_num, y = cell_count, fill = comb_subcluster)) +
+  p <- ggplot(plot_df, aes(x = PCW_num, y = percent_abundance, fill = comb_subcluster)) +
     geom_bar(stat = "identity", color = "black", width = 0.8, linewidth = 0.2) +
     scale_fill_manual(values = subcluster_palette) + 
-    scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+    scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25),
+                       labels = function(x) paste0(x, "%"),
+                       expand = expansion(mult = c(0, 0.02))) +
     labs(
       title = paste("Cluster Set:", set_name),
-      subtitle = paste("Aggregated from", length(unique(plot_df$orig.ident)), "files"),
+      subtitle = "100% = plotted lineage cells pooled across samples at each age",
       x = "Age (PCW)", 
-      y = "Number of Cells", 
+      y = "Abundance (% of lineage cells)", 
       fill = "Cell Type"
     ) +
     theme_bw() +

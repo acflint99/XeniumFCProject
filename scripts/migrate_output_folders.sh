@@ -203,25 +203,25 @@ combined_old_dirs=(
 )
 combined_new_dirs=(
   "${output_root}/xenium/vz_rl/01_combined_labels/rds"
-  "${output_root}/xenium/vz_rl/01_combined_labels/plots/combined"
+  "${output_root}/xenium/vz_rl/01_combined_labels/plots"
   "${output_root}/xenium/vz_rl/01_combined_labels/tables"
   "${output_root}/xenium/vz_rl/01_combined_labels/plots/consensus"
-  "${output_root}/xenium/vz_rl/03_processed/plots"
-  "${output_root}/xenium/vz_rl/03_processed/plots/cluster_counts"
-  "${output_root}/xenium/vz_rl/spatial/02_integrated/plots"
+  "${output_root}/xenium/vz_rl/nonspatial/05_plots"
+  "${output_root}/xenium/vz_rl/nonspatial/05_plots/cluster_counts"
+  "${output_root}/xenium/vz_rl/spatial/04_integrated/plots"
 )
 
 old_combined_mixed="${output_root}/Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Clean_RDS"
-new_combined_merged_rds="${output_root}/xenium/vz_rl/02_merged/rds"
-new_combined_merged_tables="${output_root}/xenium/vz_rl/02_merged/tables"
-new_combined_processed_rds="${output_root}/xenium/vz_rl/03_processed/rds"
-new_combined_processed_tables="${output_root}/xenium/vz_rl/03_processed/tables"
+new_combined_merged_rds="${output_root}/xenium/vz_rl/nonspatial/03_merged/rds"
+new_combined_merged_tables="${output_root}/xenium/vz_rl/nonspatial/03_merged/tables"
+new_combined_processed_rds="${output_root}/xenium/vz_rl/nonspatial/04_processed/rds"
+new_combined_processed_tables="${output_root}/xenium/vz_rl/nonspatial/04_processed/tables"
 
 old_spatial_mixed="${output_root}/Xenium_AldingerABT_combVZ&RLsubcluster_Res1.5_Merged_RDS"
-new_spatial_merged_rds="${output_root}/xenium/vz_rl/spatial/01_merged/rds"
-new_spatial_merged_tables="${output_root}/xenium/vz_rl/spatial/01_merged/tables"
-new_spatial_integrated_rds="${output_root}/xenium/vz_rl/spatial/02_integrated/rds"
-new_spatial_integrated_tables="${output_root}/xenium/vz_rl/spatial/02_integrated/tables"
+new_spatial_merged_rds="${output_root}/xenium/vz_rl/spatial/03_merged/rds"
+new_spatial_merged_tables="${output_root}/xenium/vz_rl/spatial/03_merged/tables"
+new_spatial_integrated_rds="${output_root}/xenium/vz_rl/spatial/04_integrated/rds"
+new_spatial_integrated_tables="${output_root}/xenium/vz_rl/spatial/04_integrated/tables"
 
 require_one_location() {
   local old_path=$1

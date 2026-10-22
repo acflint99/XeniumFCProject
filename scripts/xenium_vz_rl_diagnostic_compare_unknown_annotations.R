@@ -29,7 +29,7 @@ if (length(unknown_options)) {
 }
 if (any(!args %in% valid_options)) {
   stop(
-    "Usage: Rscript scripts/xenium_vz_rl_00_compare_unknown_annotations.R ",
+    "Usage: Rscript scripts/xenium_vz_rl_diagnostic_compare_unknown_annotations.R ",
     "[--dry-run|--overwrite]"
   )
 }

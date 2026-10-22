@@ -4,7 +4,7 @@
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_CombPlots_%j.err
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=256G
+#SBATCH --mem=600G
 #SBATCH --partition=medium
 #SBATCH --constraint=intel
 #SBATCH --mail-user=acflint@uab.edu
@@ -19,4 +19,4 @@ driver_options=(--plots-only)
 if [[ "${COMBINED_PLOTS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript --max-ppsize=500000 'scripts/xenium_vz_rl_03_process_and_plot.R' "${driver_options[@]}"
+Rscript --max-ppsize=500000 'scripts/xenium_vz_rl_04_05_nonspatial_process_and_plot.R' "${driver_options[@]}"

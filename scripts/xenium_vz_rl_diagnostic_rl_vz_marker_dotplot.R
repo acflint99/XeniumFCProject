@@ -45,7 +45,7 @@ if (!branch %in% branch_map$branch) stop("--branch must be RL or VZ.")
 args <- args[!grepl("^--branch=", args)]
 if (any(!args %in% valid_flags)) {
   stop(
-    "Usage: Rscript scripts/xenium_vz_rl_plot_rl_vz_marker_dotplot.R ",
+    "Usage: Rscript scripts/xenium_vz_rl_diagnostic_rl_vz_marker_dotplot.R ",
     "--branch=RL|VZ [--dry-run|--overwrite]"
   )
 }

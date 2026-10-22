@@ -10,7 +10,9 @@ suppressPackageStartupMessages({
   library(Seurat)
 })
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "downstream_resource_logging.R"))
 source(here("scripts", "R", "consensus_labels.R"))
+source(here("scripts", "R", "corrected_broad_labels.R"))
 
 config <- load_pipeline_config()
 sample_ids <- load_sample_manifest(config)$sample_id
@@ -19,18 +21,24 @@ valid_options <- c("--dry-run", "--overwrite")
 unknown_options <- args[startsWith(args, "--") & !args %in% valid_options]
 if (length(unknown_options)) stop("Unknown option(s): ", paste(unknown_options, collapse = ", "))
 if (any(!args %in% valid_options)) {
-  stop("Usage: Rscript scripts/xenium_vz_rl_02_merge_samples.R [--dry-run|--overwrite]")
+  stop("Usage: Rscript scripts/xenium_vz_rl_03_nonspatial_merge.R [--dry-run|--overwrite]")
 }
 dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 
 output_root <- here(config$project$outputs_dir)
-input_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "rds")
-rds_dir <- file.path(output_root, "xenium", "vz_rl", "02_merged", "rds")
-table_dir <- file.path(output_root, "xenium", "vz_rl", "02_merged", "tables")
-input_names <- paste0(sample_ids, "_VZ_RL_QC_Subclusters.rds")
+input_dir <- file.path(output_root, "xenium", "vz_rl", "02_corrected_broad", "rds")
+source_input_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "rds")
+corrected_manifest_path <- file.path(
+  output_root, "xenium", "vz_rl", "02_corrected_broad", "tables",
+  "Xenium_VZRL_corrected_broad_manifest.csv"
+)
+rds_dir <- file.path(output_root, "xenium", "vz_rl", "nonspatial", "03_merged", "rds")
+table_dir <- file.path(output_root, "xenium", "vz_rl", "nonspatial", "03_merged", "tables")
+input_names <- paste0(sample_ids, "_VZ_RL_QC_CorrectedBroad.rds")
 input_paths <- file.path(input_dir, input_names)
+source_input_paths <- file.path(source_input_dir, paste0(sample_ids, "_VZ_RL_QC_Subclusters.rds"))
 clean_names <- paste0("clean_", sample_ids, ".rds")
 clean_paths <- file.path(rds_dir, clean_names)
 merged_path <- file.path(rds_dir, "Xenium_VZRL_merged.rds")
@@ -41,13 +49,42 @@ observed_names <- if (dir.exists(input_dir)) {
 } else character()
 missing_names <- input_names[!file.exists(input_paths)]
 unexpected_names <- setdiff(observed_names, input_names)
+corrected_manifest <- if (file.exists(corrected_manifest_path)) {
+  tryCatch(read.csv(corrected_manifest_path, stringsAsFactors = FALSE),
+           error = function(error) NULL)
+} else NULL
+required_corrected_manifest <- c(
+  "sample_id", "input_path", "output_path", "input_size", "input_mtime",
+  "output_size", "cells", "mapping_md5"
+)
+corrected_manifest_valid <- !is.null(corrected_manifest) &&
+  all(required_corrected_manifest %in% names(corrected_manifest)) &&
+  nrow(corrected_manifest) == length(sample_ids) &&
+  identical(as.character(corrected_manifest$sample_id), sample_ids) &&
+  identical(as.character(corrected_manifest$input_path), source_input_paths) &&
+  identical(as.character(corrected_manifest$output_path), input_paths) &&
+  identical(as.character(corrected_manifest$mapping_md5), rep(
+    unname(tools::md5sum(here("scripts", "R", "corrected_broad_labels.R"))),
+    length(sample_ids)
+  )) &&
+  all(file.exists(c(source_input_paths, input_paths)))
+if (corrected_manifest_valid) {
+  original_info <- file.info(source_input_paths)
+  corrected_info <- file.info(input_paths)
+  corrected_manifest_valid <-
+    isTRUE(all.equal(as.numeric(corrected_manifest$input_size), as.numeric(original_info$size))) &&
+    isTRUE(all.equal(as.numeric(corrected_manifest$input_mtime), as.numeric(original_info$mtime))) &&
+    isTRUE(all.equal(as.numeric(corrected_manifest$output_size), as.numeric(corrected_info$size))) &&
+    all(!is.na(corrected_manifest$cells) & corrected_manifest$cells > 0L)
+}
 
 if (dry_run) {
   compact_dry_run(
     "Combined regional merge",
-    inputs = input_paths,
+    inputs = c(input_paths, corrected_manifest_path),
     outputs = c(clean_paths, merged_path, manifest_path),
-    checks = c(no_unexpected_inputs = !length(unexpected_names))
+    checks = c(no_unexpected_inputs = !length(unexpected_names),
+               corrected_broad_provenance_current = corrected_manifest_valid)
   )
   if (length(unexpected_names)) cat("  Unexpected inputs: ", paste(unexpected_names, collapse = "; "), "\n")
   quit(save = "no", status = 0L)
@@ -58,6 +95,9 @@ if (length(missing_names)) {
 }
 if (length(unexpected_names)) {
   stop("Cannot clean/merge combined objects; unexpected RDS files:\n- ", paste(unexpected_names, collapse = "\n- "))
+}
+if (!corrected_manifest_valid) {
+  stop("Corrected-broad manifest is missing, incomplete, or stale. Regenerate Stage 02 before merging.")
 }
 expected_outputs <- c(clean_paths, merged_path, manifest_path)
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
@@ -70,6 +110,7 @@ dir.create(rds_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 merge_manifest <- data.frame(
   sample_id = sample_ids, input_path = input_paths, clean_path = clean_paths,
+  corrected_broad_mapping_md5 = as.character(corrected_manifest$mapping_md5),
   cells = integer(length(sample_ids)), PCW = character(length(sample_ids)),
   vz_cells = integer(length(sample_ids)), rl_cells = integer(length(sample_ids)),
   residual_cells = integer(length(sample_ids)),
@@ -83,8 +124,10 @@ for (i in seq_along(sample_ids)) {
   sample_id <- sample_ids[[i]]
   message("Cleaning and merging sample ", i, " of ", length(sample_ids), ": ", sample_id)
   obj <- readRDS(input_paths[[i]])
+  log_downstream_memory("OBJECT LOADED", obj)
   required_metadata <- c(
-    "comb_subcluster", "consensus_label", "VZ_subcluster", "RL_subcluster",
+    "comb_subcluster", "consensus_label", "corrected_broad_label",
+    "VZ_subcluster", "RL_subcluster",
     "VZ_subset_reason", "RL_subset_reason", "residual_subcluster",
     "residual_reference_route", "residual_subset_reason",
     "residual_annotation_confidence", "residual_annotation_status",
@@ -92,6 +135,11 @@ for (i in seq_along(sample_ids)) {
   )
   missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
   if (length(missing_metadata)) stop(sample_id, " lacks metadata: ", paste(missing_metadata, collapse = ", "))
+  expected_broad <- map_corrected_broad_labels(obj$comb_subcluster)
+  if (!identical(as.character(obj$corrected_broad_label), expected_broad) ||
+      ncol(obj) != corrected_manifest$cells[[i]]) {
+    stop(sample_id, " corrected broad labels or cell count differ from the approved mapping manifest.")
+  }
   if (ncol(obj) == 0L) stop(sample_id, " contains zero cells.")
   pcw_values <- unique(as.character(obj$PCW))
   pcw_values <- pcw_values[!is.na(pcw_values) & nzchar(pcw_values)]
@@ -143,6 +191,7 @@ for (i in seq_along(sample_ids)) {
   }
   rm(obj)
   gc()
+  log_downstream_memory(paste("MERGED SAMPLE", sample_id), merged_obj)
 }
 
 if (anyDuplicated(colnames(merged_obj))) stop("Combined merged object contains duplicate cell names.")

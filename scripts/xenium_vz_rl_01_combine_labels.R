@@ -13,11 +13,13 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(ggplot2)
 })
+here::i_am("scripts/xenium_vz_rl_01_combine_labels.R")
 
 source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "consensus_labels.R"))
 source(here("scripts", "R", "xenium_unknown_qc_review.R"))
 source(here("scripts", "R", "xenium_unknown_reference_routes.R"))
+source(here("scripts", "R", "xenium_residual_qc_removal.R"))
 source(here("scripts", "color_palette.R"))
 
 config <- load_pipeline_config()
@@ -34,13 +36,14 @@ if (any(!args %in% valid_options)) {
 dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
+residual_qc_state <- load_residual_qc_state(config)
 
 output_root <- here(config$project$outputs_dir)
 vz_input_dir <- file.path(output_root, "xenium", "vz", "07_mapped", "rds")
 rl_input_dir <- file.path(output_root, "xenium", "rl", "07_mapped", "rds")
 residual_input_dir <- file.path(output_root, "xenium", "residual", "06_mapped", "rds")
 rds_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "rds")
-plot_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "plots", "combined")
+plot_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "plots")
 table_dir <- file.path(output_root, "xenium", "vz_rl", "01_combined_labels", "tables")
 route_paths <- unknown_reference_route_paths(config)
 routing_state <- tryCatch({
@@ -242,6 +245,15 @@ for (i in seq_along(sample_ids)) {
     as.character(residual_obj$residual_annotation_status), colnames(residual_obj)
   )
   base_cells <- colnames(base_obj)
+  removed_residual <- residual_qc_exclusions_for_sample(
+    base_cells, base_obj$consensus_label, sample_id, residual_qc_state)
+  if (residual_qc_state$active && (
+      !"residual_qc_status" %in% names(residual_obj[[]]) ||
+      !identical(residual_obj@misc$residual_qc_decision_md5, residual_qc_state$decision_md5) ||
+      anyNA(residual_obj$residual_qc_status) ||
+      !identical(as.character(residual_obj$residual_qc_status) == "removed", removed_residual))) {
+    stop(sample_id, " residual mapping lacks the current QC exclusion provenance.")
+  }
   is_unknown <- is_unknown_consensus_label(base_consensus)
   sample_routes <- routes[routes$sample_id == sample_id, , drop = FALSE]
   sample_route_lookup <- setNames(
@@ -272,11 +284,14 @@ for (i in seq_along(sample_ids)) {
   rl_kept <- !is.na(rl_labels[base_cells]) & nzchar(rl_labels[base_cells])
   residual_kept <- !is.na(residual_labels[base_cells]) &
     nzchar(residual_labels[base_cells])
-  if (!identical(unname(residual_kept), unname(is_residual_target))) {
-    stop(sample_id, " residual mapping does not exactly match Other/unresolved targets.")
+  if (any(removed_residual & !is_residual_target) ||
+      !identical(unname(residual_kept), unname(is_residual_target & !removed_residual))) {
+    stop(sample_id, " residual mapping differs from targets minus explicitly approved QC exclusions.")
   }
-  keep_cells <- (!is_vz_target | vz_kept) & (!is_rl_target | rl_kept)
+  keep_cells <- (!is_vz_target | vz_kept) & (!is_rl_target | rl_kept) & !removed_residual
   obj <- subset(base_obj, cells = base_cells[keep_cells])
+  obj@misc$residual_qc_removal <- list(decision_md5 = residual_qc_state$decision_md5,
+    removed_cells = sum(removed_residual), source = residual_qc_state$paths$removed)
   retained_cells <- colnames(obj)
   obj$VZ_subcluster <- unname(vz_labels[retained_cells])
   obj$RL_subcluster <- unname(rl_labels[retained_cells])

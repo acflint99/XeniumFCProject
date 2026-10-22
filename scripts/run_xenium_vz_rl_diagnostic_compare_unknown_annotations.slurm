@@ -19,4 +19,4 @@ driver_options=()
 if [[ "${UNKNOWN_COMPARISON_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
-Rscript --max-ppsize=500000 scripts/xenium_vz_rl_00_compare_unknown_annotations.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_diagnostic_compare_unknown_annotations.R "${driver_options[@]}"
