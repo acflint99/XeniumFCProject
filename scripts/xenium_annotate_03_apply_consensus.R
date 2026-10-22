@@ -281,15 +281,17 @@ save_consensus_dotplot <- function(
   p_dot <- standardize_broad_dotplot(p_dot, consensus_levels) +
     ggtitle(paste(sample_name, "Consensus marker expression —", title_suffix))
 
-  Cairo::CairoTIFF(dotplot_paths[[1]], width = 10, height = 6, units = "in", res = 600)
-  print(p_dot)
+  dot_dimensions <- workflow_dotplot_dimensions(p_dot)
+  dot_display <- patchwork::wrap_elements(full = workflow_dotplot_grob(p_dot))
+  Cairo::CairoTIFF(dotplot_paths[[1]], width = dot_dimensions[["width"]], height = dot_dimensions[["height"]], units = "in", res = 600)
+  print(dot_display)
   grDevices::dev.off()
   ggplot2::ggsave(
     filename = dotplot_paths[[2]],
-    plot = p_dot,
+    plot = dot_display,
     device = grDevices::cairo_pdf,
-    width = 10,
-    height = 6,
+    width = dot_dimensions[["width"]],
+    height = dot_dimensions[["height"]],
     units = "in"
   )
 }

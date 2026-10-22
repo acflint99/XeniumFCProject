@@ -97,13 +97,16 @@ regional_subsets:
     - "RL"
     - "Granule"
     - "UBC"
+    - "eCN"
   nonregional_broad_labels:
     - "Meninges"
     - "Endothelial"
+    - "Vascular"
     - "Immune"
   integration_dimensions_default: 30
   post_qc_dimensions_observed: 30
   umap_neighbors_post_qc: 30
+  rl_umap_min_dist_post_qc: 0.05
   neighbor_k_post_qc: 30
 
 plotting:

@@ -1,0 +1,2 @@
+cluster,cluster_column,expected_input_cells,expected_removed_cells,source_size,source_mtime,review_notes,approved
+5,Xenium_snn_res.0.8,10333,977,574586561,1792336911.95174,User approved removal on 2026-10-18 after review of ambiguous lineage markers and consistently reduced within-sample RNA complexity; conservative QC exclusion without claiming proven technical failure,TRUE

@@ -1,5 +1,10 @@
 # Pipeline configuration
 
+The 2026-10-22 reference-label refresh explicitly approves `eCN -> RL` and
+`Vascular -> Other/nonregional`. Both `regional_subsets` in `config.yml` and
+`reference_broad_taxonomy.csv` must agree. See
+`../UPDATED_REFERENCES_TO_MERGES.md` for staged submission and manual review gates.
+
 These files provide validated configuration metadata for the fetal cerebellum
 Xenium pipeline. Split-slide preprocessing, annotation, consensus labelling,
 and VZ/RL subset drivers read the sample manifest directly; most other analysis
