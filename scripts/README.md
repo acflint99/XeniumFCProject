@@ -22,7 +22,25 @@ The transferred broad annotations are subsequently used to isolate and refine tw
 
 Exact labels are controlled by the active identities and metadata in each Seurat object. The shared cell-type order and plotting colors are defined in `color_palette.R`.
 
+For recoloring plots in their original output directories with the original
+UMAP formatting, see [RESTORE_ORIGINAL_PLOT_FORMAT_20261020.md](RESTORE_ORIGINAL_PLOT_FORMAT_20261020.md).
+The reference redraw reads saved objects without rewriting RDS files; other
+stages use their native plot-only drivers. The earlier generic snapshot
+exporter is optional historical tooling, not the recommended redraw route.
+For replacing the Xenium originals, including dependent PDF reports, use
+[XENIUM_ORIGINAL_PLOTS_20261020.md](XENIUM_ORIGINAL_PLOTS_20261020.md).
+Its default path-only preflight takes about 1–3 minutes; plotting and Slurm
+array estimates are documented in that guide.
+
 ## Workflow overview
+
+For the 2026-10-22 Science/Sepp/Aldinger label refresh, use
+[`UPDATED_REFERENCES_TO_MERGES.md`](UPDATED_REFERENCES_TO_MERGES.md) and
+`submit_updated_references_to_merges.sh`. It rebuilds reference preparations,
+all manifest-defined transfers/consensus and regional branches through both
+merges, stopping for fresh threshold/QC/subcluster-label decisions. eCN enters
+RL and Vascular remains nonregional, as explicitly approved on 2026-10-22.
+It derives 41-sample/123-task bounds; older 34-sample submitters are not used.
 
 ```text
 Raw Xenium output + cerebellum cell list
@@ -92,6 +110,38 @@ Rscript scripts/validate_config.R --check-files
 
 ## Main analysis stages
 
+### Atlas coverage/QC reporting and manuscript panels
+
+See [ATLAS_COVERAGE_QC.md](ATLAS_COVERAGE_QC.md) for the additive, read-only
+atlas reporting layer, companion donor/section/anatomy templates, and figure
+exports. `xenium_atlas_qc.R` supports manifest-derived `--list`, path-only
+`--dry-run`, per-sample `--task`, and small-table `--compile`.
+`xenium_atlas_plot_qc.R` exports coverage, retention, QC and donor-support
+panels when evidence exists, explicitly recording blocked panels otherwise.
+The 41 manifest entries correspond to 12 working cerebellum groups under
+user-supplied grouping, including two provisional FB/GZFB merges. These counts
+must not be substituted for independently verified donor replication.
+Compilation/plotting each take approximately 1–5 minutes. HPC extraction is
+estimated at 2–10 minutes/task, 28–140 minutes for 41 tasks at concurrency three,
+excluding queue wait (low confidence, saved-object/raw-table I/O). No production
+filtering, identities, objects or stable output names are changed.
+
+### Downstream resource updates 2026-10-17
+
+The current manifest has 41 samples. The implemented resource and coverage
+updates are documented in [DOWNSTREAM_RESOURCE_UPDATES_20261017.md](DOWNSTREAM_RESOURCE_UPDATES_20261017.md),
+including expected runtimes, requested limits, validation results, and HPC
+submission examples. This implementation supersedes resource recommendations
+in the dated [review](DOWNSTREAM_RESOURCE_REVIEW_20261016.md).
+
+Clustering, stage-6 markers, and per-sample mapping default to one R worker.
+Whole-cohort combined/spatial launchers provisionally request 600 GB; these
+requests still need measured peak-memory evidence. Scientific parameters,
+identities, seeds, output names, overwrite protections, and the intentional
+nine-sample stage-9 cohort are preserved. Array submission should use
+`submit_xenium_downstream_array.sh` to derive task bounds from the R driver's
+manifest map (currently 41 samples; concurrency three).
+
 ### New samples added 2026-10-14
 
 The manifest now contains 41 analyzed samples (25 single-slide and 16 split-slide
@@ -100,7 +150,24 @@ components). The original 34 row/task IDs are preserved. See
 commands; historical 34-sample run examples below are not submission instructions
 for this cohort. Only section 2 is included from `GZFB124_1_X_G_3__2__1`.
 
+For cohort-wide report coverage, see
+[`MERGED_OUTPUTS_20261015.md`](MERGED_OUTPUTS_20261015.md). Both consensus PDFs
+and the Aldinger combined PDF require 41 pages. The dedicated report-refresh
+helper archives old PDFs/caches before rebuilding them; its path-only preflight
+is estimated at 1–3 minutes. Consensus rendering is estimated at 3–15 minutes
+per task, 21–105 minutes for 41 tasks at concurrency six, plus a 1–5-minute
+merge, excluding queue wait (low confidence). It does not repeat label transfer.
+
 ### 1. Xenium gene panel
+
+For an optional, independent sample sex-marker check after whole-tissue QC,
+see [SEX_MARKER_EXPRESSION.md](SEX_MARKER_EXPRESSION.md). It summarizes SRY,
+DDX3Y, RPS4Y1, KDM5D, UTY, EIF1AY, USP9Y, and XIST in a manifest-derived
+Slurm array, reports marker coverage, and produces provisional
+male-like/female-like/unresolved evidence without updating sample metadata.
+Expected runtime is 1–5 minutes per sample, approximately 15–70 minutes for
+41 samples at concurrency three plus 1–3 minutes to combine, excluding queue
+wait (low confidence; based on saved-object I/O and static inspection).
 
 `xenium_extract_gene_panel.R` extracts target genes from a Xenium panel JSON file. The resulting gene list is used to restrict the reference datasets to genes measurable by Xenium.
 
@@ -1605,7 +1672,7 @@ Related scripts:
 - `xenium_annotate_03c_plot_proportions.R` – attaches sample metadata and plots consensus cell-type proportions;
 - `xenium_annotate_03d_plot_report.R` – writes matched all-cell and known-only PCW-ordered PDF reports, with each page combining the global spatial map, faceted spatial map, UMAP, and marker DotPlot;
 - `run_xenium_annotate_03d_plot_report.slurm` – runs the combined report as one sequential job so concurrent array tasks cannot write to the same PDF;
-- `xenium_vz_rl_01b_plot_spatial.R` – consensus maps after regional refinement/QC.
+- `xenium_vz_rl_optional_consensus_spatial.R` – consensus maps after regional refinement/QC.
 
 The consensus vote ignores missing and reference-level `Unknown` labels and selects the
 most frequent label across Aldinger, Sepp, and Science majority/weighted
@@ -1899,6 +1966,18 @@ both refreshed stage-7 mappings exist.
 
 The VZ branch generally follows this order:
 
+For the 2026-10-15 expansion to **41 samples**, use
+[`REBUILD_REGIONS_20261015.md`](REBUILD_REGIONS_20261015.md) and
+`rebuild_xenium_regions_20261015.sh` after stage-1 subsets exist. The helper
+archives old stage-2 through stage-9 results, queues manifest-defined merges,
+fresh integration, QC review, and Harmony audits for both branches, and stops
+before applying old removal IDs or annotation mappings. References to 34 samples
+below describe the earlier cohort; active merge and integration drivers use the
+current manifest. Preflight is estimated at 1-3 minutes without loading RDS
+objects. Low-confidence active-time estimates through QC review are 5.5-21 hours
+for VZ and 3-12 hours for RL, excluding queue waits; the linked guide gives the
+per-stage basis and unchanged resource requests.
+
 1. `xenium_vz_01_subset_samples.R` – extracts configured consensus identities per sample.
 2. `xenium_vz_02_merge_samples.R` – verifies and incrementally merges all 34 sample subsets after removing spatial overhead.
 3. `xenium_vz_03_integrate.R` – validates the complete merge, then runs normalization, PCA, Harmony integration, UMAP, and clustering.
@@ -1909,13 +1988,22 @@ The VZ branch generally follows this order:
    decision and conditionally materializes filtered sample objects.
 5. `xenium_vz_05_reintegrate_post_qc.R` – reuses Stage-3 results after a
    zero-removal decision, or removes failed cells and recomputes after removals.
+   Before selecting the Stage-6 partition, run the protected Stage-5c
+   [clustree and subsampling stability review](REGIONAL_RESOLUTION_REVIEW.md)
+   with `run_xenium_vz_05c_resolution_stability.slurm`. Existing completed
+   Stage-5 objects can be reviewed directly; integration need not be rerun.
+   For an efficient full-data comparison of 0.5/0.6/0.7/0.8, use
+   [VZ resolution comparison](VZ_RESOLUTION_COMPARISON.md) and
+   `run_xenium_vz_05d_compare_resolutions.slurm`. This reuses the saved graph
+   and 0.5/0.8 assignments, calculates only 0.6/0.7, and supports a validated
+   partition checkpoint for retries. Production labels remain unchanged.
 6. `xenium_vz_06a_build_replicate_marker_evidence.R` – builds sample-aware
    positive and anti-marker candidates; `xenium_vz_06_annotate_subclusters.R`
    retains cell-level Wilcoxon rankings as descriptive review evidence and
    applies explicitly reviewed labels.
 7. `xenium_vz_07_map_to_samples.R` – maps refined VZ labels back to all 34 configured samples.
 8. `xenium_vz_plot_sample.R` and `xenium_vz_08_plot_samples.R` – manifest-defined per-sample spatial reports.
-9. `xenium_vz_09_plot_counts.R` – VZ cell/subcluster counts.
+9. `xenium_vz_09_plot_counts.R` – VZ subcluster percent abundance within each plotted lineage.
 
 The VZ driver reads all 34 samples from `config/samples.csv` and supports
 `--list`, `--dry-run`, and protected `--overwrite` operation. Submit
@@ -1943,18 +2031,44 @@ sbatch scripts/run_xenium_rl_03a_audit_harmony.slurm
 Each audit uses a fixed-seed stratified sample of at most 100,000 cells and 30
 neighbors. Increased cross-sample mixing is interpreted only alongside
 retention of biological-label purity, PCW neighborhood structure, and pre/post
-neighbor overlap. Expected runtime is approximately 10–45 minutes per branch,
-low confidence; each launcher requests 2 hours and 64 GB on `express`.
+neighbor overlap. Expected runtime is approximately 10–60 minutes per branch,
+low confidence; each launcher requests 2 hours and 256 GB on `express`.
+The 2026-10-16 audit fix releases the integrated Seurat object before neighbor
+searches, retains only the required metadata and sampled embeddings, and logs
+each major phase. The memory increase supplies headroom for the initial RDS
+load after VZ job 40951436 segfaulted at 61.20 GB MaxRSS under a 64-GB request;
+this observation suggests memory pressure but is not a confirmed Slurm OOM.
+The age parser accepts both numeric values and production `PCW12` labels.
+Dimensions, neighbor count, sample cap, seed, and metric definitions are
+unchanged. See `HARMONY_AUDIT_RETRY_20261016.md` to retry only the audits.
 
-After the post-QC objects exist and before final label application, generate
-sample-aware marker evidence:
+After the post-QC objects exist, run the combined resolution-0.8 review.
+Both VZ and RL review build missing replicate-aware evidence first and then
+create cluster review outputs in the same job. Matching evidence is reused;
+a separate Stage-06a submission is no longer required. The path-only
+preflights take under one minute per branch:
 
 ```bash
-Rscript scripts/xenium_vz_06a_build_replicate_marker_evidence.R --dry-run
-sbatch scripts/run_xenium_vz_06a_build_replicate_marker_evidence.slurm
-Rscript scripts/xenium_rl_06a_build_replicate_marker_evidence.R --dry-run
-sbatch scripts/run_xenium_rl_06a_build_replicate_marker_evidence.slurm
+Rscript --max-ppsize=500000 scripts/xenium_vz_06_annotate_subclusters.R \
+  --review-only --resolution=0.8 --dry-run
+Rscript --max-ppsize=500000 scripts/xenium_rl_06_annotate_subclusters.R \
+  --review-only --resolution=0.8 --dry-run
 ```
+
+After the selected branch passes preflight, submit its existing launcher:
+
+```bash
+sbatch scripts/run_xenium_vz_06_annotate_subclusters.slurm
+sbatch scripts/run_xenium_rl_06_annotate_subclusters.slurm
+```
+
+Each defaults to review at resolution 0.8, one CPU, 256 GB and a 12-hour
+limit. Combined runtime is estimated at 1–10 hours for VZ and 0.75–7 hours
+for RL (low confidence from static inspection and preceding separate-stage
+estimates; queue wait excluded). Missing evidence is planned output in the
+preflight; partial/stale evidence is protected until explicit overwrite is
+authorized. Standalone Stage-06a scripts/launchers remain available for
+compatibility and evidence-only work. See [STAGE6_MERGE_20261017.md](STAGE6_MERGE_20261017.md).
 
 These stages compare each raw subcluster with the remaining branch cells within
 each biological sample, then summarize direction, magnitude, detection
@@ -1962,10 +2076,10 @@ contrast, and a sample-level sign test. They output separately ranked positive
 and anti-marker candidates. Cell-level Wilcoxon tables remain useful for
 descriptive ranking, but their P-values are not treated as biological-replicate
 inference. The production resolution-0.8 VZ/RL review and label-application
-steps now require these five evidence files and verify their input-RDS,
-cluster-column, size, and modification-time provenance before proceeding.
-Expected runtime is approximately 20–120 minutes per branch,
-low confidence; the launchers request 4 hours.
+steps verify these five evidence files and their input-RDS, cluster-column,
+size, and modification-time provenance. Review builds them when absent;
+label application still requires matching completed evidence and review.
+The optional evidence-only launchers retain four-hour limits.
 
 Each VZ Stage-8 global or lineage-highlight plot renders opaque grey context
 cells at size 0.5 first and colored subcluster points at size 0.75 second, so
@@ -1975,9 +2089,9 @@ writes both the all-inclusive global map and a `Global_Spatial_NoOther` map,
 a lineage-faceted TIFF, a separate Other-faceted TIFF, marker DotPlots, and a
 one-page `Spatial_Report.pdf` containing both global maps, the lineage facets,
 and marker DotPlot. Every individual-sample DotPlot and its report page use
-the shared `vz_all_compact_markers` panel: exactly the same 42 genes and program
-headers as the Stage-6 production DotPlot, with no additional broad-panel
-genes. The plotting code constructs all figures before writing any
+the shared `vz_all_compact_markers` panel: the same current marker pool as the
+Stage-6 production DotPlot, restricted to marker groups represented by that
+sample. Unused groups and cycling-marker columns are omitted. The plotting code constructs all figures before writing any
 output, requires every requested marker in the Xenium assay, and uses that assay
 explicitly for DotPlot features, so a plotting error cannot silently leave a
 report that appears complete.
@@ -2165,16 +2279,29 @@ includes cells whose consensus label is explicitly `VZ`, cluster membership
 and numbering from the earlier branch are stale. The launcher therefore has
 no apply-mode default: `VZ_QC_REMOVE_CLUSTERS` must explicitly contain the
 newly reviewed comma-separated cluster IDs or the literal value `none`.
-The script validates all 34 whole-tissue inputs, protects existing outputs,
+The script validates all manifest-defined whole-tissue inputs (currently 41), protects existing outputs,
 and records per-sample removal counts. Post-QC processing reads that manifest
 and cannot independently choose a different cluster. After inspecting the
-regenerated Stage-4a evidence, the current reviewed VZ decision is to remove
-resolution-0.8 clusters `9`, `25`, and `26`. Submit that approved decision with:
+regenerated Stage-4a evidence, the current approved VZ decision is to remove
+pre-QC resolution-0.8 clusters `10`, `23`, `24`, `25`, `27`, and `28`
+(updated 2026-10-18). The original five-cluster decision from 2026-10-16 removed
+10 cells; it is superseded by adding pre-QC cluster 10. The new post-QC review
+contains 1,447,477 cells. These pre-QC cluster IDs must not be confused with
+new post-QC IDs. All other pre-QC clusters are retained by this decision.
+
+Before submission, run the path-only preflight (expected under 1 minute; it
+does not load RDS objects):
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_vz_04_review_qc.R \
+  --remove-clusters=10,23,24,25,27,28 --dry-run
+```
+
+Submit the approved decision with:
 
 ```bash
 VZ_QC_MODE=apply \
-  VZ_QC_REMOVE_CLUSTERS='9,25,26' \
-  VZ_QC_OVERWRITE=true \
+  VZ_QC_REMOVE_CLUSTERS='10,23,24,25,27,28' \
   sbatch --export=ALL \
   scripts/run_xenium_vz_04_review_qc.slurm
 ```
@@ -2205,12 +2332,20 @@ supplied. It requests 12 hours, 1 CPU, and 256 GB on `short`. Stage 4a is expect
 approximately 2-8 hours because it runs one sample-matched marker comparison
 per qualified Unknown population. A Stage-4b `none` decision writes only a
 routing manifest and should finish in under 1 minute; the reviewed nonzero
-removal materializes 34 filtered objects sequentially and is expected to take
-approximately 30-120 minutes. This is a low-confidence estimate based on the
-11-minute-45-second failed VZ run and the RL materialization history; the first
-successful sequential VZ run will provide the useful measurement. These
+removal materializes all 41 manifest-defined filtered objects sequentially and
+is expected to take approximately 20-90 minutes (low confidence). The resource
+history records successful sequential VZ job 40758964 at 15.42 minutes for 34
+samples, with 61.51 GB MaxRSS. The current cohort has 41 samples and a roughly
+79-GB integrated object; object sizes and filesystem throughput make linear
+scaling uncertain. Even a ten-cell removal
+requires reading and writing every whole-tissue object. After completion,
+check that the removal manifest contains all 41 samples, the approved cluster
+set, and a total of 10 removed cells. Regenerate stage 5 and downstream VZ
+annotations, mapped labels, and analyses after applying this decision. Preserve
+the stage-3 object and review evidence to allow a reviewed rollback. These
 estimates exclude queue wait. The 12-hour limit and 256-GB memory request are
-retained conservatively until that run completes.
+retained conservatively; collect current-run elapsed time and MaxRSS before
+revising them.
 
 The Stage-4 launcher starts the main R process with `--max-ppsize=500000`, the
 R-supported maximum pointer-protection-stack size. Materialization is now
@@ -2233,8 +2368,8 @@ Harmony integration, SNN graph, UMAP, and resolution-0.5/0.8/1 assignments.
 It does not calculate resolution 0.3. Any nonzero removal retains the full
 PCA/Harmony/UMAP/neighbors/reclustering path at resolutions 0.3/0.5/0.8/1.
 The full path uses 30 PCA/Harmony dimensions, 30 UMAP neighbors, and
-`k.param=30`; resolution 0.5 is the preferred Stage-6 review partition, while
-0.3, 0.8, and 1 remain available as sensitivity checks. The original-label
+`k.param=30`; resolution 0.8 is the user-selected Stage-6 review partition,
+while other Stage-5 partitions remain available as sensitivity checks. The original-label
 UMAP uses `regional_consensus_label_pooled` so independently numbered Unknown
 populations do not compress the plotting panel with a sample-qualified legend.
 The zero-removal path is expected to take approximately 10-45 minutes,
@@ -2266,28 +2401,22 @@ VZ_POST_QC_RESUME_CHECKPOINT=true \
   sbatch --export=ALL scripts/run_xenium_vz_05_reintegrate_post_qc.slurm
 ```
 
-The full-reintegration launcher requests 16 hours, 4 CPUs, and 600 GB on
-`medium`. Its four resolution jobs use `future::multicore`, so the large SNN
-graph is shared by forked workers rather than serialized into independent
-PSOCK processes. The graph, Louvain algorithm, ten starts, singleton grouping,
-resolutions, and random seed are unchanged. Fresh full reintegration is
-expected to take approximately 4-8 hours, excluding queue wait; a checkpoint
-resume is shorter according to the saved stage. This estimate is low
-confidence because clustering still evaluates four resolutions and no complete
-run with the new parameters has been measured.
-
-This design follows two observed failure modes. Four PSOCK workers in job
-40761237 failed after 2 hours 22 minutes while exporting a 62.89-GiB closure,
-at 225.95 GB MaxRSS. A one-worker retry, job 40774031, remained stable at
-225.08 GB but timed out after 12 hours during sequential multi-resolution
-clustering. Earlier VZ Stage-3 job 40676165 reached approximately 422 GB with
-three forked clustering workers, so 600 GB provides headroom for four workers.
-Current Cheaha documentation lists up to 754 GB per Intel `medium` node.
+The full-reintegration launcher requests 36 hours, 1 CPU, and 600 GB on
+`medium`. Clustering defaults to one sequential worker after job 40958650
+failed with OUT_OF_MEMORY at 600 GB using four fork workers. Forked memory
+sharing did not bound transient clustering allocations. The scientific graph,
+Louvain settings, resolutions, and random seed are unchanged. A pre-clustering
+checkpoint resume is expected to take 8–24 hours; a fresh full run may take
+10–28 hours (low confidence, based on the recent OOM and older sequential
+12-hour timeout under different parameters). Exclude queue wait. Use
+`VZ_POST_QC_RESUME_CHECKPOINT=true` only after a matching checkpoint preflight.
+Leave overwrite disabled unless replacing reviewed outputs is authorized.
+The 600-GB request is provisional, not a validated peak-memory bound.
 
 This stage writes the stable object
 `outputs/xenium/vz/05_post_qc/rds/Xenium_VZ_postQC.rds` and a provenance
 manifest. Stage 6 generates post-QC review evidence without assigning
-subcluster identities. Resolution 0.5 remains the default; select one of the
+subcluster identities. Resolution 0.8 is the default; select one of the
 Stage-5 partitions with `--resolution=0.3`, `--resolution=0.5`, or
 `--resolution=0.8`. For a protected resolution-0.8 review, inspect paths first
 and then explicitly replace any stale resolution-0.8 evidence:
@@ -2317,26 +2446,70 @@ the review resolution does not change `min.pct`, log-fold-change, sampling, or
 statistical-test settings. The UMAP coordinates are reused from `umap_clean`;
 only the displayed cluster assignments change.
 
-The approved resolution-0.8 map assigns clusters `11` to VZPs, `12/23` to
-Cycling VZPs, `7` to Cycling Glia, `16` to Pre-OPCs, `18` to RL VZ, `19/21`
-to Immature/Mature UBCs, and `20` to Microglia. The remaining reviewed labels
-cover the Purkinje, GABAergic, glial, OPC, eCN, iCN, and generic cycling
-populations. `GCPs` is no longer part of the VZ taxonomy. The filtered VZ UMAP
-removes RL VZ, both UBC states, eCN, Microglia, and generic Cycling Cells while
-retaining lineage-resolved Cycling VZPs and Cycling Glia. Resolutions 0.3 and
-0.5 remain review-only until separate maps are approved.
+The user-approved resolution-0.8 VZ map, updated 2026-10-19 for cluster 17,
+covers the new
+1,447,477-cell object's clusters 0–24 after pre-QC removal of 10,23,24,25,27,28.
+See [VZ_RL_RESIDUAL_LABEL_MAPPING_20261018.md](VZ_RL_RESIDUAL_LABEL_MAPPING_20261018.md)
+for the exact map and commands through all three regional per-sample mappings.
+Cluster 20 is GABA Interneurons; 22 remains Unresolved; 23 matches cluster 0
+as Patterning PCs; 18 is OPCs; 17 is provisionally Differentiating GCs rather
+than Mature UBCs. The former 2026-10-17 map is historical.
+Resolutions 0.3 and 0.5 remain review-only until separately approved.
 
-The main production DotPlot uses the unique union of the two approved compact
-marker lists and no additional genes. It displays the 42 genes beneath VZ,
-Purkinje, GABA, Glia, OPC, Cycling, RL-VZ, UBC, eCN, and Microglial
-program headers. `MKI67` and `TOP2A` occur once under Cycling and are also read
-across the Cycling Cells identity row. The VZ-lineage plot groups its selected
-genes into VZ, Purkinje, GABA, Glia, OPC, and Cycling programs while retaining
-the approved lineage identities as rows. The separate Other plot groups RL-VZ,
-combined immature/mature UBC, eCN, generic Cycling Cell, and Microglial markers.
+After syncing the updated driver, palette, and sample-plot helper, preflight
+label application (under one minute, paths/small CSVs only):
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_vz_06_annotate_subclusters.R \
+  --apply-reviewed-labels --resolution=0.8 --dry-run
+```
+
+After PASS and checking existing outputs, submit without enabling overwrite:
+
+```bash
+VZ_SUBCLUSTER_MODE=apply \
+  VZ_SUBCLUSTER_RESOLUTION=0.8 \
+  sbatch --export=ALL scripts/run_xenium_vz_06_annotate_subclusters.slurm
+```
+
+Expected application runtime is 15–120 minutes (low confidence from an older
+11.53-minute RL apply run and the larger 1.50-million-cell VZ object). The
+launcher requests 256 GB, one CPU and 12 hours; queue wait excluded. All
+mapped VZ labels and downstream combined labels, reports/counts and spatial
+outputs become stale after applying this map and must be regenerated in
+workflow order. No stage-5 reintegration is needed for annotation-only changes.
+Existing outputs remain protected until explicitly approved for replacement.
+
+The current production DotPlots use the approved VZ taxonomy with 20 observed
+labels and 34 unique marker columns. Purkinje markers are ordered DAB1,
+FOXP1, FOXP4, EBF2, EBF1, EPHA4; GABA markers are TFAP2B, NXPH2, SLC6A5,
+GRIK3, SP9, SOX14, DMBX1; glial markers are SOX2, TOP2A, TNC, AQP4, FOXJ1.
+GABA identities are displayed as GABA Progenitors, Golgi Cells, MLIs,
+GABA Interneurons, iCN in legends and DotPlots. HES6, SOX10, and C1QL3
+are excluded from these production display panels. The removed Neuroblast
+and UBC panels remain absent. The VZ Granule panel uses NEUROD1,
+CBLN1, and RELN for the provisional Differentiating GCs identity.
+Unresolved is
+retained in global/Other plots without a forced marker panel or lineage.
+The Granule header uses the broad Granule color; eCN uses its subcluster color.
+Per-sample panels omit absent groups and unused identity levels. Raw diagnostic
+review panels remain independent and unchanged. The current implementation
+supersedes the earlier panel in VZ_DOTPLOT_OPTIMIZATION_20261018.md.
 Marker panels and identity membership are defined in `color_palette.R`. Stage 6
 refuses to write plots if a requested gene is absent from the Xenium assay, and
 its final validation fails unless every required output exists and is nonempty.
+
+The 2026-10-19 cluster-17 correction changes only the VZ resolution-0.8 fine
+label from Mature UBCs to provisional Differentiating GCs. The original
+`consensus_label` remains unchanged, while a rerun of corrected-broad Stage 02
+assigns these cells to Granule. RL and residual Mature UBCs remain unchanged.
+After all existing VZ/RL jobs finish and the numbered folder migration is
+complete, rerun VZ Stage 06 application and Stage 07 mapping, then combined
+Stage 01, corrected-broad Stage 02, and both Stage 03 merge branches. Existing
+outputs require each launcher's explicit overwrite switch for this user-approved
+replacement. Downstream non-spatial processing/plots, spatial integration,
+combined reports, and VZ per-sample reports are stale until regenerated.
+Raw marker review, VZ QC, and VZ post-QC integration do not need repeating.
 
 ```bash
 Rscript scripts/xenium_vz_06_annotate_subclusters.R \
@@ -2405,19 +2578,49 @@ not use all 34 samples. PCW19 is represented by `GZFB_22_X_G_4`. Inspect its pro
 `Rscript scripts/xenium_vz_09_plot_counts.R --dry-run` and submit it with
 `run_xenium_vz_09_plot_counts.slurm`.
 
+VZ and RL Stage-9 figures show percent abundance: each subcluster count is
+divided by the total cells in that plotted lineage within the same sample,
+then multiplied by 100. Each age bar totals 100%; these figures describe
+lineage composition rather than abundance relative to whole tissue. A sample
+with no cells in a plotted lineage is an error because its percentage is
+undefined. The optional combined-lineage script uses the same denominator,
+pooling cell counts across samples at each age before normalization.
+Existing `09_cluster_counts` directories and `ClusterCountPlot` filenames are
+retained for compatibility. Existing figures need regeneration; RDS objects
+and downstream annotations remain valid. Overwrite protection is unchanged.
+Expected Stage-9 runtime is 5–30 minutes per VZ or RL job, excluding queue
+wait (low confidence, based on static inspection of one RDS load and 2–3
+TIFF/PDF figure pairs); the launchers request 2 hours each. The path-only
+`--dry-run` takes under one minute and does not load RDS objects.
+
+The shared `refresh_current_plots.R` helper also displays cluster abundance
+as a percentage of all labeled cells in each object/view, excluding unmapped
+background cells. Raw counts remain in `Cluster_counts.csv`. Both legacy
+`Counts_cells` and `Counts_percent_of_labeled` figure stems are retained and
+now display the same percentages with explicit axis labels. Choose a new
+snapshot tag to regenerate these views without replacing previous snapshots.
+
 ### 7. RL analysis
 
 The RL branch mirrors the VZ branch:
 
 1. `xenium_rl_01_subset_samples.R` – extracts configured consensus identities per sample.
-2. `xenium_rl_02_merge_samples.R` – verifies and incrementally merges all 34 sample subsets.
+2. `xenium_rl_02_merge_samples.R` – verifies and incrementally merges all manifest-defined sample subsets.
 3. `xenium_rl_03_integrate.R` – validates the complete merge before processing.
 4. `xenium_rl_04_review_qc.R` – 4a reviews QC; 4b records the decision and
    conditionally materializes filtered sample objects.
 5. `xenium_rl_05_reintegrate_post_qc.R` – reuses Stage-3 results after a
    zero-removal decision, or reintegrates after removals.
+   Before selecting the Stage-6 partition, run the protected Stage-5c
+   [clustree and subsampling stability review](REGIONAL_RESOLUTION_REVIEW.md)
+   with `run_xenium_rl_05c_resolution_stability.slurm`.
+   To compare intermediate resolutions without rerunning integration, use the
+   [RL 0.5/0.6/0.7/0.8 comparison](RL_RESOLUTION_COMPARISON.md), launched with
+   `run_xenium_rl_05d_compare_resolutions.slurm`. Saved 0.5/0.8 assignments stay
+   fixed; only 0.6/0.7 are computed on the saved SNN, and cluster 6 is displayed
+   as identity unresolved in this separate diagnostic.
 6. `xenium_rl_06_annotate_subclusters.R`
-7. `xenium_rl_07_map_to_samples.R` – maps refined RL labels back to all 34 configured samples.
+7. `xenium_rl_07_map_to_samples.R` – maps refined RL labels back to all manifest-defined configured samples.
 8. `xenium_rl_plot_sample.R` and `xenium_rl_08_plot_samples.R` – manifest-defined per-sample reports.
 9. `xenium_rl_09_plot_counts.R`
 
@@ -2433,12 +2636,12 @@ are recorded in the availability table and omitted from the plot. Task 1 loads
 RL and task 2 loads VZ, so the two large objects are handled independently:
 
 ```bash
-Rscript scripts/xenium_vz_rl_plot_rl_vz_marker_dotplot.R --list
-Rscript scripts/xenium_vz_rl_plot_rl_vz_marker_dotplot.R \
+Rscript scripts/xenium_vz_rl_diagnostic_rl_vz_marker_dotplot.R --list
+Rscript scripts/xenium_vz_rl_diagnostic_rl_vz_marker_dotplot.R \
   --branch=RL --dry-run
-Rscript scripts/xenium_vz_rl_plot_rl_vz_marker_dotplot.R \
+Rscript scripts/xenium_vz_rl_diagnostic_rl_vz_marker_dotplot.R \
   --branch=VZ --dry-run
-sbatch scripts/run_xenium_vz_rl_rl_vz_marker_dotplots.slurm
+sbatch scripts/run_xenium_vz_rl_diagnostic_rl_vz_marker_dotplots.slurm
 ```
 
 Matched TIFF/PDF DotPlots, marker-availability tables, cluster summaries, and
@@ -2448,9 +2651,163 @@ approximately 15-45 minutes per task and 15-45 minutes total at the configured
 array concurrency of two, excluding queue wait. This moderate-confidence
 estimate is based on the prior 16-minute RL Stage-6 review, while allowing for
 the larger VZ object and high-resolution rendering. The launcher requests two
-hours, four CPUs, and 128 GB per task on `express`.
+hours, one CPU, and 256 GB per task on `express`.
 
-The RL driver also reads all 34 samples from `config/samples.csv` and supports
+A separate Purkinje diagnostic uses the existing Stage-6 annotated VZ object
+(`06_subclusters/rds/Xenium_VZ_subclusters.rds`) and plots Maturing PCs,
+Early-born PCs, Late-born PCs, and Patterning PCs, in that top-to-bottom order.
+It uses the 15 fully legible markers from the user's cropped reference image:
+VSTM2L, COL5A1, ITPR1, CNTNAP4, NDRG1, KCNC3, NEFL, NXPH4, PCDH10,
+BCL11A, NPTX2, RFTN1, EBF2, EBF1, and RORB. Additional cropped markers
+are not inferred. These are the current project identities; no PC1–PC4,
+PC-TNC, or PC-MAB assignments are inferred from the reference.
+
+From the project root on Cheaha:
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_vz_diagnostic_purkinje_dotplot.R --dry-run
+sbatch scripts/run_xenium_vz_diagnostic_purkinje_dotplot.slurm
+```
+
+The preflight checks paths and plotting dependencies without reading RDS
+objects (expected under one minute). The single pooled plotting job is
+expected to take 10–45 minutes, excluding queue wait; confidence is low,
+based on loading the 1,447,477-cell VZ object and prior Stage-6 reviews of
+31–46 minutes, with this job restricted to a small PC marker panel and no
+marker tests. The launcher requests two hours, one CPU, and 256 GB on
+`express`, matching the existing diagnostic resource envelope; prior VZ
+Stage-6 review reached 152 GB. Measure this job's Elapsed and MaxRSS to
+refine the estimate.
+
+Outputs beneath `outputs/xenium/vz/diagnostics/purkinje_reference_markers/`
+include PDF and 600-dpi TIFF plots, requested-marker availability, plotted
+expression summaries, sample/source-cluster cell counts, and input provenance.
+Genes absent from the Xenium panel are explicitly reported and omitted;
+no available genes, missing expected PC identities, or non-finite expression
+summaries cause an error. Dot size shows percent expressed; color uses the
+project's grey-to-red gene-wise scaled mean expression across the four PC
+groups, with fixed -2.5 to 2.5 limits. This is a pooled descriptive plot,
+not a replicate-adjusted comparison. The script uses existing normalized
+Xenium data and never saves a modified RDS or changes labels. Existing
+diagnostic outputs are protected; after explicit review, replacement requires
+`--overwrite` (launcher: `PURKINJE_DOTPLOT_OVERWRITE=true`).
+
+#### Optional canonical iCN/eCN marker evidence (after the nonspatial merge)
+
+`xenium_diagnostic_cn_markers.R` now defaults to the complete merged nonspatial
+object at `outputs/xenium/vz_rl/nonspatial/03_merged/rds/Xenium_VZRL_merged.rds`.
+It selects **eCN, iCN, MLIs, Golgi Cells, GABA Interneurons, and GABA
+Progenitors**, in that display order, grouping only by existing `comb_subcluster` labels. VZ, RL, and Residual
+cells are pooled within each label in the plot, expression means, coexpression,
+and sample-level summaries. Other identities (including the separate Purkinje
+lineage) are excluded from this report only. It requires iCN, eCN, and Residual-derived eCN,
+all active manifest samples, and agreement between combined and source branch
+labels. It does not read or modify the source regional RDS objects.
+
+The combined-label stage does not propagate original numeric regional cluster
+IDs. Therefore merged iCN pools former VZ clusters 11 and 21; the script
+never interprets a whole-tissue clustering column as a regional cluster ID.
+For a regional per-numeric-cluster view, explicitly select `--branch=vz`
+(launcher: `CN_MARKER_BRANCH=vz`); `rl` and `residual` also remain available.
+
+Submit the Slurm job from `scripts/` on Cheaha:
+
+```bash
+sbatch run_xenium_diagnostic_cn_markers.slurm
+```
+
+The dry-run checks paths and dependencies without loading RDS objects (expected
+under one minute). Full merged execution is expected to take **15–90 minutes**,
+excluding queue wait, with low confidence based on static inspection and
+related workloads. Same-merge expression export job 41005351 took 3.45 minutes
+and 22.86 GB MaxRSS; processed-merge plotting job 41006727 reached 24.88 minutes
+and 182.34 GB before an unrelated marker-heatmap failure. Neither measures this
+diagnostic. Optional regional reports retain the earlier 10–60-minute estimate
+per branch. This is an expected runtime, not a requested
+Slurm time limit. The launcher requests **two hours, one CPU, and 256 GB on
+express**, matching the existing VZ diagnostic envelope. VZ Stage-6 job 40966278
+took 31.52 minutes with 152.09 GB MaxRSS; this is supporting evidence, not a
+measurement of the new diagnostic. Cheaha's published partition table confirms
+express allows two hours (https://docs.rc.uab.edu/cheaha/hardware/, checked
+2026-10-21). Loading the full object dominates memory. The launcher loads the
+established R/4.4.1 module, starts R at the project root for existing renv
+activation, exposes Seurat load errors, then runs the path-only dry-run before
+the analysis. It never installs or restores packages. Default branch is
+`nonspatial`; `CN_MARKER_BRANCH=vz`, `rl`, or `residual` explicitly selects an
+regional report using the expanded marker panel. This is one pooled job, not an array.
+After explicit output review, `CN_MARKER_OVERWRITE=true` enables the driver's
+protected overwrite mode. Logs use `logs/Xen_CN_Markers_<job_id>.out` and `.err`.
+After completion, collect `JobID`, `Elapsed`, `State`, `MaxRSS`, `ReqMem`,
+`AllocCPUS`, and `ExitCode` with `sacct` to refine future resource requests.
+
+Outputs are protected under
+`outputs/xenium/vz_rl/nonspatial/diagnostics/canonical_cn_markers_gaba_ecn_mli/`: an unscaled PDF
+DotPlot, gene availability, pooled and sample-by-subcluster expression,
+equal-sample-weight expression means, within-cell marker-pair detection,
+sample/cluster counts, manifest sample coverage, provenance, session information,
+and interpretation notes with literature sources. The script reads the current
+sample manifest, rather than assuming a fixed sample count. Missing samples in
+the merged cohort are errors; regional-only reports record absent samples.
+Missing metadata, unknown sample IDs, duplicate
+cell IDs, incomplete layers, or conflicting cluster-to-label mappings are errors.
+Genes absent from the panel are reported as unavailable, never zero expression.
+An unavailable coexpression pair has `available=FALSE` and missing detection
+values; other pairs and genes remain available for review. Merged result rows
+do not split or group by `regional_assignment`. Sample coverage records source
+and selected cell counts; provenance records the input/selected cell totals and
+requested/evaluated labels. Absent non-CN requested labels are logged and omitted,
+not displayed as zero-expression populations. Previous origin-separated and
+regional reports remain in their existing directories and are never overwritten
+by this focused report. Optional regional reports also use the new
+`canonical_cn_markers_gaba_ecn_mli` directory name but retain their original numeric
+cluster grouping and all regional labels.
+
+The expanded panel requests 49 genes. It distinguishes SOX14/DMBX1 iCN
+candidates; shared iCN-supporting ZFHX3, ZFHX4, TOX, SLC24A4, CHRM2, MEIS1,
+and TAC1; GABA transmission/lineage genes; SLC17A6/MEIS2 eCN evidence;
+subtype/developmental TBR1, LHX9, LMX1A, BARHL1, and NEUROD6; shared
+eCN-supporting NTNG1, ZNF804A, NR4A2, NRP1, C1QL3, NTNG2, CREG2, and
+NEUROD2; and MLI, GABA subtype context, and pan-neuronal genes.
+The Purkinje contrast panel is replaced by PVALB, SORCS3, NXPH1, KCNA2, GRIK1,
+KIT, ERBB4, GRM8, and CACNA1E. Genes moved out of GABA subtype context are not
+duplicated across panels. These MLI markers have maturation/subtype dependence
+and overlap with other GABA populations; SORCS3/NXPH1 transcriptional types
+should not be equated directly with basket/stellate morphology. Sources:
+https://www.nature.com/articles/s41586-021-03220-z and
+https://www.nature.com/articles/s41467-022-30977-2. Added shared CN candidates are informed by the human developmental and
+organoid comparison at https://doi.org/10.1242/dmm.052290 and developmental
+subtypes by https://www.nature.com/articles/s41586-023-06884-x. These are not
+all CN-specific or universally expressed: species, stage, and subtype matter.
+Mouse evidence is distinguished from human developmental context in `interpretation.txt`.
+SOX14 is not a universal requirement for all inhibitory CN subtypes. Generic
+neuronal markers or GABA transmission alone do not establish CN identity.
+Detection means raw counts greater than zero; colors show log1p of the mean
+linearized existing normalized Xenium expression. No normalization is rerun.
+The main `CN_markers_DotPlot.pdf` retains this unscaled, cell-pooled view.
+A second `CN_identity_Focused_DotPlot.pdf` highlights 24 requested CN/GABA/MLI
+genes, with eCN and iCN first, using equal-sample mean detection for dot size
+and a gene-wise z-score of log1p(sample-balanced mean linear expression) for
+color. Its six short panels are eCN core/support, iCN core/support, GABA, and
+MLI. The MLI panel uses the same nine genes as the main plot: PVALB, SORCS3,
+NXPH1, KCNA2, GRIK1, KIT, ERBB4, GRM8, and CACNA1E. The focused figure widens
+with the number of available genes to preserve label readability.
+Constant genes have z-score zero. This presentation highlights relative marker
+enrichment and can amplify weak signals: inspect dot sizes and unscaled
+values/sample counts in `CN_identity_Focused_Expression.csv` before drawing an
+identity conclusion. Missing panel genes are omitted and recorded. The source
+RDS, clustering, label definitions, and other analyses are unchanged.
+Sample-balanced means include represented samples only, with no absent
+sample-cluster zero imputation, minimum-cell threshold, or donor-level inference.
+Inspect counts alongside these means, especially for small sample-cluster groups.
+Same-cell detection can reflect segmentation contamination as well as biology.
+These are descriptive identity checks, without significance tests or automatic
+pass/fail assignments. Spatial nuclear localization and independent reference
+evidence are needed for stronger identity claims. The only cell selection is
+the requested report labels; QC thresholds, labels, cell IDs, and RDS objects
+remain unchanged. No downstream analysis outputs become stale. Existing
+report files require explicit review before rerunning with `--overwrite`.
+
+The RL driver also reads all manifest-defined samples from `config/samples.csv` and supports
 the same inspection and overwrite protections. `run_xenium_rl_01_subset.slurm`
 submits RL extraction. Use `run_xenium_rl_02_merge_samples.slurm`,
 `run_xenium_rl_03_integrate.slurm`,
@@ -2479,13 +2836,13 @@ colors visually distinct; the Immature UBC color is shared with the VZ
 palette. Only the copies embedded in the merged PDF are pre-rasterized, which
 avoids enlarging a lower-resolution point layer in the high-resolution TIFFs.
 
-After all 34 one-page Stage-8 reports for a branch are complete, the existing
+After all manifest-defined one-page Stage-8 reports for a branch are complete, the existing
 RL or VZ Stage-8 driver can run in `--combine` mode. That mode validates the
-reports and combines them into one 34-page PDF. Pages are ordered by numeric
+reports and combines them into one manifest-sized PDF (currently 41 pages). Pages are ordered by numeric
 PCW from `metadata/samples_meta.xlsx`, with `config/samples.csv` order breaking
 ties, matching the established merged-report behavior.
 It requires the Poppler `pdfinfo` and `pdfunite` commands, verifies that every
-input has one page, verifies that the final output has 34 pages, and writes a
+input has one page, verifies that the final output has one page per manifest sample, and writes a
 page-to-sample CSV manifest containing PCW and original manifest position
 beside the PDF. It never installs dependencies
 inside the job. Inspect RL readiness and submit the same RL launcher in combine
@@ -2612,10 +2969,12 @@ each expression cluster contributed by each sample. These descriptive outputs
 are intended to distinguish reproducible low-QC clusters from sample- or
 age-specific composition before any removal decision.
 
-In Stage 4b, the reviewed resolution-0.8 decision removes clusters
-`6,15,24,26,27`. Clusters 6 and 15 have consistently depressed count and
-feature distributions, while clusters 24, 26, and 27 contain only 3, 2, and 2
-cells. The launcher stores this set as its apply-mode default; review remains
+In Stage 4b, the user-approved 2026-10-16 resolution-0.8 decision removes only
+clusters `19,20,21,22,23` from the current 41-sample RL object. Each contains
+two cells: 10 of 827,193 cells total (approximately 0.0012%). All clusters
+0-18 are retained. This supersedes the older `6,15,24,26,27` decision; cluster
+numbers must not be carried between different integrated objects without review.
+The launcher stores the current set as its apply-mode default; review remains
 the default mode, so removal still requires `RL_QC_MODE=apply`. An explicit
 `RL_QC_REMOVE_CLUSTERS` value can override the reviewed set if a later review
 changes the decision. Do not place a comma-separated override directly inside
@@ -2628,15 +2987,15 @@ jobs complete. Inspect the decision and submit it with:
 
 ```bash
 Rscript scripts/xenium_rl_04_review_qc.R \
-  --remove-clusters=6,15,24,26,27 --dry-run
+  --remove-clusters=19,20,21,22,23 --dry-run
 sbatch --export=ALL,RL_QC_MODE=apply,RL_QC_OVERWRITE=true \
   scripts/run_xenium_rl_04_review_qc.slurm
 ```
 
 `RL_QC_OVERWRITE=true` is required when replacing the earlier no-removal
 Stage-4b RDS files and decision manifest. It does not overwrite the Stage-4a
-QC evidence. The approved removal contains 69,962 cells in the reviewed object
-(about 8.8%); Stage 5 therefore takes the full reintegration path, and all
+QC evidence. The approved removal contains 10 cells in the reviewed object;
+Stage 5 therefore takes the full reintegration path, and all
 existing Stage-5 and downstream RL results become stale. As in the VZ Stage-4
 launcher, RL Stage 4 starts R with `--max-ppsize=500000`. RL materialization is
 also deliberately sequential so each spatial Seurat object is subset in that
@@ -2647,13 +3006,15 @@ demonstrated the Slurm comma-parsing hazard by receiving only cluster `6` from
 a comma-separated `--export` override.
 
 The launcher defaults to Stage 4a review mode and requests 12 hours, 1 CPU,
-and 256 GB on `short`. Stage 4b records one consistent decision for all 34
+and 256 GB on `short`. Stage 4b records one consistent decision for all 41
 samples. A `none` decision writes only a routing manifest pointing to the
 original consensus objects and should finish in under 1 minute. A nonzero
-removal writes 34 filtered copies sequentially and is expected to take
-approximately 20-40 minutes based on job 40698364, which completed all 34
-samples in 24 minutes 46 seconds with 36.83 GB MaxRSS. Expanded Stage 4a review
-remains approximately 2-8 hours. These estimates exclude queue wait. The
+removal writes 41 filtered copies sequentially and is expected to take
+approximately 25-60 minutes (low confidence), extrapolated from job 40698364,
+which completed the earlier 34-sample cohort in 24 minutes 46 seconds with
+36.83 GB MaxRSS. Timing the first 41-sample run will improve this estimate.
+Expanded Stage 4a review remains approximately 2-8 hours. These estimates
+exclude queue wait. The
 12-hour limit and 256-GB memory request remain conservative pending additional
 successful runs.
 
@@ -2728,7 +3089,7 @@ but this exact four-partition diagnostic has not yet been measured. The Slurm
 launcher requests four hours on `short`.
 
 When the complete stage-4 removal manifest records `clusters_removed=none`,
-zero removed cells, and unchanged input/remaining counts for all 34 samples,
+zero removed cells, and unchanged input/remaining counts for all manifest-defined samples,
 RL stage 5 takes a protected zero-removal fast path. It preserves the stage-3
 PCA, Harmony integration, SNN graph, and resolution-0.5/0.8 assignments; copies
 the reviewed `umap_harmony` coordinates to the stage-5 `umap_clean` reduction;
@@ -2736,9 +3097,9 @@ and writes only the resolution-0.5/0.8 fast-path plots. It does not calculate a
 new resolution-0.3 partition. Any nonzero removal uses the existing full
 PCA/Harmony/UMAP/neighbors/reclustering path at resolutions 0.3/0.5/0.8. After
 the controlled post-QC diagnostic, the full path uses 30 PCA/Harmony
-dimensions, 30 UMAP neighbors, and `k.param=30`. Resolution 0.5 is the preferred
-Stage-6 review partition; resolutions 0.3 and 0.8 remain available for coarse
-and fine sensitivity checks. The Stage-5 provenance manifest records these
+dimensions, 30 UMAP neighbors, and `k.param=30`. Resolution 0.8 is the
+user-selected default Stage-6 review partition; resolutions 0.3 and 0.5 remain
+available through explicit overrides for sensitivity checks. The Stage-5 provenance manifest records these
 parameters, the selected processing mode, and which reductions and resolutions
 were reused or computed. The original-label UMAP uses
 `regional_consensus_label_pooled`, preventing sample-qualified Unknown labels
@@ -2746,12 +3107,34 @@ from creating an oversized legend that compresses the plotting panel.
 
 The zero-removal fast path is expected to take approximately 10-45 minutes,
 dominated by loading, joining, plotting, and saving the large RL object. Full
-post-removal reintegration with the reviewed 30-dimension settings is expected
-to take approximately 2.5-4 hours. This moderate-confidence estimate is based
-on job 40699023, which completed the 50-dimension path in 3 hours 32 minutes,
-and the completed controlled diagnostic. Estimates exclude queue wait. The
-launcher requests 12 hours, 4 CPUs, and 256 GB on `short`.
-The memory request was raised from 128 GB after full-reintegration job
+post-removal reintegration for the current 41-sample cohort is estimated at
+3-8 hours (low confidence). Job 40958628 reached clustering after approximately
+1 hour 40 minutes but was killed by the 256-GB cgroup limit when four
+multisession workers started; it did not measure clustering completion time.
+The earlier 34-sample job 40699023 finished in 3 hours 32 minutes. Estimates
+exclude queue wait. The
+launcher requests 24 hours, 1 CPU, and 600 GB on `medium`; clustering defaults to one worker.
+The 2026-10-16 fix replaces multisession object serialization with fork-based
+clustering and, at the user's request, defaults to three concurrent clustering
+workers so the three resolutions can run together. Override with
+`RL_POST_QC_CLUSTER_WORKERS=1` for sequential clustering. Worker count is capped
+at allocated CPUs and the three resolutions. Unsupported fork environments
+fail before loading the large object and instruct the user to select one worker.
+This runtime change preserves the configured dimensions, neighbors, resolutions,
+seed, cell selection, output names, and overwrite protection. The provenance
+manifest now records the clustering worker count and backend. The 600-GB request
+provides a conservative retry budget after the 256-GB OOM; it is not a measured
+requirement or a guarantee of completion. The failed job reported 173.50 GiB
+MaxRSS for an individual process, which does not measure concurrent job memory.
+Successful peak memory remains unmeasured; collect sacct after the retry to
+refine the request. Current Cheaha hardware documentation, checked 2026-10-16,
+lists Intel short-partition nodes with up to 754 GB and a 12-hour limit:
+https://docs.rc.uab.edu/cheaha/hardware/ . The request stays on `short`, retaining
+the Intel constraint and existing 12-hour limit. The 3-8-hour estimate remains
+low confidence because neither the two- nor three-fork-worker retry has completed.
+There is no RL Stage-5 restart checkpoint, so this retry repeats PCA, Harmony,
+UMAP, and neighbor finding before clustering.
+Historically, the memory request was raised from 128 to 256 GB after full-reintegration job
 40698736 was killed while loading or validating the merged RL object at
 124.25 GB MaxRSS, before any PCA, Harmony, UMAP, neighbor, or clustering
 progress was logged. This resource-only change does not alter filtering,
@@ -2765,8 +3148,151 @@ RL_POST_QC_OVERWRITE=true \
   sbatch --export=ALL scripts/run_xenium_rl_05_reintegrate_post_qc.slurm
 ```
 
+For uncertain resolution-0.8 identities after Stage-6 review, run the read-only
+identity diagnostics before applying labels:
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_rl_06b_diagnose_identities.R --dry-run
+sbatch scripts/run_xenium_rl_06b_diagnose_identities.slurm
+```
+
+The diagnostic checks the current Stage-6 review provenance against the Stage-5
+RDS and preserves every cell, sample, cluster, and original prediction label.
+It summarizes cluster sizes/counts/features, within-sample QC ratios, and
+within-cell raw-count detection for targeted marker pairs. Detection means
+counts greater than zero, a descriptive rule rather than a QC or identity
+threshold. Missing panel genes are recorded as unavailable. All clusters receive
+aggregate diagnostics; clusters 5, 6, 10, 12, 18, and 19 also receive compressed
+cell-level marker-count and reference-prediction CSVs when present.
+Original Aldinger, Sepp, and Science annotation objects are read sequentially
+for every manifest sample. Each retained RL cell must match exactly once using
+the Stage-2 sample prefix; missing/duplicate IDs, blank labels, invalid scores,
+and partial sample/reference coverage are errors. Saved `predicted.id` and
+`prediction.score.max` values are reported without confidence filtering,
+recalibration, label transfer, consensus voting, or changes to analysis RDS files.
+Scores should be interpreted within each reference. Label-composition tables
+are descriptive cell fractions, not independent-donor statistical inference.
+
+Outputs are protected under
+`outputs/xenium/rl/06_subclusters/diagnostics/identity_review/{tables,plots}/`.
+They include three PDF summaries, complete per-cluster/per-sample CSVs, the
+focus-cell CSVs, an exact reference-join/input audit, and provenance. Existing
+diagnostic outputs require explicit `--overwrite` after review, exposed through
+`RL_IDENTITY_DIAGNOSTICS_OVERWRITE=true` in the launcher. The path-only preflight
+checks the post-QC object, review manifest, and all reference paths without
+loading RDS files; it should take under 1 minute. Expected full runtime is
+1-6 hours (low confidence from static inspection of one approximately 43-GB
+RL-object load and 123 sequential reference loads for 41 samples; measure the
+first completed run to refine this). The job requests 12 hours, one CPU, 256 GB,
+and Intel nodes on `short`; queue wait is excluded. Memory is budgeted above
+the completed RL review's 80.32-GiB peak, with only one reference object resident
+at a time after the large RL object is released.
+
+#### Optional BG spatial and within-cell marker diagnostics (after RL Stage 7)
+
+`xenium_rl_06d_bg_spatial_markers.R` reads the same manifest-defined, whole-tissue
+Stage-7 mapped objects used by the sample spatial reports. It analyzes the
+existing **BG Progenitors** label without renaming cells, filtering, reclustering,
+or writing analysis RDS files. Run this on the HPC. From the project root:
+
+```bash
+cd /home/acflint/R/Projects/XeniumFCProject
+# Lists manifest tasks and checks every input path; no RDS loads or submission.
+bash scripts/submit_xenium_rl_bg_spatial_markers.sh
+# Repeat the preflight, then submit the manifest-derived array at concurrency 3.
+bash scripts/submit_xenium_rl_bg_spatial_markers.sh --submit
+```
+
+Upload the driver, `R/rl_bg_spatial_diagnostics.R`, launcher
+`run_xenium_rl_06d_bg_spatial_markers.slurm`, and submission helper together.
+The helper preserves the existing R/4.4.1 module setup. There are currently 41
+manifest samples; task IDs follow manifest order, not PDF page order. Inspect
+`Rscript --max-ppsize=500000 scripts/xenium_rl_06d_bg_spatial_markers.R --list`
+before selecting a single task. A single task accepts `--dry-run TASK_ID` or
+`TASK_ID`. The all-sample `--dry-run` checks paths only and returns nonzero when
+inputs are missing. Preflight/listing should take under 1 minute.
+
+Outputs are separate, protected diagnostic files under
+`outputs/xenium/rl/06_subclusters/diagnostics/bg_spatial_markers/<sample_id>/`:
+
+- A nine-page PDF: BG-only map, RL context map, six EOMES-pair maps
+  (SLC1A3/BCAN/SOX2/NES/PTPRZ1/FABP7), and raw-count marker detection across
+  all mapped RL identities. All cells are displayed; there is no random sampling.
+- Compressed cell-level counts, centroids, IDs, labels, age and QC metadata for
+  every mapped RL cell, plus marker availability/detection and pair tables.
+  Pair tables report the four detection states, fractions of measured cells,
+  conditional fractions, and denominators at both >=1 and >=2 raw transcripts.
+  These are descriptive sensitivity checks, not identity or QC thresholds.
+- Per-BG-cell nearest-centroid distances to RL SVZ, UBCs (immature + mature),
+  and granule identities, with per-sample medians. Coordinates use the report's
+  x/y swap; Euclidean distance is unchanged. Units remain native Xenium centroid
+  units and are not independently calibrated to microns here.
+- A sample summary and a completion/provenance CSV written last. The input's
+  size/mtime, configuration/manifest hashes, helper hash and package versions
+  are recorded. Partial outputs remain protected until reviewed.
+
+Sample identity is checked against the Stage-7 RL mapping manifest's exact
+sample/output-path match, whole-tissue and mapped-RL cell counts, and PCW.
+The original per-sample `orig.ident` may be a legacy Seurat project identifier;
+it is preserved in the cell table and provenance rather than rewritten or
+required to equal the manifest sample ID. Multiple/blank origin identifiers,
+an origin naming a different active sample, or conflicting explicit `sample_id`
+metadata remain errors. Preflight reads paths and the small mapping CSV only,
+with no RDS loads. The submission helper counts numeric task rows only, so
+startup messages such as a `renv` status notice cannot create extra tasks.
+
+NA RL labels are expected whole-tissue background, not missing RL assignments.
+All object cells must have exactly one finite centroid; mapped RL cells must
+have exactly one raw-count layer. Missing genes are unavailable (NA), never
+zero expression. A sample without BG cells is explicitly `BG_absent`, and an
+absent distance-comparison identity produces NA distances with an explicit status.
+The cohort summary rejects an entirely absent BG label. These diagnostics do
+not inspect transcript-to-boundary assignments, establish lineage, or determine
+whether proximity reflects anatomy, cell density, or section geometry.
+Samples may include sections from the same donor; no cell-level or sample-level
+inferential p-values are calculated.
+
+Expected runtime is **5-30 minutes per task**, or approximately **1-7 hours for
+41 samples at concurrency 3**, excluding queue wait (low confidence from static
+inspection: one mapped object load, targeted counts, nearest-neighbor searches
+and nine plots). The launcher requests **2 hours, 64 GB and one CPU per task
+on express**, following the existing Stage-8 per-sample launcher; this new job
+has no measured memory peak yet. The historical per-sample transfer jobs peaked
+around 44-49 GB, but that is only an indirect comparator. Collect first-run
+`sacct` JobID, Elapsed, State, MaxRSS, ReqMem, AllocCPUS and ExitCode to refine
+these estimates. No major partition/resource change is introduced.
+
+After every array task completes, combine the small tables (normally under
+1 minute; no RDS objects loaded):
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_rl_06d_bg_spatial_markers.R --summarize --dry-run
+Rscript --max-ppsize=500000 scripts/xenium_rl_06d_bg_spatial_markers.R --summarize
+```
+
+Combination requires complete outputs for every current manifest sample and
+matching input/config/manifest/helper provenance; it preserves sample rows
+rather than pooling cells for donor inference. Existing diagnostic outputs
+require explicit `--overwrite` after review. For arrays only, the equivalent
+launcher opt-in is `RL_BG_DIAGNOSTICS_OVERWRITE=true`. No existing production
+outputs become stale from running these read-only diagnostics.
+
 After stage 5, submit `run_xenium_rl_06_annotate_subclusters.slurm` in its
-default review mode. Resolution 0.5 remains the default, while
+default review mode. Resolution-0.8 review generates the five sample-aware
+marker-evidence tables within the same job before generating the review plots
+and descriptive marker tables. Complete evidence with matching input provenance
+is reused. Partial or stale evidence is protected and requires explicit
+`--overwrite` after review; label application still requires completed review
+outputs and current evidence. A missing evidence set is an output to build,
+not a failed prerequisite in review-mode `--dry-run`. The preflight reads paths
+and small provenance CSVs only and takes under 1 minute.
+The evidence builder releases its object before the review loads it, avoiding
+two simultaneously resident copies. Existing stable output paths are preserved.
+The combined first RL review is estimated at 0.75–7 hours (low confidence, combining
+the 20-120-minute evidence estimate with the earlier marker-review timing and
+allowance for the 41-sample object); the launcher retains its 12-hour limit,
+one CPU, and 256 GB. A separate RL 06a job is no longer needed.
+Both the R driver and launcher default to resolution 0.8, while
 `--resolution=0.3|0.5|0.8` and the launcher's
 `RL_SUBCLUSTER_RESOLUTION` select another Stage-5 partition. Each review writes
 a resolution-specific raw UMAP, stable top-10 marker table, expanded top-50
@@ -2780,29 +3306,45 @@ palette-only additions receive a separate facet, preventing duplicate dots.
 Marker testing retains the same scientific thresholds, and the
 UMAP plot reuses `umap_clean` coordinates. Earlier resolution-specific evidence
 from a previous Stage-5 object is stale and must be explicitly overwritten.
-The old identity map is deliberately not reused. The reviewed resolution-0.8
-map is now configured in Stage 6 from the current post-QC UMAP, top-50 marker
-table, focused lineage DotPlot, and RL-VZ diagnostic DotPlot. The map groups
-clusters `8/12` as cycling RL-SVZ/UBC progenitors, `9/15` as proliferating
-GCPs, `3/5/10` as migrating GCs, `4/7/14` as differentiating GCs, and
-`13/21/22` as maturing PCs. It retains the reviewed off-lineage identities
-`eCN` (17), `GABA Progenitors` (18), `Microglia` (19), and `Endothelial` (20)
-instead of forcing them into an RL lineage. Shared taxonomy and palette checks
+The old identity map is deliberately not reused. The user-approved 2026-10-17
+resolution-0.8 map covers the current 827,183-cell object's clusters 0-19:
+`0/2/10/19` Differentiating GCs; `1/18` Mature UBCs; `3/5` Immature UBCs;
+`4/13` Migrating GCs; `6` BG Progenitors; `7/9/14/15` Prolif GCPs;
+`8/17` RL SVZ; `11` Mature GCs; `12` Maturing PCs; `16` Maturing GCPs.
+This is a marker-based annotation approved by the user, with sparse 18/19
+assigned tentatively using the UMAP and focused DotPlot. Assignments for
+5/6/10/12 remain biologically provisional despite approval of the label names.
+BG Progenitors is registered in RL and master orders with the existing BG
+violet color and unchanged BG marker panel; VZ BG labels are unchanged.
+All retained cells, including 18/19, remain in the annotated RDS. The lineage-only
+UMAP excludes BG Progenitors and Maturing PCs for display only. Shared taxonomy and palette checks
 prevent any reviewed label from becoming `NA` during factor conversion. The
 combined count plots report `eCN` as its own lineage and place `Microglia` with
 the other non-neural/off-lineage populations rather than counting either as
-UBC. Production RL-branch plots use only the 14 identities present in that
+UBC. Production RL-branch plots use only the 10 identities present in that
 approved map; the RL-branch's obsolete `RL VZ`, `Intermediate Progenitors`,
 and `Ependymal Cells` levels are not displayed. This does not remove the
 separately reviewed `RL VZ` identity from the VZ resolution-0.8 taxonomy. The
 production output retains the merged DotPlot and adds separate compact RL
-lineage and Other DotPlots. The lineage panel uses three existing production
-markers for each RL, UBC, and granule program across the corresponding lineage
-identities. The Other panel uses three markers each for BG, Maturing PCs, eCN,
-GABA Progenitors, Microglia, and Endothelial. `HES1`, `BCAN`, nonspecific `PAX6`, weak per-sample
-Maturing-PC marker `FOXP2`, and assay-absent `GRIA4` remain omitted.
+lineage and Other DotPlots. The lineage panel uses three RL and three UBC
+markers plus the six user-selected granule genes (see Shared DotPlot
+presentation). The Other panel displays only the marker groups for observed
+identities: currently BG Progenitors (SLC1A3/SOX2/BCAN) and Maturing PCs
+(CALB1/FOXP4/DAB1). Inactive eCN, GABA Progenitors, Microglia, and Endothelial
+facets are omitted. Nonspecific PAX6 and assay-absent GRIA4 remain omitted
+from these production panels.
 Both RL UMAPs use centered white boxes for every cluster label, without leader
 lines or changes to UMAP coordinates or identities.
+
+Applying this map requires no Stage-5 reintegration or Stage-6 marker-review
+rerun. It changes the annotated RL RDS, label manifest, and label-dependent
+Stage-6 plots/tables, making earlier mapped per-sample RL and combined-label
+outputs stale. Preserve prior outputs/label CSVs for rollback and regenerate
+downstream stages only after reviewing the new annotation. Existing outputs
+remain protected unless `--overwrite` is explicitly supplied. Label application
+is estimated at 10-30 minutes (low confidence based on the earlier 11m32s job
+40865299 and the larger current object), excluding queue wait; the launcher
+retains its 12-hour limit and 256-GB request.
 
 ```bash
 Rscript scripts/xenium_rl_06_annotate_subclusters.R \
@@ -2820,15 +3362,15 @@ sbatch --export=ALL,RL_SUBCLUSTER_MODE=apply,RL_SUBCLUSTER_RESOLUTION=0.8 \
   scripts/run_xenium_rl_06_annotate_subclusters.slurm
 ```
 
-Application is refused if the post-QC input changed after review. Review mode,
-including the focused DotPlot, is expected to take approximately 15-45 minutes
-based on job 40792498, which completed the earlier resolution-0.8 marker review
-in 16 minutes 9 seconds with 69.09 GB MaxRSS. This estimate is moderate
-confidence; the added DotPlot should be small relative to marker testing but
-has not yet been timed on the full object. Full resolution-0.8 annotation is
+Application is refused if the post-QC input changed after review. Review mode
+with already current replicate evidence is estimated at 30-120 minutes for
+the 41-sample object (low confidence). The earlier resolution-0.8 marker-review
+job 40792498 completed in 16 minutes 9 seconds with 69.09 GB MaxRSS; it did not
+include the current combined evidence build. Allow 1-4 hours for the first
+combined review, as described above. Full resolution-0.8 annotation is
 expected to take approximately 10-20 minutes based on completed job 40865299,
 which ran in 11 minutes 32 seconds with 102.77 GB MaxRSS. The launcher requests
-12 hours, 4 CPUs, and 128 GB on `short`.
+12 hours, 1 CPU, and 256 GB on `short`.
 
 To refresh only the Stage-6 production tables and plots from the existing
 annotated RDS, without rewriting the label manifest or RDS, inspect and then
@@ -2861,12 +3403,110 @@ route to existing Stage-4 `*_RL_QC.rds` files. It writes independent
 `Xenium_RL_Mapping_manifest.csv`; VZ labels are joined later by exact cell ID.
 
 Use `run_xenium_rl_07_map_to_samples.slurm` for mapping and
-`run_xenium_rl_08_plot_samples.slurm` for the 34-task plotting array. Inspect one
+`run_xenium_rl_08_plot_samples.slurm` for the 41-task plotting array at concurrency
+three, matching the current manifest. The sample plotting helper includes
+BG Progenitors in Other facets and uses the six selected granule markers and
+broad-colored DotPlot headers. Merged and per-sample production DotPlots share
+`rl_production_marker_panel()`: only marker groups for observed identities are
+shown. Samples with the same identities as the merged object therefore use the
+same ordered markers; absent identity groups are omitted rather than retaining
+the old generic Other markers. Raw review markers/signatures are unchanged.
+Inspect one
 plotting task first with:
 
 ```bash
 Rscript scripts/xenium_rl_08_plot_samples.R --dry-run 1
 ```
+
+After the sample array completes, inspect and submit the single-task combine:
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_rl_08_plot_samples.R --combine --dry-run
+sbatch --array=1 --export=ALL,RL_PLOTS_MODE=combine scripts/run_xenium_rl_08_plot_samples.slurm
+```
+
+Stage-8 sample reports are estimated at 5-20 minutes per task and approximately
+70-280 minutes for 41 tasks at concurrency three, excluding queue wait (low
+confidence from static inspection of per-sample RDS reads, spatial TIFF/PDF
+rendering, and DotPlots; no matching sacct measurement yet). Each task requests
+2 hours, one CPU, and 64 GB on express. Path-only sample preflights take under
+1 minute each. Combining the 41 one-page reports is estimated at 1-5 minutes,
+with the same 2-hour requested limit; its preflight checks PDF files/page counts
+and the PCW page map without loading RDS objects and should take under 1 minute.
+Expected combined coverage is 41 pages in current manifest/PCW order. Existing
+sample and combined outputs remain protected by the launcher's RL_PLOTS_OVERWRITE
+switch. No analysis RDS files or mapped labels are modified by Stage 8.
+
+Optional RL UMAP comparison: `xenium_rl_06c_compare_umap.R` reads the approved
+Stage-6 `Xenium_RL_subclusters.rds` and fits four visualization alternatives
+using its existing `harmony_clean` coordinates: neighbors 30/15 crossed with
+minimum distance 0.1/0.05. Seed and dimensions come from configuration; spread
+remains 1 and the metric is cosine. It never changes clustering, approved labels,
+or production objects. All cells are fitted; a fixed display subset of up to
+2,000 cells per identity reduces crowding in the five-page PDF, whose first
+page shows the existing embedding. Full coordinates, display cell IDs, parameters,
+input provenance, and session information are saved under
+`outputs/xenium/rl/06c_umap_comparison/`. Existing comparison outputs are protected
+unless explicitly replaced with `--overwrite`.
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_rl_06c_compare_umap.R --list
+Rscript --max-ppsize=500000 scripts/xenium_rl_06c_compare_umap.R --dry-run
+sbatch scripts/run_xenium_rl_06c_compare_umap.slurm
+```
+
+List/path-only preflight should take under one minute and do not load RDS data.
+The four sequential fits are estimated at 3-7 hours total, excluding queue wait,
+based on the earlier approximately 42-minute UMAP fit for 827,183 cells plus
+loading/rendering overhead (low confidence). The launcher requests 8 hours,
+256 GB and one CPU on short; no array or parallel R workers are used. Review the
+PDF before adopting any alternative; production plots remain current because
+this optional comparison does not replace their coordinates. After completion,
+collect Elapsed, State, MaxRSS, ReqMem, AllocCPUS and ExitCode with sacct.
+
+User-selected RL UMAP (2026-10-20): 30 neighbors, minimum distance 0.05, spread 1.
+The RL-only `regional_subsets.rl_umap_min_dist_post_qc` setting controls future
+Stage-5 full recomputations; it does not alter clustering or the zero-removal
+reuse path. Existing production RDS reductions are retained. To display every
+cell from the already computed `nn30_md0.05` comparison, use:
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_rl_06c_compare_umap.R --render-selected --dry-run
+sbatch --export=ALL,RL_UMAP_OVERWRITE=true scripts/run_xenium_rl_06c_render_selected_umap.slurm
+```
+
+The selected-render mode checks source provenance and renders all saved cell
+coordinates using the original Stage-6 DimPlot formatting. It loads the approved
+Seurat object, substitutes coordinates in memory, and never fits UMAP again. It
+replaces the two stable Stage-6 full/lineage-only UMAP TIFFs, adds a two-page
+`Xenium_RL_Subcluster_UMAP_AllCells.pdf`, and records a selected-UMAP manifest.
+The full plot includes every cell; the companion filtered plot retains the
+established lineage-only exclusion. Estimated runtime is 10-25 minutes including
+the large object read (low confidence, based on earlier Stage-6 plot refresh timings). The launcher
+requests 2 hours, 256 GB and one CPU on express. Preflight is path-only, under one minute.
+Subsequent Stage-6 plot-only refreshes honor the selected manifest and redraw
+these UMAPs from the same comparison. Changed source-object provenance requires
+a new reviewed comparison. Stage-7 mapped labels, Stage-8 spatial reports, and
+marker results remain valid and do not need regeneration. No existing Seurat
+RDS is overwritten; their stored UMAP coordinates are unchanged.
+
+To refresh only the five upstream RL UMAPs with the same selected coordinates:
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_rl_06c_compare_umap.R --render-selected --upstream-only --dry-run
+sbatch --export=ALL,RL_UMAP_SCOPE=upstream,RL_UMAP_OVERWRITE=true scripts/run_xenium_rl_06c_render_selected_umap.slurm
+```
+
+This replaces the four Stage-5 UMAP TIFFs (pooled input labels and resolutions
+0.3/0.5/0.8) and the Stage-6 raw resolution-0.8 UMAP TIFF. It reads the approved
+annotated object, which retains the upstream grouping columns, substitutes the
+selected full-cell coordinates in memory, and uses the original Stage-5/review
+plot settings verbatim. No marker tests, cluster assignments, labels, graphs,
+RDS objects, production annotated UMAPs, or other plots are changed. A separate
+`Xenium_RL_Upstream_UMAP_refresh_manifest.csv` records all five output paths.
+Expected runtime is 15-35 minutes, excluding queue wait (low confidence, based
+on earlier Stage-6 object loading/rendering times); requested resources remain
+2 hours, 256 GB and one CPU. Path-only preflight takes under one minute.
 
 Stages 5 and 6 write the stable objects `Xenium_RL_postQC.rds` and
 `Xenium_RL_subclusters.rds` in their numbered stage directories. Stage
@@ -2893,12 +3533,124 @@ sbatch scripts/run_xenium_residual_02_merge_samples.slurm
 Rscript scripts/xenium_residual_03_integrate.R --dry-run
 sbatch scripts/run_xenium_residual_03_integrate.slurm
 
-Rscript scripts/xenium_residual_04_review_subclusters.R --dry-run
+# Independent QC evidence; can run after Stage 3 without rerunning markers.
+Rscript --max-ppsize=500000 scripts/xenium_residual_04a_review_qc.R --dry-run
+sbatch scripts/run_xenium_residual_04a_review_qc.slurm
+
+# Run marker review after QC decisions are applied, if any are approved.
+Rscript --max-ppsize=500000 scripts/xenium_residual_04_review_subclusters.R --dry-run
 sbatch scripts/run_xenium_residual_04_review_subclusters.slurm
 ```
 
+Stage 4a adds descriptive QC before label approval. It reads the integrated
+resolution-0.8 object and the merge manifest, checks coverage against the current
+sample manifest, and joins raw Xenium morphology by exact sample-qualified cell
+IDs. Only samples declared nonempty in the merge manifest need raw cell tables;
+every manifest sample, including empty samples, appears in the coverage table.
+The raw/retained cell-area validation uses the production audit's existing
+0.00501-square-micrometer rounding tolerance. Missing raw tables, duplicate or
+unmatched IDs, inconsistent sample counts, or invalid measurements stop the report.
+
+Outputs go to `outputs/xenium/residual/04_qc_review/`: eight metrics cover
+transcripts, detected genes, control percentage, cell area, nucleus area/count,
+cell:nucleus area ratio, and transcripts per cell area. The report includes
+per-cell measurements, pooled cluster quantiles, per-sample/cluster quantiles,
+within-sample target-versus-other-residual-cluster median differences/ratios,
+sample-balanced summaries, segmentation diagnostics, sample coverage, provenance,
+and a PDF with pooled and per-sample boxplots for every metric and cluster.
+Like the RL/VZ QC review, the PDF also includes transcript/gene median-ratio
+heatmaps relative to all residual cells in each sample, plus a sample-composition
+heatmap. The detailed table records these sample-relative ratios separately from
+comparisons against other clusters, so their denominators are explicit.
+The cluster-5 question can be assessed from these same outputs without hard-coding
+that cluster as low quality. Its identity may change after reclustering.
+
+Sample-balanced comparisons reuse marker review's minimum of 10 measured target
+and 10 measured background cells per biological sample, recording excluded small
+groups in the detailed table. Each eligible sample has equal weight. This is
+comparison eligibility, not a cell-removal rule. Comparisons use other residual
+cells, not the full tissue or known-label populations; cell-type differences can
+therefore affect QC distributions. Zero/missing nucleus area makes the area ratio
+undefined, with missing denominators and nucleus-count anomalies reported
+explicitly. An absent finite measurement yields an explicit missing value, not
+zero evidence of a QC problem. No hypothesis tests, QC pass/fail classification,
+filtering, relabeling, or RDS writes are performed. No QC thresholds change.
+
+Stage 4a's dry run reads only the small merge CSV and checks paths; it does not
+load an RDS or scan raw Xenium tables. Expect 5–30 seconds. A full QC report is
+estimated at 2–10 minutes for the current 10,333 cells across 11 nonempty samples,
+excluding queue wait. This is a low-confidence static estimate dominated by one
+integrated RDS read and 11 sequential raw CSV reads. The launcher requests
+30 minutes, 32 GiB, one CPU and `express`, following the existing morphology-audit
+resource pattern. Collect `sacct` JobID, Elapsed, State, MaxRSS, ReqMem, AllocCPUS,
+and ExitCode after the first run to refine the estimate. No integration or marker
+rerun is required solely to add this report, and existing outputs are protected
+unless `--overwrite` is explicitly supplied after review.
+
+Stage 4b applies an explicitly approved whole-cluster exclusion recorded in
+`config/reviewed_residual_qc_removals.csv`. The 2026-10-18 decision removes the
+977 cells of resolution-0.8 cluster `5` from the reviewed 10,333-cell source,
+leaving 9,356 cells. The source RDS size and modification time, cluster column,
+and expected counts bind this decision to that snapshot. A changed source must
+receive a new review rather than reusing the old cluster number. The reason is
+conservative exclusion after ambiguous markers and consistently lower within-sample
+RNA complexity, not an assertion that all excluded cells are technically invalid.
+
+After reviewing Stage 4a and recording approval, run:
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_residual_04b_apply_qc.R --dry-run
+sbatch scripts/run_xenium_residual_04b_apply_qc.slurm
+# Once removal completes successfully, regenerate the marker review:
+Rscript --max-ppsize=500000 scripts/xenium_residual_04_review_subclusters.R --dry-run
+sbatch scripts/run_xenium_residual_04_review_subclusters.slurm
+```
+
+Stage 4b preserves the original integrated RDS and pre-QC reports. It writes
+`04_qc_filtered/rds/Xenium_Residual_QC_Filtered.rds`, an exact excluded-cell
+list, a removal-count manifest covering every current sample, and provenance.
+The surviving cell IDs, metadata and cluster numbers remain unchanged. Existing
+embedding coordinates are retained; Harmony, neighbors, UMAP and clustering are
+not recomputed. These coordinates describe the pre-QC embedding, not a new
+post-removal integration. Existing QC-removal files require protected `--overwrite`.
+
+With an approved decision present, marker review and label application require
+the complete, current QC-removal outputs and use the filtered RDS. Post-QC marker
+tables and a new blank approval template go to `04_post_qc_subcluster_review/tables/`,
+preserving the original evidence. Marker backgrounds change after exclusion,
+so review these tables before approving the surviving cluster labels. Stages 5–6
+and combined outputs from before the removal become stale and must be archived
+or replaced explicitly before regeneration. Label application checks marker-input
+provenance; mapping refuses a master object without the current QC decision.
+
+Stage 6 keeps whole-tissue mapping copies intact and records each excluded cell
+as `residual_qc_status=removed` with no residual label. Expected mapped counts are
+the Stage-1 counts minus the exact approved exclusions. The combined-label stage
+then drops those explicitly listed cells, verifies their sample/cell identities,
+and records `Removed_By_Residual` counts and the decision fingerprint. It still
+requires a label for every other retained residual target. VZ/RL decisions,
+reference routing, consensus definitions and label-transfer settings are unchanged.
+
+Estimated Stage-4b runtime is 1–5 minutes, followed by approximately 1–10 minutes
+for post-QC marker evidence, excluding queue wait. These low-confidence estimates
+use the current 10,333-cell object and earlier residual marker-review observations.
+The requested limits are 30 minutes/32 GiB/one CPU for removal and the existing
+4 hours/96 GiB/one CPU for marker review. Dry runs read small CSVs/check paths and
+file metadata only, typically 5–30 seconds; they never load an RDS. Collect the
+first `sacct` records to refine the estimates. Later mapping still reads/writes
+whole-tissue objects and retains its separately documented 5–30-minute estimate.
+
+The lightweight `test_xenium_residual_qc_removal.R` is expected to take under
+one minute. It uses tiny isolated synthetic objects to verify the decision
+binding, exact exclusions, preserved IDs/metadata/embedding, empty samples,
+protected outputs, new marker/label provenance, and downstream exclusion joins.
+Rollback consists of preserving the post-QC outputs, restoring the earlier
+approved-decision state (including absence of the decision CSV if appropriate),
+and restoring the corresponding prior label/mapping/combined outputs together.
+Never mix outputs across decision versions.
+
 Stage 1 records a status table for every manifest sample and writes an RDS only
-when retained residual cells are present. Stage 2 validates all 34 statuses and
+when retained residual cells are present. Stage 2 validates all manifest-defined statuses and
 merges only declared nonempty subsets. Stage 3 reuses the approved regional
 30-dimensional Harmony and resolution 0.5/0.8/1.0 settings. Stage 4 generates
 replicate-aware positive and anti-marker evidence plus a blank label-review
@@ -2907,12 +3659,20 @@ template. Copy the completed reviewed rows to
 explicit decision, confidence, evidence summaries, notes, and `approved=TRUE`.
 `final_label=Unknown` is allowed when no defensible winner exists. Then run:
 
-The approved resolution-0.8 residual map assigns clusters `0` to `eCN`, `1`
-to `BG`, `2` to `Immature UBCs`, `3` to `Microglia`, `4` to `Pericytes`, `5`
-to `Mature UBCs`, `6` to `Unknown`, `7` to `GABA Progenitors`, and `8` to
-`Cycling Cells`. The retained `Unknown` records the absence of a defensible
-canonical lineage winner rather than forcing a label from generic immature
-neuronal markers.
+The user-approved 2026-10-18 post-QC resolution-0.8 residual map assigns `0`
+to `eCN`, `1` to `BG`, `2` to `Immature UBCs`, `3` to `Microglia`, `4` to
+`Pericytes`, `6` to `Mature UBCs`, `7` to `GABA Progenitors`, `8` to
+`Cycling Cells`, and `9` to `OPCs`. Cluster `5` was excluded by the separate
+approved QC decision. All nine surviving clusters have explicit approved rows
+in `config/reviewed_residual_subcluster_labels.csv`; the previous map is
+preserved in `config/backups/reviewed_residual_subcluster_labels_before_post_qc_approval_20261018.csv`.
+OPCs is explicitly approved despite only one eligible biological sample and
+mixed oligodendroglial/myeloid signals; those limitations remain in the evidence
+notes and the annotation confidence is low. Approval is a labeling decision and
+does not establish adjusted sample-level significance. The current map applies
+to the 9,356-cell QC-filtered object, not the historical 34-sample result or any
+future reclustering. Existing Stage-5 annotations, Stage-6 mapping, and combined
+outputs based on an older label CSV become stale and require explicit regeneration.
 
 ```bash
 Rscript scripts/xenium_residual_05_apply_reviewed_labels.R --dry-run
@@ -2922,7 +3682,35 @@ Rscript scripts/xenium_residual_06_map_to_samples.R --dry-run
 sbatch scripts/run_xenium_residual_06_map_to_samples.slurm
 ```
 
-Stage 6 maps the reviewed residual identities back to all 34 reviewed
+For a pooled residual DotPlot matching the RL/VZ subcluster presentation, run
+the separate plotting-only Stage-5 driver after label application:
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_residual_05_plot_subclusters.R --dry-run
+sbatch scripts/run_xenium_residual_05_plot_subclusters.slurm
+```
+
+It reads `05_subclusters/rds/Xenium_Residual_Subclusters.rds` and writes
+`05_subclusters/plots/Xenium_Residual_SubclusterMarker_DotPlot.pdf` and `.tif`,
+plus marker availability/source and input/review provenance CSVs under `tables/`.
+This pools all retained residual cells across samples; it does not concatenate
+sample DotPlots or represent replicate-adjusted differential expression.
+It reuses the same shared VZ/RL panels and residual-only markers as Stage 7,
+omits absent identities, checks labels against the approved cluster map, and
+uses existing normalized Xenium data. No RDS is written and mapping need not
+be rerun. Existing plot outputs require explicit `--overwrite` (launcher:
+`RESIDUAL_DOTPLOT_OVERWRITE=true`).
+
+Expected runtime is 1–5 minutes excluding queue wait, low confidence, based on
+9,356 cells and the completed 1–4-minute sample plotting tasks. The launcher
+requests one CPU, 32 GiB and one hour; the small labeled input previously
+completed label application in 40 seconds, but pooled plotting memory has not
+yet been measured. Preflight checks paths and dependencies without loading RDS,
+typically under one minute. Syntax parsing takes under ten seconds; shell
+validation under five seconds. Collect `sacct` elapsed/state/MaxRSS/ReqMem/
+AllocCPUS/ExitCode after the first run to refine resources.
+
+Stage 6 maps the reviewed residual identities back to all manifest-defined reviewed
 whole-tissue inputs by exact cell ID. It writes one
 `<sample>_Residual_Subclusters.rds` object for every manifest sample, including
 samples with zero residual cells, plus
@@ -2939,25 +3727,145 @@ is based on four concurrent whole-tissue RDS reads/writes plus exact metadata
 joins, so collect its first `sacct` record to refine it. Requested limits are
 30 minutes, 2 hours, 12 hours, 4 hours, 1 hour, and 4 hours, respectively.
 
+Stage 7 (`xenium_residual_07_plot_samples.R`) reads the Stage-6 whole-tissue
+sample objects and writes reports under `residual/07_sample_reports/<sample>/`.
+Each task creates global residual spatial TIFFs at sizes 0.6 and 0.85, residual
+identity facets at size 0.6, marker DotPlots as TIFF and Cairo PDF, a marker
+availability CSV, residual counts/percentages, a provenance/status CSV, and a
+single-page spatial/marker PDF containing both global sizes, facets, and DotPlot.
+Residual identities use the approved labels and shared master colors. Grey
+context represents other cells; the already-approved residual QC exclusions
+are omitted from the plotted context. No filtering decision, cell identifier,
+metadata, or source RDS is changed. Only identities present in the sample are
+faceted or used for marker groups. Shared identities reuse the existing production
+panels in `color_palette.R`: RL Other for eCN/GABA Progenitors/Microglia,
+RL production UBC for Immature UBCs, the retained CBLN1/RELN display pair
+for residual Mature UBCs,
+VZ Glia for BG, and VZ OPCs for OPCs. These reuse complete panel definitions,
+including the wider Glia and OPC groups, rather than independently selecting
+residual genes for those labels. Residual-only identities (currently Pericytes
+and Cycling Cells) use the first three unique semicolon-separated genes from
+their approved `positive_marker_support`. Marker-availability CSVs record each
+gene's panel source. A marker-panel signature in the status file prevents
+combining outdated DotPlots/reports after the shared panel definitions change.
+Assay-absent genes are recorded and omitted. A
+nonempty residual identity with no available panel genes is an error. DotPlots
+use existing normalized Xenium data and residual cells only; no normalization
+is rerun. Samples with zero mapped residual cells still receive grey-context
+plots, explicit empty-report/DotPlot panels, and empty count/marker tables.
+
+After Stage 6 completes, preview and submit both the sample array and its
+dependent combined report with:
+
+```bash
+bash scripts/submit_xenium_residual_reports.sh --dry-run
+bash scripts/submit_xenium_residual_reports.sh
+```
+
+The preflight takes under one minute and checks all mapped paths, the mapping
+manifest, approved review table, plotting packages, and `pdfinfo`; it does not
+load large RDS files. Array bounds come from the active manifest via `--list`.
+At 41 samples and concurrency three, estimated runtime is 5–20 minutes per
+task and 70–280 minutes for the full array, excluding queue wait (low confidence,
+based on the existing VZ/RL reporting workflow and the residual mapping run's
+11.30-GiB peak memory). Both sample and combine jobs request a two-hour limit,
+64G, and one CPU on `express`. Combining the 41 single-page PDFs is expected
+to take 1–5 minutes. Collect `sacct` JobID, Elapsed, State, MaxRSS, ReqMem,
+AllocCPUS, and ExitCode after the first run to refine these estimates.
+
+The combined output is
+`outputs/xenium/residual/07_sample_reports/Xenium_Residual_AllSamples_Spatial_Report.pdf`
+and its adjacent `_manifest.csv`, ordered by numeric PCW and then sample
+manifest order. The report audit checks all sample statuses, input sizes/mtimes,
+approved review signature, counts, saved output sizes, and PDF page counts
+before combining. To audit afterward without loading RDS contents (estimated
+under two minutes), run:
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_residual_07_plot_samples.R --validate
+```
+
+Separate submissions are also supported by
+`submit_xenium_downstream_array.sh residual-plots`; combine mode uses
+`sbatch --array=1 --export=ALL,RESIDUAL_PLOTS_MODE=combine scripts/run_xenium_residual_07_plot_samples.slurm`.
+Existing report outputs are protected. Use `--overwrite` or the launcher export
+`RESIDUAL_PLOTS_OVERWRITE=true` only after reviewing outputs intended for replacement.
+After validation, review the script changes with `git status`/`git diff` and
+checkpoint the logical unit when ready; no package environment changes or
+`renv.lock` updates are needed for this reporting stage.
+
 ### 8. Combined VZ/RL/residual objects
 
-The refined regional labels are combined and analyzed with:
+The refined regional labels are combined and analyzed in this order. The two
+stage-3 branches can run independently after stage 2.
 
-- `xenium_vz_rl_01_combine_labels.R` – combines refined labels in all 34 configured individual samples;
-- `xenium_vz_rl_02_merge_samples.R` – cleans and merges per-sample objects;
-- `xenium_vz_rl_03_process_and_plot.R` – processes and visualizes the combined object;
-- `xenium_vz_rl_spatial_01_merge.R` – memory-conscious spatial merge;
-- `xenium_vz_rl_spatial_02_integrate.R` – Seurat v5 sketch/integration workflow on the merged data;
-- `xenium_vz_rl_03b_plot_cluster_counts.R` – combined lineage count plots.
+- `xenium_vz_rl_01_combine_labels.R` – combines refined labels in all manifest-defined configured individual samples;
+- `xenium_vz_rl_02_correct_broad_labels.R` – writes separate corrected-broad sample objects, plots, and audit tables;
+- `xenium_vz_rl_03_nonspatial_merge.R` – cleans and merges per-sample objects;
+- `xenium_vz_rl_04_05_nonspatial_process_and_plot.R` – processes and visualizes the combined object;
+- `xenium_vz_rl_03_spatial_merge.R` – memory-conscious spatial merge;
+- `xenium_vz_rl_04_spatial_integrate.R` – Seurat v5 sketch/integration workflow on the merged data;
+- `xenium_vz_rl_optional_cluster_counts.R` – optional lineage percent-abundance plots, still reading the original combined objects rather than corrected-broad objects.
+
+`xenium_vz_rl_reports.R` builds separate all-sample spatial PDF reports from
+the completed combined-subcluster and corrected-broad TIFFs, without loading
+or rewriting RDS objects. It follows the same PCW page ordering as the VZ/RL
+Stage-8 reports, with one full spatial TIFF (including its legend) per sample
+page. By default it uses both label sets and the existing point-size-0.6 plots;
+`--labels=combined|corrected-broad|both` selects the label sets, and
+`--point-size=0.85` selects the alternative existing TIFFs. No TIFFs are regenerated.
+The driver recognizes both the renamed layout and the previous
+`01_combined_labels/plots/combined/` and `01_corrected_broad/plots/` locations.
+It uses one location per label set and refuses duplicate or split sets across
+layouts. Missing files still fail the preflight; no paths or plots are moved.
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_reports.R --dry-run
+sbatch scripts/run_xenium_vz_rl_reports.slurm
+```
+
+The path/metadata preflight should take under one minute and does not decode
+TIFF pixels or load RDS files. It checks the manifest-defined TIFF set,
+PCW metadata, `tiff`, and Poppler `pdfinfo`. The report job
+is estimated at 5–20 minutes for the current 41-sample cohort (low confidence,
+based on sequentially decoding 82 existing 600-dpi TIFFs); its requested limit
+is two hours with 64G and one CPU on `express`, following the existing Stage-8
+report launcher resource class. Queue wait is excluded; collect its first
+`sacct` record to refine the estimate.
+Outputs are `reports/Xenium_VZRL_AllSamples_CombinedSubclusters_Spatial_Report_pt0.6.pdf`
+under `01_combined_labels/` and
+`reports/Xenium_VZRL_AllSamples_CorrectedBroad_Spatial_Report_pt0.6.pdf`
+under the detected corrected-broad stage (`02_corrected_broad/` or the previous
+`01_corrected_broad/`), each with an adjacent `_manifest.csv` recording
+page/sample/PCW, label column, point size, TIFF path/size/mtime, and PDF path.
+The driver verifies the final page count and refuses existing PDFs or manifests
+unless `--overwrite` is supplied. For the launcher use
+`VZRL_REPORT_LABELS`, `VZRL_REPORT_POINT_SIZE`, and `VZRL_REPORT_OVERWRITE=true`
+as the corresponding exported controls. Run this after the sample TIFF jobs
+finish; it can run alongside later merge jobs that only read those inputs.
 
 Combined outputs are organized under `outputs/xenium/vz_rl/`:
 
-- `01_combined_labels/` contains all 34 labelled sample objects, per-sample spatial plots, and count tables;
-- `02_merged/` contains the cleaned sample objects, merged RDS, and merge manifest;
-- `03_processed/` contains the integrated object, provenance manifest, summary plots, and cluster-count plots;
-- `spatial/01_merged/` and `spatial/02_integrated/` contain the spatial-preserving branch.
+- `01_combined_labels/` contains all manifest-defined labelled sample objects, original consensus and fine-subcluster spatial plots directly in `plots/`, and count tables. Runs made before this layout change placed those four TIFFs per sample in `plots/combined/`; move them into `plots/` only after checking for filename collisions. The RDS and tables do not need to be regenerated;
+- `02_corrected_broad/` contains separate fine-derived broad-label sample objects, spatial plots, count tables, and a manifest; original combined files remain intact;
+- `nonspatial/03_merged/` contains the cleaned sample objects, merged RDS, and merge manifest;
+- `nonspatial/04_processed/` contains the processed object and provenance manifest; `nonspatial/05_plots/` contains its summary plots;
+- `spatial/03_merged/` and `spatial/04_integrated/` contain the spatial-preserving branch.
 
-The earlier `xenium_vz_rl_00_compare_unknown_annotations.R` dual-branch
+For an existing completed run, first sync the renamed scripts to Cheaha, then
+run `python3 scripts/migrate_vz_rl_layout.py` to preview the moves and
+`python3 scripts/migrate_vz_rl_layout.py --apply` after all VZ/RL jobs have
+left the queue. This migration moves directories on the same filesystem,
+flattens `01_combined_labels/plots/combined/`, updates absolute path columns
+in the small provenance manifests, and saves their originals with a
+`.pre_vzrl_layout_20261019.csv` suffix. It archives older script names in
+`scripts/legacy_vz_rl_names_20261019/` after checking that their renamed
+replacements are present. It does not read or regenerate RDS
+objects. Check the corrected-broad validator and both merge `--dry-run` results
+afterward; the migration refuses a partial stage, a destination collision, or
+an active VZ/RL job.
+
+The earlier `xenium_vz_rl_diagnostic_compare_unknown_annotations.R` dual-branch
 comparison and `config/reviewed_unknown_relabels.csv` are retained only as
 historical/sensitivity tools. They are not production prerequisites after
 exclusive reference routing. Do not run the comparison unless a reviewer asks
@@ -2968,29 +3876,37 @@ FOV/image data removed from the smaller non-spatial merge. Inspect both stages
 before submission:
 
 ```bash
-Rscript scripts/xenium_vz_rl_spatial_01_merge.R --dry-run
-Rscript scripts/xenium_vz_rl_spatial_02_integrate.R --dry-run
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_03_spatial_merge.R --dry-run
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_04_spatial_integrate.R --dry-run
 ```
 
-The merge requires all 34 manifest inputs and writes
-`spatial/01_merged/rds/Xenium_VZRL_spatial_merged.rds` plus a cell/image and
-regional-assignment count manifest under `spatial/01_merged/tables/`.
+The merge requires all manifest-defined manifest inputs and writes
+`spatial/03_merged/rds/Xenium_VZRL_spatial_merged.rds` plus a cell/image and
+regional-assignment count manifest under `spatial/03_merged/tables/`.
+It merges ordered groups of six samples, then merges those groups. Set
+`SPATIAL_MERGE_BATCH_SIZE=2` through `10` when submitting the launcher to
+compare future runs; the default is six. The manifest records the group for
+each sample. The merge checks the exact cell IDs and order, total cell and
+image counts, and per-sample assignment counts before saving. Batch merging
+has not yet been benchmarked on the full 41-sample spatial dataset; the
+24-hour Slurm limit and 600-GiB request remain conservative pending a run.
+The merge uses one CPU because its Seurat merge calls run sequentially.
 Sketch-based Harmony processing
-writes `spatial/02_integrated/rds/Xenium_VZRL_spatial_integrated.rds`. UMAPs
+writes `spatial/04_integrated/rds/Xenium_VZRL_spatial_integrated.rds`. UMAPs
 are TIFF-only. Giotto, h5ad export, and SpaTrack scripts remain outside the
 current scope and still require path review before they are reactivated.
-Submit these stages with `run_xenium_vz_rl_spatial_01_merge.slurm` and then
-`run_xenium_vz_rl_spatial_02_integrate.slurm`.
+Submit these stages with `run_xenium_vz_rl_03_spatial_merge.slurm` and then
+`run_xenium_vz_rl_04_spatial_integrate.slurm`.
 
 Before creating the combined per-sample RDS files, spatial TIFFs, and count
 tables, inspect input completeness and existing outputs with:
 
 ```bash
-Rscript scripts/xenium_vz_rl_01_combine_labels.R --dry-run
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_01_combine_labels.R --dry-run
 ```
 
 This stage reads sample IDs from `config/samples.csv`, requires the reviewed
-whole-tissue input manifest, the reference-route manifest, and all 34
+whole-tissue input manifest, the reference-route manifest, and all manifest-defined
 independently mapped VZ, RL, and residual objects. It refuses to replace any
 existing output unless given `--overwrite`. Exact cell IDs and unchanged
 consensus labels validate every join. Known regional cells receive their VZ or
@@ -3004,13 +3920,49 @@ route, confidence, and annotation status preserve provenance.
 `unassigned_consensus`, and a per-sample routing table records the resulting
 cell counts. Any overlap among VZ, RL, and residual assignments is an error.
 Submit it with `run_xenium_vz_rl_01_combine_labels.slurm`.
-The combined-label stage is expected to take approximately 4–12 hours for all
-manifest samples (low confidence, based on static inspection of 34 sequential
-three-object joins, 136 high-resolution spatial plots, and 34 uncompressed RDS
-writes; no matching `sacct` record is present in `slurm_resource_history.psv`).
-The existing launcher requests 24 hours on `medium`; queue wait is excluded.
-Collecting `Elapsed` and `MaxRSS` from the first reviewed run will substantially
-improve this estimate.
+The first reported 41-sample combined-label run completed in 44:57 (job
+40971846, 2026-10-19; output set and MaxRSS still require independent checks).
+For a repeat of the same cohort, expect approximately 40–90 minutes, based on
+that single observed runtime; the estimate remains low confidence until more
+runs and output checks are available.
+The launcher checks the VZ/RL/residual mapping manifests and combined-driver
+dry run before processing large RDS objects. It requests 24 hours and 128G on
+`medium`; queue wait is excluded.
+Collect `MaxRSS` with `sacct` before changing the requested memory.
+
+Before either merge, apply the user-approved 2026-10-19 fine-to-broad map in
+`R/corrected_broad_labels.R` to all retained cells. This adds
+`corrected_broad_label` while preserving the original `consensus_label` and
+every cell ID. PC subclusters become `Purkinje`; Pre-OPCs/OPCs become `OPC`;
+`iCN` becomes `GABA`; RL VZ/SVZ become `RL`; radial/Bergmann/cycling glial
+subclusters become `Glia`; `eCN`, `Pericytes`, `Cycling Cells`, and `Unresolved`
+are distinct broad identities. Granule, UBC, and other reviewed subclusters
+follow the corresponding broad lineage. Run the new read-only preflight:
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_02_correct_broad_labels.R --dry-run
+```
+
+It checks 41 combined inputs and 206 expected new outputs without loading
+large RDS objects (usually under one minute). After `DRY-RUN PASS` and
+`outputs-existing=0/206`, submit
+`sbatch scripts/run_xenium_vz_rl_02_correct_broad_labels.slurm`.
+The first reported 41-sample run completed in 12:56 (job 40973926,
+2026-10-19; 16.44 GiB batch MaxRSS). The post-job validator passed for 41/41
+samples, 2,355,487 cells, and 82 plots; its CSV/path checks do not load RDS
+contents. For the
+same cohort, expect about 10–30 minutes, low confidence from one observed run.
+The launcher requests 12 hours, 128G, and one CPU on `short`.
+Check the 41-row corrected-broad manifest and per-sample
+`*_consensus_to_corrected_broad.csv` tables before merging. Existing
+`01_combined_labels/` objects and plots are not replaced.
+After job completion, run
+`Rscript --max-ppsize=500000 scripts/validate_xenium_vz_rl_02_correct_broad.R`
+to check all 41 paths, 82 nonempty new plots, counts and transition tables,
+and mapping provenance without loading RDS objects (estimated under two
+minutes; filesystem latency may vary). The later merge preflight checks that
+the corrected-broad manifest and objects still match the original combined
+inputs and the approved mapping script.
 
 Applying or changing the reviewed Unknown QC decisions, reference-route
 manifest, or reviewed residual labels makes every existing combined Stage-1
@@ -3020,31 +3972,94 @@ Unknown-QC, route, and residual-label tables. A rollback is the prior reviewed
 QC and residual-label CSVs plus the corresponding protected Stage-1 outputs;
 the whole-tissue consensus and mapped branch objects are never modified.
 
-The subsequent clean/merge stage also requires all 34 inputs and removes
+The subsequent clean/merge stage requires all manifest-defined corrected-broad
+objects and their current 41-row provenance manifest. It removes
 spatial images, scale data, and control assays before merging:
 
 ```bash
-Rscript scripts/xenium_vz_rl_02_merge_samples.R --dry-run
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_03_nonspatial_merge.R --dry-run
 ```
 
 It writes the stable merged object
-`02_merged/rds/Xenium_VZRL_merged.rds` and a per-sample cell-count, PCW, and
-regional-assignment manifest under `02_merged/tables/`. Combined integration and plotting are
+`nonspatial/03_merged/rds/Xenium_VZRL_merged.rds` and a per-sample cell-count, PCW, and
+regional-assignment manifest under `nonspatial/03_merged/tables/`. Combined integration and plotting are
 separate operations:
 
 ```bash
-Rscript scripts/xenium_vz_rl_03_process_and_plot.R --dry-run
-Rscript scripts/xenium_vz_rl_03_process_and_plot.R --process-only
-Rscript scripts/xenium_vz_rl_03_process_and_plot.R --plots-only
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_04_05_nonspatial_process_and_plot.R --dry-run
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_04_05_nonspatial_process_and_plot.R --process-only
+Rscript --max-ppsize=500000 scripts/xenium_vz_rl_04_05_nonspatial_process_and_plot.R --plots-only
 ```
 
 The stable processed object is
-`03_processed/rds/Xenium_VZRL_processed.rds`.
+`nonspatial/04_processed/rds/Xenium_VZRL_processed.rds`; plots are written to
+`nonspatial/05_plots/`.
 Plot-only runs verify that the input merge has not changed, and they never
 repeat normalization, PCA, Harmony, or UMAP. UMAP outputs remain TIFF-only;
 DotPlots, the marker heatmap, and violin plots are saved as TIFF and Cairo PDF.
-The corresponding launchers are `run_xenium_vz_rl_02_merge_samples.slurm`,
-`run_xenium_vz_rl_03_process.slurm`, and `run_xenium_vz_rl_03_plots_only.slurm`.
+The corresponding launchers are `run_xenium_vz_rl_03_nonspatial_merge.slurm`,
+`run_xenium_vz_rl_04_nonspatial_process.slurm`, and `run_xenium_vz_rl_05_nonspatial_plots.slurm`.
+For an isolated rerun from an archived merge, export
+`COMBINED_MERGE_INPUT_DIR` to the directory containing its `rds/` and `tables/`,
+and `COMBINED_NONSPATIAL_OUTPUT_DIR` to a fresh destination. Paths may be
+project-relative. Use both variables unchanged for processing and plotting;
+the destination receives `04_processed/` and `05_plots/`. The merge backup is
+read-only, existing outputs remain protected, and unset variables retain the
+production paths. Run `--process-only --dry-run` before processing and
+`--plots-only --dry-run` after processing; these inspect paths without loading
+RDS objects (normally under one minute). Allow roughly 4–24 hours for processing
+and 0.5–4 hours for plotting, excluding queue wait; these are low-confidence
+static estimates for the full cohort, not measured job runtimes. The existing
+launchers request 48 and 24 hours respectively.
+The plot-only stage writes 24 figure files plus
+`Xenium_Merged_plot_manifest.csv` and `Xenium_Merged_Heatmap_marker_summary.csv`. All eight plot families have an all-cell
+version and a `NoUnknown` version. UMAPs use original broad consensus labels,
+corrected broad labels, or combined subcluster labels; the batch comparison
+uses the sample manifest order and one shared legend below its two panels.
+Original consensus assignments remain available in the original-label UMAP;
+the redundant original-consensus marker DotPlot is retired and replaced by
+the corrected-broad marker DotPlot. Existing legacy files are never deleted.
+
+The marker heatmap and signaling violins now group cells by
+`corrected_broad_label`. Heatmap marker-test thresholds, per-identity test cap
+(500), and display cap (100 cells) remain unchanged. This changes which cells
+contribute to each plotted broad group and its top marker genes; regenerate
+these figures, but no merge, integration, labels, or saved RDS needs rebuilding.
+Both heatmaps share the full-cohort marker tests/scaling and the same sampled
+known cells. Unresolved may have no qualifying positive markers: retain its
+heatmap columns, report zero markers in the marker-summary CSV and plot notes,
+and display a subtitle explaining the absent marker block. Missing markers for
+other identities and entirely empty marker results remain errors. Thresholds
+are unchanged. This explicitly supported exception fixes job 41006727, which
+failed at this check after 24 minutes 53 seconds with peak batch RSS 182.34 GiB. Cluster columns, dotplot rows/section boxes, and figure legends
+follow the broad order, with eCN immediately after Granule and Pericytes after
+Endothelial. Dotplot section boxes use their registered cluster colors.
+The redundant heatmap Identity key is removed; the expression colorbar remains.
+UMAP labels use repulsion and expanded plotting space, with ordered keys below.
+Their final placement still needs visual inspection on the full cohort.
+
+NoUnknown UMAPs filter using their displayed label column; batch plots,
+corrected-broad DotPlots and heatmaps use corrected broad labels. The filter
+recognizes Unknown and numbered Unknown labels, retains Unresolved, and never
+changes saved cells or embeddings. Purkinje-only and selected signaling panels
+already exclude Unknown identities, so their paired files are intentionally
+identical. The plot manifest records filenames, grouping, displayed/total
+cell counts, seed, input RDS path, and these exceptions. All-cell filenames
+retain their established names; new variants insert `_NoUnknown` before
+`_UMAP` or append it to the other stems.
+
+Use `COMBINED_PLOT_OUTPUT_DIR` to render a fresh review folder while reusing the
+existing processed object. This overrides only the figure destination; the
+existing merge/processed directory overrides still work independently. See
+`scripts/NONSPATIAL_PLOT_REFRESH.md` for the safe HPC dry-run and submission.
+Allow approximately 30–90 minutes for the paired plotting job, excluding queue
+wait (low confidence: failed job 41006727 reached the end of marker testing in
+about 25 minutes; remaining heatmap/violin rendering time is unmeasured). The unchanged
+launcher requests 24 hours, one CPU and 600 GB. Refine this estimate using the
+completed job's accounting. The path-only dry-run should take under one minute
+and does not load RDS objects. The spatial merge also consumes the
+corrected-broad objects, and spatial integration adds a separate
+corrected-broad UMAP.
 
 ### 9. Spatial and trajectory analyses
 
@@ -3084,7 +4099,61 @@ These scripts require configured Python/Conda environments and currently contain
 - `cross_study_module_scores.R` transfers dataset-specific marker modules among references.
 - `run_cross_study_cluster_marker_comparison.slurm` submits the marker comparison.
 
+For all-pairs expression matching of corrected Xenium broad populations and
+subclusters to original reference data and published annotations, see
+[`XENIUM_REFERENCE_SIMILARITY.md`](XENIUM_REFERENCE_SIMILARITY.md) and
+`xenium_compare_reference_similarity.R`. It reports Spearman correlations,
+population-specificity correlations, competing matches, and conditional
+sample-bootstrap stability without changing annotations. Original panel JSON Ensembl IDs
+align Sepp and Science genes with an auditable one-to-one match. The lightweight dry run
+should take under one minute; a full HPC comparison is estimated at 1
+to 6 hours or longer (low confidence, based on static inspection; queue wait excluded).
+Original Aldinger/Sepp inputs are supported. Science reads original HDF5 counts
+in bounded chunks, using the user-approved cerebellum/9–15 PCW cohort and
+original published broad CellClass names (numeric source IDs remain audited).
+Sepp cells lacking original named annotations are excluded and audited.
+Heatmaps include numeric legends and separate raw/specificity color scales.
+Its metadata-only `--science-plan` preflight is
+estimated at 1–3 minutes from the observed 67-second metadata audit.
+Copy `R/science_original_reference.R` and `R/reference_similarity_plots.R` with
+the driver. `xenium_redraw_reference_similarity.R` redraws revised correlation
+CSVs without expression loading (typically <1–2 minutes). Both plot paths use
+master_subcluster_order and celltype_order from color_palette.R, top to bottom.
+Cached reference ranks
+and one-pass query aggregation speed up full comparisons. The approved bootstrap
+default is 100 iterations (seed 42). The guide explains why a
+nearest match alone does not establish that a subtype is present.
+
+For a separate cell-level cluster-replicability comparison using the original
+references, see [XENIUM_METANEIGHBOR.md](XENIUM_METANEIGHBOR.md),
+`xenium_compare_metaneighbor.R` and `run_xenium_compare_metaneighbor.slurm`.
+The three-task reference array runs both Xenium broad and subcluster labels
+against each original reference's published labels, permitting coarser names.
+It exports directed MetaNeighborUS AUROCs, mean scores, competing matches and
+reciprocal best hits without changing annotations. The official low-memory
+MetaNeighbor package is required in project renv. Path/package preflights take
+under one minute each; a synthetic engine smoke test takes roughly 10–60 seconds.
+The first full run is provisionally estimated at 30 minutes–4 hours per reference,
+or 1.5–12 hours total at concurrency one, excluding queue wait (low confidence,
+static estimate; no completed MetaNeighbor run measured). The launcher requests
+12 hours and 256 GiB per task; see the guide for provenance and limitations.
+
 ## Software requirements
+
+Every current shell launcher and submission helper starts R with
+`Rscript --max-ppsize=500000`, including list, dry-run, and inline-expression
+calls. This raises the pointer-protection stack limit used during large object
+imports and processing. It does not change analysis parameters or Slurm memory
+requests, and it cannot guarantee that every protection-stack overflow will be
+avoided. Keep the option in new launchers as required by `AGENTS.md`.
+
+Check this rule from `scripts/` with
+`python3 update_r_launchers_stack_limit.py --check`. The checker also runs
+`bash -n` on current `.sh` and `.slurm` files. It should take under 1 minute
+and runs no R analysis. To update an existing HPC checkout, copy the updater
+into its `scripts/` directory, use `--dry-run`, then `--apply`; it preserves
+previous file versions in a timestamped backup directory. Historical directories
+are excluded. Existing stage runtime estimates and requested limits still apply.
 
 The configured Slurm environment uses R 4.4.1 from the
 `R/4.4.1-foss-2023b` module. Frequently used R packages include:
@@ -3216,6 +4285,35 @@ contracts use stable stage names.
 
 ### Shared DotPlot presentation
 
+The 2026-10-17 production RL/VZ Stage-6 DotPlots render facet backgrounds with
+their broad identity colors from `cluster_colors`: RL pink, UBC orange, Granule
+green, VZ magenta, Purkinje blue, GABA teal, Glia light blue, and OPC yellow.
+Groups without a corresponding broad identity remain neutral. The shared
+`workflow_dotplot_grob()` colors the final plot strips for both PDF and TIFF;
+it does not change expression values, dot sizes, color scales, or identities.
+No additional plotting package is required.
+
+The RL production Granule panel uses the six user-selected genes, in order:
+SFRP1, HEY1, NTF3, CNTN2, GAP43, and GABRA6. RL and VZ Other DotPlots use a
+6-inch minimum width, 0.22 inches per gene plus label space, and vertically
+stacked top legends; merged and lineage plots keep their existing dimensions. The BG Progenitors panel uses SLC1A3/SOX2/BCAN;
+Maturing PCs uses CALB1/FOXP4/DAB1. Other-panel facets are restricted to observed
+identities, and unused factor levels and colors are dropped from the RL heatmap.
+Raw Stage-6 review marker panels/signatures and the approved identity map are
+unchanged. The heatmap's display-only cell sample explicitly uses the configured
+seed. Existing stable output names are preserved.
+
+Use the two Stage-6 `--plots-only --resolution=0.8 --dry-run` modes before
+submitting `RL_SUBCLUSTER_MODE=refresh-plots` or
+`VZ_SUBCLUSTER_MODE=refresh-plots` with their protected overwrite switches.
+Preflights inspect paths only and take under 1 minute. Plot refreshes are
+estimated at 15-40 minutes for RL and 20-60 minutes for VZ, excluding queue wait
+(low confidence based on the 18m56s RL annotation job and larger VZ object).
+Both launchers request 12 hours. Refreshes regenerate production figures and
+descriptive marker/QC tables without saving an RDS or rerunning integration,
+clustering, or annotation. The local R installation lacks Cairo shared libraries;
+synthetic layout validation used base PDF, while production keeps Cairo exports.
+
 Current reference, label-transfer, consensus, VZ/RL, and focused-marker DotPlots
 use `R/dotplot_helpers.R` (normally sourced through `color_palette.R`). Dot size
 always maps 0–100% to the same radius range (0–6); expression colors always use
@@ -3256,6 +4354,180 @@ full figure regeneration depends on object size and should be timed on the HPC.
   `SaveRawClusterPlots.R`, `XeniumPreProcess_seq.R`, the two former
   `xenium_preprocess_selected_samples*.R` drivers, and the broken
   `run_NormCluster1.5.sh` launcher.
+
+## Reviewed Science resolution-2 mapping, removal, and retained-cell reprocessing
+
+The mapping approved on 2026-10-22 is recorded in
+`reviews/Science_res2_reviewed_labels_20261022.csv`. It covers all 45 clusters in
+the reviewed 70,731-cell, 16-sample Science run. Labels include eCN for 26/44,
+GABA for 23/32, Glia for 24, VZ for 28/40, and Vascular for 39/42. There is no
+Cycling label. Brainstem (34), Other (36), and RBC (37) are explicitly removed:
+**1,366 cells removed; 69,365 retained**. The review includes expected cluster
+counts and ordered top-20 gene evidence; mismatches are errors to prevent using
+the mapping on another run's cluster IDs.
+
+Submit the reviewed mapping/removal/reprocessing job from `scripts/`:
+
+```bash
+sbatch run_science_map_reviewed_res2.slurm
+```
+
+The launcher calls `fetal cerebellum_science_ACF.R --resolution=2 --map-reviewed`,
+which dispatches to `science_03_map_reviewed_res2.R`. It reads the existing saved
+resolution-2 RDS and marker evidence from `outputs/references/science/reprocessed/res2/`;
+it does not repeat the original raw clustering before mapping. The path-only
+`--dry-run` checks paths, dependencies and review-table structure, without loading
+RDS objects (expected under one minute). Cell alignment, cluster counts, marker
+evidence and sample retention are checked when the real job loads the source.
+
+The retained cells repeat the established originalexp normalization, cell-cycle
+scoring and regression of S.Score/G2M.Score, PCA with 50 components, Harmony on
+sample_id and dimensions 1:40, neighbors and resolution-2 clustering, and UMAP on
+Harmony dimensions 1:30. Seed 42 is set. Removing cells changes these fitted
+representations and can change cluster boundaries and numeric IDs. Reviewed
+`science_broad_label` and original `science_cluster_res2` stay attached to each
+retained cell; new numeric IDs are saved in `science_cluster_res2_postreview`.
+No old numeric-cluster label map is applied to the new clusters. All retained
+cell/sample IDs and unrelated metadata are checked for preservation.
+
+Expected runtime is **1–8 hours excluding queue wait**, very low confidence from
+static inspection and 69,365 retained cells, including marker testing. The job
+retains **12 hours, one CPU, 256 GB, short** from the established full reprocessing
+launcher. No full Science reprocessing history is available in
+`slurm_resource_history.psv`; collect JobID, Elapsed, State, MaxRSS, ReqMem,
+AllocCPUS and ExitCode with `sacct` after this run. Logs use
+`logs/Science_res2_reviewed_<job_id>.out` and `.err`.
+
+New protected outputs go under
+`outputs/references/science/reprocessed/res2/reviewed_retained/`, prefix
+`Science_res2_reviewed`:
+
+- `_UMAP_before_removal.pdf`: all reviewed broad labels, original coordinates.
+- `_UMAP_after_removal_original_coordinates.pdf`: retained cells, same axis limits
+  and original coordinates, to show exactly what was removed.
+- `_UMAP_after_reprocessing.pdf`: reviewed labels on the newly fitted UMAP.
+- `_raw_clusters_after_reprocessing_UMAP.pdf`: newly generated numeric clusters.
+- `_broad_marker_DotPlot.pdf`: broad-marker evidence after reprocessing.
+- `_retained_reprocessed.rds`: retained, reprocessed object with active broad identities.
+- `_cell_mapping.csv`: all original cells, source clusters, labels, removal actions
+  and post-review cluster IDs (explicitly missing for removed cells).
+- `_cluster_retention.csv` and `_sample_label_counts.csv`: reconciled retention counts.
+- `_postreview_top20_markers.csv` and `_postreview_marker_counts.csv`: markers for new
+  numeric clusters, keeping only.pos=TRUE, min.pct=0.25 and logfc.threshold=0.25.
+- `_provenance.csv` and `_sessionInfo.txt`: inputs, review fingerprint, settings and environment.
+
+Existing source RDS, marker evidence and earlier plots remain unchanged. Replacing
+reviewed outputs requires explicit `--overwrite` or
+`SCIENCE_REVIEWED_OVERWRITE=true` after review. A full rerun does not automatically
+switch production reference paths or regenerate downstream label transfers;
+those require separate adoption and validation of this new reference. Review
+`git status`/`git diff` in the tracked checkout and checkpoint this logical unit
+after validation when ready; package versions and renv.lock are unchanged.
+
+## Reprocessed Science resolution-2 clusters, top-20 markers, and eCN evidence
+
+`fetal cerebellum_science_ACF.R` now runs the existing 9/12/13/15-week Science
+reprocessing workflow at **resolution 2**, preserving raw identities in
+`science_cluster_res2`. Other normalization, cell-cycle regression, Harmony,
+and dimensionality settings are unchanged. Seed 42 is set for reproducibility.
+Changing resolution changes cluster membership and numeric identities;
+the legacy resolution-1.2 broad-label map is retained in the script but is
+not applied at resolution 2. Review the new markers before assigning labels.
+
+Resolution 2 is the default. Both resolutions 2 and 3 remain supported with
+`--resolution=2` or `--resolution=3`; each writes to its own resolution directory.
+The existing `run_science_reprocess_res3.slurm` explicitly pins resolution 3.
+Resolution-2 results require fresh markers, plots, and eCN summaries; existing
+resolution-3 results remain available for comparison.
+
+Submit the full reprocessing and marker-export job from `scripts/`:
+
+```bash
+sbatch run_science_reprocess_res2.slurm
+```
+
+Expected runtime is **1–8 hours**, excluding queue wait, with very low confidence
+from static inspection and 70,731 cells in the prior report. Marker testing can
+dominate runtime. The job requests **12 hours, one CPU, 256 GB on short**; this
+keeps the existing Science memory envelope with time headroom. Cheaha's current
+[hardware table](https://docs.rc.uab.edu/cheaha/hardware/) confirms short allows
+12 hours (checked 2026-10-21). There is no array. Logs use
+`logs/Science_res2_top20_<job_id>.out` and `.err`. Collect elapsed time and MaxRSS
+after completion to refine these estimates.
+
+Outputs are protected under `outputs/references/science/reprocessed/res2/`:
+
+- `Science_subset_ccscore_harmony_clusters_res2.rds`
+- `Science_clusters_res2_top20_markers.csv`
+- `Science_clusters_res2_marker_counts.csv`
+- `Science_clusters_res2_numeric_cluster_marker_DotPlot.pdf`
+- `Science_clusters_res2_UMAP.pdf`
+- `Science_clusters_res2_provenance.csv`
+
+`FindAllMarkers` runs on raw clusters in `originalexp`, using the previously
+documented `only.pos=TRUE`, `min.pct=0.25`, and `logfc.threshold=0.25` settings.
+Exports select up to 20 qualifying markers per cluster by descending average
+log2 fold change, breaking ties by gene name. Zero qualifying markers for any
+cluster is an error; fewer than 20 is explicitly warned and recorded in the
+marker-count table. The old RDS and reports are preserved. Replacing new outputs
+requires explicit `--overwrite`, or the full launcher's
+`SCIENCE_RES2_OVERWRITE=true`, after review. Resolution-2 markers, raw plots,
+and eCN summaries must be regenerated together; production reference paths and
+annotations are not switched to these new results automatically.
+
+`fetal cerebellum_science_ACF.R` exports an additional eCN report for **every**
+preserved `science_cluster_res2` cluster in `originalexp`, before broad-label
+assignment. It uses the existing canonical eCN core, developmental, and shared
+supporting panel, with GABA and other excitatory context. It does not assign eCN
+labels or alter filtering or the reviewed broad-label map.
+
+To inspect the newly saved `Science_subset_ccscore_harmony_clusters_res2.rds`
+without repeating preprocessing, submit from `scripts/` on Cheaha:
+
+```bash
+sbatch run_science_ecn_markers.slurm
+```
+
+The launcher loads `R/4.4.1-foss-2023b`, starts at the project root for existing
+renv activation, exposes Seurat loading errors, and runs the path-only dry-run
+before the diagnostic. It requests **two hours, one CPU, 256 GB, express**, retaining
+the existing CN diagnostic resource envelope. These are conservative resource
+requests, not measured Science requirements. There is no array. Logs use
+`logs/Science_eCN_Markers_<job_id>.out` and `.err`. After reviewing existing
+diagnostic outputs, `sbatch --export=ALL,SCIENCE_ECN_OVERWRITE=true run_science_ecn_markers.slurm`
+enables protected overwrite. No packages are installed/restored by the job.
+After completion, collect `JobID`, `Elapsed`, `State`, `MaxRSS`, `ReqMem`,
+`AllocCPUS`, and `ExitCode` with `sacct` to refine these resources.
+
+For an existing interactive HPC allocation with the same module and project R
+environment, the equivalent direct commands from `scripts/` are:
+
+```bash
+Rscript --max-ppsize=500000 'fetal cerebellum_science_ACF.R' --ecn-only --dry-run
+Rscript --max-ppsize=500000 'fetal cerebellum_science_ACF.R' --ecn-only
+```
+
+The dry-run only inspects paths/dependencies and should take under one minute;
+it never loads an RDS. Diagnostic-only execution is estimated at **2–20 minutes**,
+including 1–10 minutes to load and 1–10 minutes to summarize/plot. This is a
+low-confidence estimate from static inspection, not a Slurm time limit; record
+cell count and elapsed time to refine it. Full reprocessing still runs the
+existing scaling/PCA/Harmony/neighbors/UMAP pipeline and is much more expensive
+(roughly 1–8 hours, very low confidence without measured full-run history).
+Use diagnostic-only execution for this marker check.
+
+New outputs go under the project-relative directory
+`outputs/references/science/diagnostics/raw_cluster_ecn/`, with prefix
+`Science_res2_eCN_`: an unscaled DotPlot,
+gene availability, cluster and sample-cluster expression/detection, sample-cluster
+SLC17A6/MEIS2 same-cell coexpression, provenance, and interpretation notes.
+Existing diagnostic files cause an error unless `--overwrite` is explicitly
+provided after review. Diagnostic-only execution does not write RDS objects or
+the existing broad-marker/UMAP plots. Missing genes are recorded as unavailable;
+missing sample-cluster groups are not treated as zero expression. Expression and
+coexpression provide descriptive evidence, with no identity threshold or
+statistical test. Inspect detection rates, sample counts, and supporting/context
+markers together before reviewing a cluster's identity.
 
 ## Recommended maintenance
 
