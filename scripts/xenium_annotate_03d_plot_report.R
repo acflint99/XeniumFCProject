@@ -479,6 +479,7 @@ build_page <- function(
   )
   p_dot <- standardize_broad_dotplot(p_dot, consensus_levels) +
     ggtitle("Consensus marker expression")
+  p_dot <- patchwork::wrap_elements(full = workflow_dotplot_grob(p_dot))
 
   ((p_spatial | p_facet) / (p_umap | p_dot)) +
     plot_layout(widths = c(1, 1.35), heights = c(1.15, 1)) +

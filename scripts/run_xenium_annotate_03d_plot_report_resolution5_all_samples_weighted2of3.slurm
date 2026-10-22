@@ -2,7 +2,7 @@
 # Render resolution-5 weighted 2-of-3 report pages in parallel.
 
 #SBATCH --job-name=Xen_res5_w2of3_pages
-#SBATCH --array=1-34%6
+#SBATCH --array=1-41%6
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_res5_w2of3_pages_%A_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_res5_w2of3_pages_%A_%a.err
 #SBATCH --time=02:00:00

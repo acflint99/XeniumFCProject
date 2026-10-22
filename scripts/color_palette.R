@@ -7,18 +7,24 @@ source(here::here("scripts", "R", "consensus_labels.R"))
 
 ####broad cluster label colors & order####
 # Named vector: names MUST match cluster labels exactly
+# Approved neon families: Granule green, GABA teal, RL warm pink, VZ cool pink.
+# Shared identities must use the same colors in the VZ and RL palettes below.
 cluster_colors <- c(
   Purkinje    = "#1E90FF",  # vivid blue
-  GABA        = "#39FF14",  # neon green
-  RL          = "#FF00FF",  # bright magenta
-  UBC         = "#FF7F00",  # bright neon orange
-  Granule     = "#00CED1",  # neon cyan / teal
-  VZ          = "#00FFD5",  # neon teal
-  Glia        = "#7FBFFF",  # pastel blue
+  GABA        = "#00FFD5",  # neon turquoise; matches GABA Progenitors
+  RL          = "#E00065",  # raspberry pink; matches RL SVZ
+  UBC         = "#FFC48C",  # pastel peach; matches Immature UBCs
+  Granule     = "#39FF14",  # neon green
+  VZ          = "#FF00D4",  # cool neon pink
+  Glia        = "#8A2BE2",  # electric violet; matches BG
   OPC         = "#FFD700",  # neon yellow
   Meninges    = "#9370DB",  # medium purple
-  Endothelial = "#FF1A1A",  # deep red
+  Endothelial = "#FF1A1A",  # vivid red; retained unchanged
   Immune      = "#E066FF",   # neon lavender
+  eCN         = "#FF4500",  # approved new broad identity
+  Pericytes   = "#8B4513",  # approved new broad identity
+  "Cycling Cells" = "#FFFF00",
+  Unresolved  = "#707070",
   Unknown = "grey80"
 )
 
@@ -108,13 +114,36 @@ resolve_sample_qualified_unknown_colors <- function(labels) {
 
 #lock factor order
 celltype_order <- c(
-  "RL", "UBC", "Granule",
+  "RL", "UBC", "Granule", "eCN",
   "VZ", "Purkinje", "GABA", "Glia", "OPC", "Meninges",
-  "Endothelial", "Immune", "Unknown"
+  "Endothelial", "Pericytes", "Immune",
+  "Cycling Cells", "Unresolved", "Unknown"
 )
 
 # Shared scales and figure styling for all current workflow DotPlots.
 source(here::here("scripts", "R", "dotplot_helpers.R"))
+# Detect an incomplete HPC script sync before any caller loads large objects.
+required_dotplot_helpers <- c(
+  "workflow_dotplot", "workflow_dotplot_dimensions", "workflow_dotplot_grob"
+)
+missing_dotplot_helpers <- required_dotplot_helpers[!vapply(
+  required_dotplot_helpers,
+  function(name) exists(name, mode = "function", inherits = TRUE),
+  logical(1)
+)]
+if (length(missing_dotplot_helpers)) {
+  stop(
+    "DotPlot helper file is incomplete or outdated; missing: ",
+    paste(missing_dotplot_helpers, collapse = ", "),
+    ". Sync scripts/R/dotplot_helpers.R together with scripts/color_palette.R ",
+    "and the calling plotting script before retrying."
+  )
+}
+
+
+if (!"strip_colors" %in% names(formals(workflow_dotplot_grob))) {
+  stop("DotPlot helper is outdated. Sync scripts/R/dotplot_helpers.R with scripts/color_palette.R.")
+}
 
 standardize_broad_dotplot <- function(plot, label_order = celltype_order) {
   standardize_workflow_dotplot(plot) +
@@ -132,7 +161,10 @@ markers <- list(
   "OPC" = c("PDGFRA", "OLIG1"),
   "Meninges" = c("FOXC1", "SLC7A11"),
   "Endothelial" = c("CLDN5", "PECAM1"),
-  "Immune" = c("P2RY12")
+  "Immune" = c("P2RY12"),
+  "eCN" = c("SLC17A6", "MEIS2", "NEUROD2"),
+  "Pericytes" = c("PDGFRB", "ABCC9", "KCNJ8"),
+  "Cycling Cells" = c("TOP2A", "MKI67", "CENPF")
 )
 
 
@@ -189,56 +221,63 @@ vz_markers <- list(
 )
 
 # 1. Define the subcluster order (shared across scripts)
+# Current approved VZ labels only. Legacy shared colors remain available for
+# other branches; no cell identities or biological routing are changed here.
 vz_subcluster_order <- c(
-  "VZPs", "Cycling VZPs",
+  "VZPs",
   "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs",
-  "GABA Progenitors", "Golgi Cells", "MLIs", "iCN",
+  "GABA Progenitors", "Golgi Cells", "MLIs", "GABA Interneurons", "iCN",
   "RG Progenitors", "Cycling Glia", "BG", "Astrocytes/Ependyma",
-  "Pre-OPCs", "OPCs",
-  "RL VZ", "Immature UBCs", "Mature UBCs", "eCN",
-  "Cycling Cells", "Microglia"
+  "Pre-OPCs", "OPCs", "RL VZ", "Differentiating GCs", "eCN", "Unresolved"
 )
 
-# Compact production panels for readable lineage-specific DotPlots. These are
-# deliberately separate from the broader vz_markers review/merged panel.
-vz_lineage_subclusters <- c(
-  "VZPs", "Cycling VZPs",
-  "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs",
-  "GABA Progenitors", "Golgi Cells", "MLIs", "iCN",
-  "RG Progenitors", "Cycling Glia", "BG", "Astrocytes/Ependyma",
-  "Pre-OPCs", "OPCs"
-)
-vz_other_subclusters <- c(
-  "RL VZ", "Immature UBCs", "Mature UBCs", "eCN",
-  "Cycling Cells", "Microglia"
-)
+# Unresolved cells remain visible in global/Other plots without a forced lineage.
+vz_other_subclusters <- c("RL VZ", "Differentiating GCs", "eCN", "Unresolved")
+vz_lineage_subclusters <- setdiff(vz_subcluster_order, vz_other_subclusters)
+vz_dotplot_lineage_subclusters <- vz_lineage_subclusters
+vz_dotplot_other_subclusters <- vz_other_subclusters
 
+# Display panels aligned with the VZ taxonomy updated 2026-10-19. These do not
+# change raw review panels, marker tests, labels, expression scaling, or QC.
 vz_compact_lineage_markers <- list(
-  "VZ" = c("PRDM13", "ASCL1", "SOX2"),
+  "VZ" = c("PRDM13", "ASCL1"),
   "Purkinje" = c(
-    "DAB1", "FOXP4", "CALB1", "NDNF", "EBF1", "PCDH10", "EPHA4"
+    "DAB1", "FOXP1", "FOXP4", "EBF2", "EBF1", "EPHA4"
   ),
-  "GABA" = c("PAX2", "TFAP2A", "KIT", "NXPH2", "SP9", "SOX14"),
-  "Glia" = c("NES", "FABP7", "SLC1A3", "TNC", "BCAN", "AQP4", "FOXJ1"),
-  "OPCs" = c("EGFR", "OLIG1", "OLIG2", "PDGFRA", "SOX10"),
-  "Cycling" = c("MKI67", "TOP2A", "PCNA", "TYMS")
+  "GABA" = c(
+    "TFAP2B", "NXPH2", "SLC6A5", "GRIK3", "SP9", "SOX14", "DMBX1"
+  ),
+  "Glia" = c(
+    "SOX2", "TOP2A", "TNC", "AQP4", "FOXJ1"
+  ),
+  "OPCs" = c("EGFR", "OLIG1", "OLIG2", "PDGFRA")
 )
-
 vz_other_markers <- list(
   "RL VZ" = c("CALCB", "OTX2", "RSPO3"),
-  "UBCs" = c("EOMES", "CCND2", "CBLN1", "RELN"),
-  "eCN" = c("MEIS2", "SLC17A6"),
-  "Cycling Cells" = c("MKI67", "TOP2A"),
-  "Microglia" = c("P2RY12")
+  "Granule" = c("NEUROD1", "CBLN1", "RELN"),
+  "eCN" = c("MEIS2", "SLC17A6")
 )
+vz_all_compact_markers <- c(vz_compact_lineage_markers, vz_other_markers)
 
-# Shared grouped panel for the Stage-6 all-subcluster DotPlot and every Stage-8
-# sample DotPlot. MKI67 and TOP2A are already present under Cycling, so the
-# duplicate Cycling Cells marker group is omitted without removing either gene.
-vz_all_compact_markers <- c(
-  vz_compact_lineage_markers,
-  vz_other_markers[c("RL VZ", "UBCs", "eCN", "Microglia")]
+# Keep only panels represented by observed identities in each merged/sample
+# plot. Never drop cells or metadata when hiding an unused display panel.
+vz_dotplot_group_identities <- list(
+  "VZ" = "VZPs",
+  "Purkinje" = c("Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs"),
+  "GABA" = c("GABA Progenitors", "Golgi Cells", "MLIs", "GABA Interneurons", "iCN"),
+  "Glia" = c("RG Progenitors", "Cycling Glia", "BG", "Astrocytes/Ependyma"),
+  "OPCs" = c("Pre-OPCs", "OPCs"), "RL VZ" = "RL VZ",
+  "Granule" = "Differentiating GCs", "eCN" = "eCN"
 )
+active_vz_dotplot_markers <- function(identities, scope = c("all", "lineage", "other")) {
+  scope <- match.arg(scope)
+  panels <- switch(scope, all = vz_all_compact_markers,
+                   lineage = vz_compact_lineage_markers, other = vz_other_markers)
+  keep <- vapply(names(panels), function(group) {
+    any(vz_dotplot_group_identities[[group]] %in% identities)
+  }, logical(1))
+  panels[keep]
+}
 
 validate_compact_marker_panel <- function(
     marker_sets, expected_labels, panel_name, min_markers, max_markers) {
@@ -247,10 +286,7 @@ validate_compact_marker_panel <- function(
   }
   marker_counts <- lengths(marker_sets)
   if (any(marker_counts < min_markers | marker_counts > max_markers)) {
-    stop(
-      panel_name, " must provide ", min_markers, "-", max_markers,
-      " marker(s) per cluster."
-    )
+    stop(panel_name, " must provide ", min_markers, "-", max_markers, " marker(s) per cluster.")
   }
   markers <- unlist(marker_sets, use.names = FALSE)
   if (anyNA(markers) || any(!nzchar(markers)) || anyDuplicated(markers)) {
@@ -258,72 +294,68 @@ validate_compact_marker_panel <- function(
   }
   invisible(TRUE)
 }
-
 validate_compact_marker_panel(
-  vz_compact_lineage_markers,
-  c("VZ", "Purkinje", "GABA", "Glia", "OPCs", "Cycling"),
-  "VZ compact lineage panel", 3L, 7L
+  vz_compact_lineage_markers, c("VZ", "Purkinje", "GABA", "Glia", "OPCs"),
+  "VZ compact lineage panel", 2L, 10L
 )
 validate_compact_marker_panel(
-  vz_other_markers,
-  c("RL VZ", "UBCs", "eCN", "Cycling Cells", "Microglia"),
-  "VZ Other panel", 1L, 4L
+  vz_other_markers, c("RL VZ", "Granule", "eCN"), "VZ Other panel", 2L, 5L
 )
 validate_compact_marker_panel(
-  vz_all_compact_markers,
-  c(
-    "VZ", "Purkinje", "GABA", "Glia", "OPCs", "Cycling",
-    "RL VZ", "UBCs", "eCN", "Microglia"
-  ),
-  "VZ all-subcluster compact panel", 1L, 7L
+  vz_all_compact_markers, names(vz_dotplot_group_identities),
+  "VZ all-subcluster compact panel", 2L, 10L
 )
-if (!setequal(
-  unlist(vz_all_compact_markers, use.names = FALSE),
-  unique(c(
-    unlist(vz_compact_lineage_markers, use.names = FALSE),
-    unlist(vz_other_markers, use.names = FALSE)
-  ))
-)) {
-  stop("VZ all-subcluster compact panel must contain the exact 42-gene union.")
-}
-if (!setequal(c(vz_lineage_subclusters, vz_other_subclusters), vz_subcluster_order)) {
-  stop("VZ lineage and Other DotPlot groups do not cover the full VZ taxonomy.")
+if (!setequal(c(vz_lineage_subclusters, vz_other_subclusters), vz_subcluster_order) ||
+    !setequal(c(vz_dotplot_lineage_subclusters, vz_dotplot_other_subclusters), vz_subcluster_order)) {
+  stop("VZ plotting partitions do not cover the approved VZ taxonomy.")
 }
 
 # 2. Define the Master Palette
 # You can use hex codes or R color names.
 vz_palette <- c(
-  # --- Purkinje Lineage (High Contrast Blues/Purples) ---
-  "VZPs"                = "#BBFFFF", # Neon Teal (Original VZ) - Very Bright
-  "Cycling VZPs"        = "#008C8C", # Dark teal within the VZP gradient
-  "Maturing PCs"       = "#1E90FF", # Vivid Blue (Original PC) - Medium
-  "Early-born PCs" = "#CC66FF", # Medium Purple (Original UBC) - Medium Dark
-  "Late-born PCs"         = "#00CED1", # Indigo - Darkest (Pops against Early/Migrating)
-  "Patterning PCs"         = "#0047AB", # Indigo - Darkest (Pops against Early/Migrating)
+  # --- VZ progenitors: cool pinks; Purkinje cells: blues and purple ---
+  "VZPs"                = "#FF00D4", # Cool neon pink, matching broad VZ
+  "Cycling VZPs"        = "#B000A8", # Deeper purple-magenta
+  "Maturing PCs"        = "#1E90FF", # Vivid blue
+  "Early-born PCs"      = "#CC66FF", # Existing purple retained
+  "Late-born PCs"       = "#00BFFF", # Sky blue; swapped with proposed Golgi color
+  "Patterning PCs"      = "#0047AB", # Deep blue
   
-  # --- GABAergic Lineage (Revised for Maximum Contrast) ---
-  "GABA Progenitors"   = "#CCFF00", 
-  "Golgi Cells"        = "#00FF7F", 
-  "MLIs"  = "#32CD32", 
-  "iCN"                = "#006400", 
+  # --- GABAergic lineage: turquoise through teal ---
+  "GABA Progenitors"   = "#00FFD5",
+  "GABA Interneurons"  = "#00AFA0",
+  "Golgi Cells"        = "#A6D6F5",
+  "MLIs"               = "#00FF7F",
+  "iCN"                = "#005A70",
   
   # --- Glial Lineage (blue through violet gradient) ---
   "RG Progenitors"     = "#7FBFFF", # Pastel Blue (Original Glia)
-  "Cycling Glia"       = "#A25FD1", # Blue-purple bridge from RG to BG
-  "BG"                 = "#8A2BE2", # Neon Lavender (Original Immune)
+  "Cycling Glia"       = "#6868FF", # Blue-violet, distinct from Early-born PC purple
+  "BG"                 = "#8A2BE2", # Electric violet
   "Astrocytes/Ependyma"         = "#E6B3FF", # Light lavender endpoint
   
-  # --- OPC, RL/UBC, and off-lineage populations ---
+  # --- OPC, RL/granule, and off-lineage populations ---
   "Pre-OPCs"           = "#C99700", # Dark mustard within the OPC gradient
   "OPCs"               = "#FFD700", # Gold/Neon Yellow
-  "RL VZ"              = "#C2185B", # Dark magenta; contrasts with light-pink RL SVZ
-  "Immature UBCs"      = "#FFA600", # Shared with RL palette
-  "Mature UBCs"        = "#8B0000", # Shared with RL palette
+  "RL VZ"              = "#FFB3D9", # Light pink; contrasts with raspberry RL SVZ
+  "Immature UBCs"      = "#FFC48C", # Pastel peach; shared with RL palette
+  "Differentiating GCs" = "#32CD32", # Shared with the RL granule palette
+  "Neuroblasts"         = "#FF66B2", # Working neuronal-state label; lineage unresolved
   "Cycling Cells" = "#FFFF00",
   "eCN"                = "#FF4500", # Orange Red (Moved from UBC)
-  "Microglia"          = "#E066FF"  # Shared with RL palette
+  "Unresolved"         = "#808080", # Retained without a forced lineage
+  "Immune"             = "#E066FF",
+  "Microglia"          = "#E066FF"  # Legacy stored-label alias
 )
 vz_palette["NA"] <- alpha("gray20", 0.3)
+
+vz_dotplot_strip_colors <- c(
+  VZ = unname(cluster_colors["VZ"]), Neuroblasts = unname(vz_palette["Neuroblasts"]),
+  Purkinje = unname(cluster_colors["Purkinje"]), GABA = unname(cluster_colors["GABA"]),
+  Glia = unname(cluster_colors["Glia"]), OPCs = unname(cluster_colors["OPC"]),
+  "RL VZ" = unname(vz_palette["RL VZ"]),
+  Granule = unname(cluster_colors["Granule"]), eCN = unname(vz_palette["eCN"])
+)
 
 missing_vz_colors <- setdiff(vz_subcluster_order, names(vz_palette))
 if (length(missing_vz_colors)) {
@@ -341,32 +373,34 @@ rl_subcluster_order <- c(
   "RL SVZ", "Immature UBCs", "Mature UBCs",
   "Prolif GCPs", "Maturing GCPs",
   "Differentiating GCs", "Migrating GCs", "Mature GCs",
-  "BG", "Maturing PCs",
+  "BG Progenitors", "Maturing PCs",
   "eCN", "GABA Progenitors", "Microglia", "Endothelial"
 )
 
 rl_palette <- c(
-  # --- Rhombic Lip (High-Contrast Cyans/Blues) ---
-  "RL SVZ"               = "#FF4FA3", # Vivid magenta; distinct from Immature UBC orange
+  # --- Rhombic lip: raspberry and pastel pinks ---
+  "RL SVZ"             = "#E00065", # Raspberry pink; matches broad RL
   
-  # --- The Transition (The "Standout" Bridge) ---
-    "Prolif GCPs"    = "#FFD700", # Neon Green
-  "Maturing GCPs"       = "#00FF7F", # Deep Emerald
-  "Differentiating GCs"      = "#006400", # Green-Yellow (Bright pop to distinguish from RL)
-  "Migrating GCs" = "#00CED1",
-  "Mature GCs" = "#0047AB",
+  # --- Granule lineage: yellow-green through emerald ---
+  "Prolif GCPs"        = "#CCFF00",
+  "Maturing GCPs"      = "#39FF14",
+  "Differentiating GCs" = "#32CD32",
+  "Migrating GCs"      = "#00CC99",
+  "Mature GCs"         = "#008C46",
   
-  "Immature UBCs" = "#FFA600", # Vivid orange; distinct from RL SVZ and eCN
-  "Mature UBCs"        = "#8B0000", # Dark Red
+  "Immature UBCs"      = "#FFC48C", # Pastel peach
+  "Mature UBCs"        = "#FF7F00", # Vivid orange
   
   #"RG Progenitors"     = "#7FBFFF", # Light Blue
-  "BG"         = "#8A2BE2", # Magenta
+  "BG"         = "#8A2BE2", # Electric violet
+  "BG Progenitors" = "#8A2BE2", # Approved RL progenitor label; retain BG legacy color
   "Maturing PCs" = "#1E90FF",
 
   # --- Reviewed off-lineage populations retained for provenance ---
   "eCN" = "#FF4500",
-  "GABA Progenitors" = "#CCFF00",
-  "Microglia" = "#E066FF",
+  "GABA Progenitors" = "#00FFD5",
+  "Immune" = "#E066FF",
+  "Microglia" = "#E066FF", # Legacy stored-label alias
   "Endothelial" = "#FF1A1A"
 
 )
@@ -402,18 +436,20 @@ rl_lineage_subclusters <- c(
   "Migrating GCs", "Mature GCs"
 )
 rl_other_subclusters <- c(
-  "BG", "Maturing PCs", "eCN", "GABA Progenitors", "Microglia", "Endothelial"
+  "BG Progenitors", "Maturing PCs", "eCN", "GABA Progenitors", "Microglia", "Endothelial"
 )
 
 rl_compact_lineage_markers <- list(
   "RL" = c("MKI67", "RSPO3", "OTX2"),
   "UBC" = c("EOMES", "CACNA2D1", "TRPC3"),
-  "Granule" = c("ATOH1", "NHLH2", "GABRA6")
+  "Granule" = c(
+    "SFRP1", "HEY1", "NTF3", "CNTN2", "GAP43", "GABRA6"
+  )
 )
 
 rl_other_markers <- list(
-  "BG" = c("HOPX", "FAM107A", "FREM2"),
-  "Maturing PCs" = c("CALB1", "ITPR1", "DAB1"),
+  "BG Progenitors" = c("SLC1A3", "SOX2", "BCAN"),
+  "Maturing PCs" = c("CALB1", "FOXP4", "DAB1"),
   "eCN" = c("SLC17A6", "MEIS2", "NTNG2"),
   "GABA Progenitors" = c("PAX2", "GAD1", "GAD2"),
   "Microglia" = c("P2RY12", "SLCO2B1", "OLFML3"),
@@ -422,7 +458,7 @@ rl_other_markers <- list(
 
 validate_compact_marker_panel(
   rl_compact_lineage_markers, c("RL", "UBC", "Granule"),
-  "RL compact lineage panel", 3L, 3L
+  "RL compact lineage panel", 3L, 6L
 )
 validate_compact_marker_panel(
   rl_other_markers, rl_other_subclusters,
@@ -430,6 +466,27 @@ validate_compact_marker_panel(
 )
 if (!setequal(c(rl_lineage_subclusters, rl_other_subclusters), rl_subcluster_order)) {
   stop("RL lineage and Other DotPlot groups do not cover the full RL taxonomy.")
+}
+
+# One production panel contract for merged and per-sample RL DotPlots. Keep
+# raw review rl_markers unchanged so saved review signatures remain valid.
+rl_production_marker_panel <- function(identities) {
+  identities <- unique(as.character(identities))
+  if (!length(identities) || anyNA(identities) || any(!nzchar(identities)) ||
+      any(!identities %in% rl_subcluster_order)) {
+    stop("RL production marker panel requires nonblank registered identities.")
+  }
+  broad_sets <- list(
+    RL = rl_markers$RL, UBC = rl_markers$UBC,
+    Granule = rl_compact_lineage_markers$Granule
+  )
+  broad_present <- c(
+    RL = "RL SVZ" %in% identities,
+    UBC = any(c("Immature UBCs", "Mature UBCs") %in% identities),
+    Granule = any(c("Prolif GCPs", "Maturing GCPs", "Differentiating GCs",
+                    "Migrating GCs", "Mature GCs") %in% identities)
+  )
+  c(broad_sets[broad_present], rl_other_markers[intersect(rl_other_subclusters, identities)])
 }
 
 # Residual-only identities that are not present in the reviewed VZ or RL maps.
@@ -448,14 +505,14 @@ subcluster_palette <- c(vz_palette, rl_palette, residual_palette, cluster_colors
 subcluster_palette <- subcluster_palette[!duplicated(names(subcluster_palette))]
 
 master_subcluster_order <- c(
-  "VZPs", "Cycling VZPs",
+  "VZPs", "Neuroblasts", "Cycling VZPs",
   "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs",
-  "GABA Progenitors", "Golgi Cells", "MLIs", "iCN",
-  "RG Progenitors", "Cycling Glia", "BG", "Astrocytes/Ependyma",
+  "GABA Progenitors", "GABA Interneurons", "Golgi Cells", "MLIs", "iCN",
+  "RG Progenitors", "Cycling Glia", "BG", "BG Progenitors", "Astrocytes/Ependyma",
   "Pre-OPCs", "OPCs",
   "RL VZ", "RL SVZ", "Immature UBCs", "Mature UBCs", "eCN",
   "Prolif GCPs", "Maturing GCPs",
   "Differentiating GCs", "Migrating GCs", "Mature GCs",
   "Cycling Cells", "Pericytes", "Meninges", "Microglia", "Endothelial",
-  "Immune", "Unknown"
+  "Immune", "Unresolved", "Unknown"
 )

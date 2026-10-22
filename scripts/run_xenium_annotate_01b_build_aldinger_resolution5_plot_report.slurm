@@ -1,6 +1,6 @@
 #!/bin/bash
 # Assemble the existing Aldinger resolution-5 label-transfer TIFFs into one
-# 34-page PDF without recomputing the label-transfer analysis.
+# manifest-defined PDF without recomputing the label-transfer analysis.
 
 #SBATCH --job-name=Xen_res5_Ald_pdf
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_res5_Ald_pdf_%j.out

@@ -29,8 +29,8 @@ if (!"sample_id" %in% names(samples)) {
   stop("Sample manifest lacks the required 'sample_id' column: ", manifest_path)
 }
 sample_ids <- trimws(as.character(samples$sample_id))
-if (length(sample_ids) != 34L) {
-  stop("Expected 34 biological samples; found ", length(sample_ids), " in ", manifest_path)
+if (!length(sample_ids)) {
+  stop("No biological samples found in ", manifest_path)
 }
 if (anyNA(sample_ids) || any(!nzchar(sample_ids)) || anyDuplicated(sample_ids)) {
   stop("Sample manifest contains missing, blank, or duplicate sample IDs.")
@@ -264,4 +264,4 @@ if (!file.rename(partial_path, output_path)) {
 if (!is.null(backup_path) && file.exists(backup_path)) unlink(backup_path)
 report_complete <- TRUE
 
-message("Saved 34-page Aldinger resolution-5 plot report: ", output_path)
+message("Saved ", length(sample_ids), "-page Aldinger resolution-5 plot report: ", output_path)

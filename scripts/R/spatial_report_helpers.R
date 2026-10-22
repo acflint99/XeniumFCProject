@@ -289,9 +289,10 @@ build_stage8_pcw_page_map <- function(config, samples) {
   if (!all(required_manifest_columns %in% names(samples))) {
     stop("Sample manifest must contain: ", paste(required_manifest_columns, collapse = ", "))
   }
-  if (nrow(samples) != 34L || anyDuplicated(samples$sample_id)) {
+  if (!nrow(samples) || anyNA(samples$sample_id) ||
+      any(!nzchar(trimws(as.character(samples$sample_id)))) || anyDuplicated(samples$sample_id)) {
     stop(
-      "The current Stage-8 combined report requires exactly 34 unique samples ",
+      "Stage-8 combined reports require a nonempty set of unique, nonmissing sample IDs ",
       "from config/samples.csv; observed ", nrow(samples), "."
     )
   }
@@ -364,16 +365,17 @@ combine_stage8_sample_reports <- function(
     branch,
     dry_run = FALSE,
     overwrite = FALSE) {
-  branch <- toupper(branch)
-  if (!branch %in% c("RL", "VZ")) stop("Combined-report branch must be RL or VZ.")
+  branch <- if (toupper(branch) == "RESIDUAL") "Residual" else toupper(branch)
+  if (!branch %in% c("RL", "VZ", "Residual")) stop("Combined-report branch must be RL, VZ, or Residual.")
   required_page_columns <- c("page", "sample_id", "PCW", "PCW_numeric", "manifest_order")
   missing_page_columns <- setdiff(required_page_columns, names(page_map))
   if (length(missing_page_columns)) {
     stop("Stage-8 page map is missing: ", paste(missing_page_columns, collapse = ", "))
   }
-  if (nrow(page_map) != 34L || anyDuplicated(page_map$sample_id)) {
+  if (!nrow(page_map) || anyNA(page_map$sample_id) ||
+      any(!nzchar(trimws(as.character(page_map$sample_id)))) || anyDuplicated(page_map$sample_id)) {
     stop(
-      "The current Stage-8 combined report requires exactly 34 unique samples ",
+      "Stage-8 combined reports require a nonempty set of unique, nonmissing sample IDs ",
       "from config/samples.csv; observed ", nrow(page_map), "."
     )
   }
@@ -454,8 +456,9 @@ combine_stage8_sample_reports <- function(
 
   if (dry_run) {
     cat(
-      "DRY-RUN PASS | ", branch, " combined Stage-8 report | inputs=34/34 | ",
-      "pages=34 | order=numeric PCW, then config/samples.csv | output=", output_pdf, "\n",
+      "DRY-RUN PASS | ", branch, " combined Stage-8 report | inputs=",
+      length(sample_ids), "/", length(sample_ids), " | pages=", length(sample_ids),
+      " | order=numeric PCW, then config/samples.csv | output=", output_pdf, "\n",
       sep = ""
     )
     write.table(
@@ -522,8 +525,8 @@ combine_stage8_sample_reports <- function(
   }
 
   final_pages <- pdf_page_count(output_pdf, pdf_tools[["pdfinfo"]])
-  if (final_pages != 34L) stop("Final combined PDF failed its 34-page validation.")
-  message("Created 34-page ", branch, " combined Stage-8 report: ", output_pdf)
+  if (final_pages != length(sample_ids)) stop("Final combined PDF failed its manifest-defined page-count validation.")
+  message("Created ", length(sample_ids), "-page ", branch, " combined Stage-8 report: ", output_pdf)
   message("Created page manifest: ", output_manifest)
   invisible(list(output_pdf = output_pdf, output_manifest = output_manifest))
 }

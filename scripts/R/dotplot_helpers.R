@@ -64,9 +64,14 @@ workflow_dotplot <- function(...) {
       stop("DotPlot marker groups must all have nonblank names.")
     }
     features <- unname(unlist(groups, use.names = FALSE))
-    if (anyDuplicated(features)) stop("DotPlot marker genes must be unique across groups.")
-    marker_groups <- stats::setNames(rep(names(groups), lengths(groups)), features)
-    args$features <- features
+    group_names <- rep(names(groups), lengths(groups))
+    keep <- !duplicated(features)
+    if (any(!keep)) {
+      message("DotPlot display: shared genes retain their first configured group: ",
+              paste(unique(features[!keep]), collapse = ", "))
+    }
+    marker_groups <- stats::setNames(group_names[keep], features[keep])
+    args$features <- features[keep]
   }
   plot <- do.call(Seurat::DotPlot, args)
   if (!is.null(marker_groups)) {
@@ -85,9 +90,64 @@ workflow_dotplot <- function(...) {
 
 # Inches: compact gene/identity spacing plus room for labels and top legends.
 # Derive both TIFF and PDF dimensions from the same rendered plot data.
-workflow_dotplot_dimensions <- function(plot) {
+workflow_dotplot_dimensions <- function(plot, minimum_width = 9, feature_spacing = 0.28) {
   feature_col <- if ("features.plot" %in% names(plot$data)) "features.plot" else "feature"
   identity_col <- if ("id" %in% names(plot$data)) "id" else "cell_type"
-  c(width = max(9, 3 + 0.28 * length(unique(plot$data[[feature_col]]))),
+  c(width = max(minimum_width, 3 + feature_spacing * length(unique(plot$data[[feature_col]]))),
     height = max(4, 2.8 + 0.28 * length(unique(plot$data[[identity_col]]))))
+}
+
+# Color the rendered facet backgrounds without touching dot data, expression
+# scales, marker ordering, or adding a plotting-package dependency.
+workflow_dotplot_strip_colors <- function(labels, broad_colors = cluster_colors) {
+  aliases <- c(
+    OPCs = "OPC", Microglia = "Immune", "RL VZ" = "RL", "RL SVZ" = "RL",
+    "Immature UBCs" = "UBC", "Mature UBCs" = "UBC",
+    "Prolif GCPs" = "Granule", "Maturing GCPs" = "Granule",
+    "Differentiating GCs" = "Granule", "Migrating GCs" = "Granule",
+    "Mature GCs" = "Granule", BG = "Glia", "BG Progenitors" = "Glia",
+    "Maturing PCs" = "Purkinje", "GABA Progenitors" = "GABA"
+  )
+  keys <- labels
+  matched <- match(labels, names(aliases))
+  keys[!is.na(matched)] <- unname(aliases[matched[!is.na(matched)]])
+  colors <- unname(broad_colors[keys])
+  # Groups without a corresponding broad identity (e.g. Cycling/Other) stay neutral.
+  colors[is.na(colors)] <- "#D9D9D9"
+  stats::setNames(colors, labels)
+}
+
+workflow_dotplot_grob <- function(plot, broad_colors = cluster_colors, strip_colors = NULL) {
+  grob <- ggplot2::ggplotGrob(plot)
+  strips <- which(grepl("^strip-t", grob$layout$name))
+  text_labels <- function(node) {
+    labels <- if (inherits(node, "text")) as.character(node$label) else character()
+    children <- c(node$grobs, as.list(node$children))
+    c(labels, unlist(lapply(children, text_labels), use.names = FALSE))
+  }
+  recolor <- function(node, fill) {
+    if (inherits(node, "rect")) {
+      if (is.null(node$gp)) node$gp <- grid::gpar()
+      node$gp$fill <- fill
+    }
+    if (!is.null(node$grobs)) node$grobs <- lapply(node$grobs, recolor, fill = fill)
+    if (!is.null(node$children)) {
+      node$children <- do.call(grid::gList, lapply(as.list(node$children), recolor, fill = fill))
+    }
+    node
+  }
+  fills <- character()
+  for (i in strips) {
+    label <- unique(text_labels(grob$grobs[[i]]))
+    if (length(label) != 1L) stop("Cannot identify a unique DotPlot facet-strip label.")
+    fill <- if (!is.null(strip_colors) && label %in% names(strip_colors)) {
+      stats::setNames(unname(strip_colors[label]), label)
+    } else {
+      workflow_dotplot_strip_colors(label, broad_colors)
+    }
+    grob$grobs[[i]] <- recolor(grob$grobs[[i]], unname(fill))
+    fills <- c(fills, fill)
+  }
+  attr(grob, "workflow_strip_colors") <- fills
+  grob
 }

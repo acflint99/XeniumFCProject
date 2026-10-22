@@ -1,5 +1,5 @@
 #!/bin/bash
-# Merge 34 resolution-5 weighted 2-of-3 report pages into one PDF.
+# Merge both manifest-ordered resolution-5 weighted 2-of-3 report variants.
 
 #SBATCH --job-name=Xen_res5_w2of3_merge
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_res5_w2of3_merge_%j.out
