@@ -1,0 +1,33 @@
+#!/usr/bin/env Rscript
+# Small synthetic checks only; expected <1 minute; no real RDS loads.
+source(file.path("R", "atlas_qc.R"))
+reject <- function(expr) stopifnot(inherits(tryCatch({force(expr); NULL}, error = identity), "error"))
+metadata <- data.frame(nCount_Xenium = c(30, 10, 300, 40), nFeature_Xenium = c(20, 5, 40, 20),
+  cell_area = c(30, 5, 40, 30), percent_control = c(0, 0, 0, 8))
+thresholds <- list(nCount_lower = 20, nCount_upper = 100, nFeature_lower = 10,
+  nFeature_upper = 50, area_lower = 15, area_upper = 100, max_control_percent = 5)
+flags <- atlas_qc_flags(metadata, thresholds)
+stopifnot(identical(which(rowSums(flags) == 0), 1L), sum(flags[2, ]) == 3)
+bad <- metadata; bad$cell_area[1] <- NA_real_; reject(atlas_qc_flags(bad, thresholds))
+bad_limits <- thresholds; bad_limits$area_lower <- 200; reject(atlas_qc_flags(metadata, bad_limits))
+reject(atlas_align(data.frame(sample_id = c("a", "a")), c("a", "b"), "test"))
+reject(atlas_align(data.frame(sample_id = "a"), c("a", "b"), "test"))
+stopifnot(identical(atlas_align(data.frame(sample_id = c("b", "a")), c("a", "b"), "test")$sample_id, c("a", "b")))
+retention <- data.frame(sample_id = "a", stage = c("cropped", "initial_qc", "final"), n_cells = c(4, 1, 1))
+populations <- data.frame(sample_id = "a", label = "example", n_cells = 1)
+failures <- data.frame(sample_id = "a", kind = "exclusive_combination", reason = c("pass", "low", "high", "control"), n_cells = 1)
+atlas_validate_extracted(retention, populations, failures, "a")
+bad_counts <- populations; bad_counts$n_cells <- 2; reject(atlas_validate_extracted(retention, bad_counts, failures, "a"))
+reject(atlas_validate_extracted(retention[-1, ], populations, failures, "a"))
+reject(atlas_validate_extracted(retention, populations, failures[-1, ], "a"))
+meta <- atlas_read_csv(file.path("config", "atlas_sample_metadata.csv"))
+meta <- atlas_check_metadata(meta, meta$sample_id)
+stopifnot(length(unique(meta$donor_id)) == 12L,
+  all(meta$donor_verified[meta$donor_id %in% c("FB124_X_G", "FB328_1_X_G")] == "provisional"))
+same <- which(meta$donor_id == "GZFB_12_X_G")
+bad_meta <- meta; bad_meta$PCW[same[1]] <- 99; reject(atlas_check_metadata(bad_meta, meta$sample_id))
+bad_meta <- meta; bad_meta$section_id[same[2]] <- bad_meta$section_id[same[1]]; reject(atlas_check_metadata(bad_meta, meta$sample_id))
+temp <- tempfile("atlas_qc_protection_"); atlas_write(data.frame(a = 1), temp)
+reject(atlas_write(data.frame(a = 2), temp))
+stopifnot(read.csv(temp)$a == 1)
+cat("PASS: non-finite QC, threshold ordering, one-to-one joins, count reconciliation, donor/age consistency, provisional grouping, and overwrite protection.\n")
