@@ -38,6 +38,12 @@ post_qc_dimensions <- suppressWarnings(as.integer(
 post_qc_umap_neighbors <- suppressWarnings(as.integer(
   config$regional_subsets$umap_neighbors_post_qc
 ))
+post_qc_umap_min_dist <- config$regional_subsets$rl_umap_min_dist_post_qc
+if (!is.numeric(post_qc_umap_min_dist) || length(post_qc_umap_min_dist) != 1L ||
+    !is.finite(post_qc_umap_min_dist) || post_qc_umap_min_dist < 0 ||
+    post_qc_umap_min_dist > 1) {
+  stop("regional_subsets$rl_umap_min_dist_post_qc must be a number between 0 and 1.")
+}
 post_qc_neighbor_k <- suppressWarnings(as.integer(
   config$regional_subsets$neighbor_k_post_qc
 ))
@@ -145,14 +151,34 @@ workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset =
 if (is.na(workers) || workers < 1L) {
   stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
 }
+cluster_workers <- suppressWarnings(as.integer(
+  Sys.getenv("RL_POST_QC_CLUSTER_WORKERS", unset = "1")
+))
+if (is.na(cluster_workers) || cluster_workers < 1L) {
+  stop("RL_POST_QC_CLUSTER_WORKERS must be a positive integer when set.")
+}
+cluster_workers <- min(cluster_workers, workers, length(full_res_list))
+if (!zero_removal_fast_path && cluster_workers > 1L && !future::supportsMulticore()) {
+  stop(
+    "Fork-based clustering is unavailable. Set RL_POST_QC_CLUSTER_WORKERS=1 ",
+    "to run sequentially without serialized copies of the large object."
+  )
+}
 options(future.globals.maxSize = config$runtime$future_globals_max_gb_default * 1024^3)
 plan(sequential)
 set.seed(config$runtime$random_seed)
 
-with_future_workers <- function(expr) {
+with_fork_workers <- function(expr) {
   old_plan <- plan()
   on.exit(plan(old_plan), add = TRUE)
-  if (workers > 1L) plan(multisession, workers = workers)
+  # Collect temporary objects before forking so read-mostly graph memory can
+  # be shared. Never serialize this large Seurat object to PSOCK workers.
+  gc(full = TRUE)
+  if (cluster_workers > 1L) {
+    plan(multicore, workers = cluster_workers)
+  } else {
+    plan(sequential)
+  }
   force(expr)
 }
 
@@ -313,6 +339,8 @@ if (zero_removal_fast_path) {
     reduction = "harmony_clean",
     dims = seq_len(post_qc_dimensions),
     n.neighbors = post_qc_umap_neighbors,
+    min.dist = post_qc_umap_min_dist,
+    spread = 1,
     reduction.name = "umap_clean",
     seed.use = config$runtime$random_seed
   )
@@ -324,8 +352,12 @@ if (zero_removal_fast_path) {
     verbose = TRUE
   )
 
-  message(Sys.time(), ": Calculating all clusters with ", workers, " configured worker(s)...")
-  obj <- with_future_workers(
+  check_mem("PRE-CLUSTERING")
+  message(
+    Sys.time(), ": Calculating all clusters with ", cluster_workers,
+    if (cluster_workers > 1L) " fork-based worker(s)..." else " sequential worker..."
+  )
+  obj <- with_fork_workers(
     FindClusters(obj, resolution = res_list, verbose = TRUE)
   )
   computed_resolutions <- full_res_list
@@ -437,9 +469,10 @@ write.csv(
     processing_mode = processing_mode,
     pca_dimensions = pca_dimensions,
     umap_neighbors = umap_neighbors,
+    umap_min_dist = if (zero_removal_fast_path) NA_real_ else post_qc_umap_min_dist,
     neighbor_k = neighbor_k,
     resolutions = paste(res_list, collapse = "|"),
-    preferred_stage6_resolution = 0.5,
+    preferred_stage6_resolution = 0.8,
     reused_reductions = if (length(reused_reductions)) {
       paste(reused_reductions, collapse = "|")
     } else {
@@ -457,6 +490,14 @@ write.csv(
     },
     random_seed = config$runtime$random_seed,
     workers = workers,
+    cluster_workers = if (zero_removal_fast_path) 0L else cluster_workers,
+    cluster_backend = if (zero_removal_fast_path) {
+      "not_used"
+    } else if (cluster_workers > 1L) {
+      "multicore"
+    } else {
+      "sequential"
+    },
     output_rds = output_path,
     output_size = as.numeric(output_info$size),
     output_mtime = as.numeric(output_info$mtime),

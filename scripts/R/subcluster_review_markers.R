@@ -159,7 +159,8 @@ focused_marker_set_signature <- function(marker_sets) {
 
 write_focused_marker_dotplot <- function(
     object, marker_sets, assay, group_by, branch, resolution_label,
-    availability_path, tiff_path, pdf_path) {
+    availability_path, tiff_path, pdf_path,
+    pdf_device = grDevices::cairo_pdf) {
   validate_focused_marker_sets(marker_sets)
   if (!assay %in% SeuratObject::Assays(object)) {
     stop("Focused marker DotPlot assay is absent: ", assay)
@@ -251,17 +252,21 @@ write_focused_marker_dotplot <- function(
   width <- dimensions[["width"]]
   height <- dimensions[["height"]]
 
-  Cairo::CairoTIFF(
-    filename = tiff_path,
-    width = width,
-    height = height,
-    units = "in",
-    res = 600
-  )
-  print(plot)
-  grDevices::dev.off()
+  # Existing callers still request TIFF explicitly. New diagnostic reviews can
+  # pass NULL to avoid rendering the same large figure twice.
+  if (!is.null(tiff_path)) {
+    Cairo::CairoTIFF(
+      filename = tiff_path,
+      width = width,
+      height = height,
+      units = "in",
+      res = 600
+    )
+    print(plot)
+    grDevices::dev.off()
+  }
   ggplot2::ggsave(
-    pdf_path, plot, device = grDevices::cairo_pdf,
+    pdf_path, plot, device = pdf_device,
     width = width, height = height
   )
   invisible(availability)

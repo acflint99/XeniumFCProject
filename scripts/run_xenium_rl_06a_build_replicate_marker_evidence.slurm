@@ -4,7 +4,7 @@
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/%x_%j.err
 #SBATCH --time=04:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=96G
+#SBATCH --mem=128G
 #SBATCH --partition=short
 #SBATCH --account=acflint
 #SBATCH --qos=normal

@@ -2,10 +2,10 @@
 #SBATCH --job-name=RL_MergePostQC
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/RL_MergePostQC_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/RL_MergePostQC_%j.err
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=256G
-#SBATCH --partition=short
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=600G
+#SBATCH --partition=medium
 #SBATCH --constraint=intel
 #SBATCH --mail-user=acflint@uab.edu
 #SBATCH --mail-type=END,FAIL,INVALID_DEPEND
@@ -19,6 +19,9 @@ cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
+# Default to sequential clustering after cohort expansion and parallel OOMs.
+# An explicit worker override is bounded by the allocated CPU count.
+export RL_POST_QC_CLUSTER_WORKERS="${RL_POST_QC_CLUSTER_WORKERS:-1}"
 
 # The project .Rprofile activates renv. Run renv::restore() manually before
 # submission when the lockfile changes; never mutate the library inside a job.

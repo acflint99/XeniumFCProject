@@ -7,6 +7,7 @@ suppressPackageStartupMessages(library(here))
 source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "consensus_labels.R"))
 source(here("scripts", "R", "subcluster_review_markers.R"))
+source(here("scripts", "R", "xenium_replicate_marker_evidence.R"))
 
 config <- load_pipeline_config()
 args <- commandArgs(trailingOnly = TRUE)
@@ -15,7 +16,7 @@ if (length(resolution_args) > 1L) stop("Specify --resolution only once.")
 subcluster_resolution <- if (length(resolution_args)) {
   suppressWarnings(as.numeric(sub("^--resolution=", "", resolution_args)))
 } else {
-  0.5
+  0.8
 }
 supported_review_resolutions <- c(0.3, 0.5, 0.8)
 if (!is.finite(subcluster_resolution) ||
@@ -231,6 +232,13 @@ review_manifest_matches_input_file <- function() {
     identical(as.character(review$cluster_column), cluster_column)
 }
 
+# Production review now includes its replicate-evidence prerequisite.
+replicate_review_action <- if (review_only && production_replicate_evidence_required) {
+  plan_replicate_marker_review(
+    replicate_marker_paths, replicate_marker_provenance_matches_input(), overwrite
+  )
+} else "not_required"
+
 if (dry_run) {
   mode_label <- if (review_only) {
     "VZ post-QC subcluster review"
@@ -244,7 +252,7 @@ if (dry_run) {
   dry_inputs <- if (review_only) {
     c(
       merged_path,
-      if (production_replicate_evidence_required) replicate_marker_paths else character()
+      if (identical(replicate_review_action, "reuse")) replicate_marker_paths else character()
     )
   } else if (apply_reviewed_labels) {
     c(
@@ -255,13 +263,7 @@ if (dry_run) {
     output_path
   }
   dry_checks <- if (review_only && production_replicate_evidence_required) {
-    c(
-      replicate_marker_outputs_nonempty = all(vapply(
-        replicate_marker_paths, file_is_nonempty, logical(1)
-      )),
-      replicate_marker_provenance_matches_input =
-        replicate_marker_provenance_matches_input()
-    )
+    c(replicate_evidence_can_build_or_reuse = replicate_review_action != "blocked")
   } else if (apply_reviewed_labels) {
     c(
       review_outputs_nonempty = all(vapply(review_outputs, file_is_nonempty, logical(1))),
@@ -272,11 +274,18 @@ if (dry_run) {
         replicate_marker_provenance_matches_input()
     )
   } else logical()
+  if (review_only && production_replicate_evidence_required) {
+    cat("  Replicate marker evidence: ", replicate_review_action, "\n", sep = "")
+    if (replicate_review_action == "blocked") {
+      cat("  Existing evidence is partial or stale. Review it before explicitly using --overwrite.\n")
+    }
+  }
   compact_dry_run(
     mode_label,
     inputs = dry_inputs,
     outputs = if (review_only) {
-      review_outputs
+      c(review_outputs, if (production_replicate_evidence_required &&
+        replicate_review_action != "reuse") replicate_marker_paths else character())
     } else if (apply_reviewed_labels) {
       expected_outputs
     } else if (plots_only) {
@@ -312,8 +321,7 @@ if (apply_reviewed_labels) {
     stop("VZ review outputs are empty:\n- ", paste(empty_review_outputs, collapse = "\n- "))
   }
 }
-if ((review_only || apply_reviewed_labels) &&
-    production_replicate_evidence_required) {
+if (apply_reviewed_labels && production_replicate_evidence_required) {
   missing_replicate_outputs <- replicate_marker_paths[
     !vapply(replicate_marker_paths, file_is_nonempty, logical(1))
   ]
@@ -360,6 +368,29 @@ suppressPackageStartupMessages({
   library(patchwork)
 })
 source(here("scripts", "color_palette.R"))
+
+if (review_only && production_replicate_evidence_required) {
+  if (replicate_review_action == "blocked") {
+    stop("Existing VZ replicate evidence is partial or stale. ",
+         "Inspect it before using --overwrite; no review outputs were written.")
+  }
+  if (replicate_review_action %in% c("build", "rebuild")) {
+    message("Building VZ replicate-aware marker evidence before cluster review...")
+    build_replicate_marker_evidence(
+      "VZ", merged_path, cluster_column, replicate_marker_dir,
+      overwrite = overwrite
+    )
+    # Release the builder's large local object before review loads its own object.
+    invisible(gc(full = TRUE))
+  } else {
+    message("Reusing VZ replicate-aware marker evidence matched to the input.")
+  }
+  if (!all(vapply(replicate_marker_paths, file_is_nonempty, logical(1))) ||
+      !replicate_marker_provenance_matches_input()) {
+    stop("VZ replicate evidence is incomplete or fails input provenance validation.")
+  }
+}
+
 vz_review_marker_sets <- if (!plots_only && !umaps_only) {
   add_palette_markers_to_review(
     focused_marker_sets = vz_focused_review_markers,
@@ -368,10 +399,13 @@ vz_review_marker_sets <- if (!plots_only && !umaps_only) {
   )
 } else NULL
 
-workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1")))
+workers <- suppressWarnings(as.integer(Sys.getenv("VZ_SUBCLUSTER_WORKERS", unset = "1")))
 if (is.na(workers) || workers < 1L) {
-  stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
+  stop("VZ_SUBCLUSTER_WORKERS must be a positive integer when set.")
 }
+allocated_cpus <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1")))
+if (is.na(allocated_cpus) || allocated_cpus < 1L) stop("Invalid SLURM_CPUS_PER_TASK.")
+workers <- min(workers, allocated_cpus)
 options(future.globals.maxSize = config$runtime$future_globals_max_gb_default * 1024^3)
 plan(sequential)
 set.seed(config$runtime$random_seed)
@@ -379,7 +413,7 @@ set.seed(config$runtime$random_seed)
 with_future_workers <- function(expr) {
   old_plan <- plan()
   on.exit(plan(old_plan), add = TRUE)
-  if (workers > 1L) plan(multisession, workers = workers)
+  if (workers > 1L) plan(multisession, workers = workers) else plan(sequential)
   force(expr)
 }
 
@@ -446,11 +480,10 @@ plot_vz_umaps <- function(object) {
   print(p)
   grDevices::dev.off()
 
+  # Plot-only exclusion follows the registered lineage/Other taxonomy.
+  # This does not filter cells from the saved annotated object.
   clusters_to_remove <- intersect(
-    c(
-      "RL VZ", "Immature UBCs", "Mature UBCs",
-      "eCN", "Microglia", "Cycling Cells"
-    ),
+    vz_other_subclusters,
     unique(as.character(Idents(object)))
   )
   object_subset <- if (length(clusters_to_remove)) {
@@ -747,40 +780,43 @@ if (!review_is_current) {
   stop("VZ post-QC input or clusters changed after review; rerun --review-only.")
 }
 
-# The resolution-0.8 map was reviewed against the current 30-dimension post-QC
-# UMAP, top-50 marker table, focused marker DotPlot, and published developmental
-# cerebellar markers. Cell-cycle subdivisions retain their reviewed lineage
-# where the lineage signal is supported.
+# User-approved 2026-10-18 map for the NEW 1,447,477-cell post-QC review.
+# Pre-QC removals: 10,23,24,25,27,28. These are not post-QC cluster IDs.
+# Post-QC22 is retained as Unresolved; post-QC23 shares Patterning PCs with 0.
+# PC developmental states and Pre-OPCs remain working interpretations.
+if (ncol(obj) != 1447477L) {
+  stop("The approved 2026-10-18 VZ label map requires the reviewed 1,447,477-cell input; review changed inputs before labeling.")
+}
 reviewed_label_maps <- list(
   "0.8" = c(
-    "0" = "BG",
-    "1" = "Maturing PCs",
-    "2" = "GABA Progenitors",
-    "3" = "Early-born PCs",
+    "0" = "Patterning PCs",
+    "1" = "BG",
+    "2" = "Maturing PCs",
+    "3" = "MLIs",
     "4" = "RG Progenitors",
-    "5" = "Late-born PCs",
-    "6" = "Astrocytes/Ependyma",
-    "7" = "Cycling Glia",
-    "8" = "Patterning PCs",
-    "9" = "eCN",
-    "10" = "GABA Progenitors",
-    "11" = "VZPs",
-    "12" = "Cycling VZPs",
-    "13" = "iCN",
-    "14" = "Maturing PCs",
-    "15" = "Golgi Cells",
-    "16" = "Pre-OPCs",
-    "17" = "OPCs",
-    "18" = "RL VZ",
-    "19" = "Immature UBCs",
-    "20" = "Microglia",
-    "21" = "Mature UBCs",
-    "22" = "MLIs",
-    "23" = "Cycling VZPs",
-    "24" = "Cycling Cells",
-    "25" = "iCN"
+    "5" = "Early-born PCs",
+    "6" = "Late-born PCs",
+    "7" = "eCN",
+    "8" = "Pre-OPCs",
+    "9" = "GABA Progenitors",
+    "10" = "Cycling Glia",
+    "11" = "iCN",
+    "12" = "Astrocytes/Ependyma",
+    "13" = "Cycling Glia",
+    "14" = "RL VZ",
+    "15" = "Maturing PCs",
+    "16" = "Golgi Cells",
+    "17" = "Differentiating GCs",
+    "18" = "OPCs",
+    "19" = "VZPs",
+    "20" = "GABA Interneurons",
+    "21" = "iCN",
+    "22" = "Unresolved",
+    "23" = "Patterning PCs",
+    "24" = "Maturing PCs"
   )
 )
+
 new_labels <- reviewed_label_maps[[subcluster_resolution_label]]
 if (is.null(new_labels) || !length(new_labels)) {
   stop(
@@ -917,7 +953,7 @@ Idents(obj) <- "VZ_subcluster_rev"
 # below show the same markers within the VZ-lineage and Other identity groups.
 available_vz_features <- rownames(obj[["Xenium"]])
 requested_compact_vz_markers <- unlist(
-  vz_all_compact_markers, use.names = FALSE
+  active_vz_dotplot_markers(active_vz_order), use.names = FALSE
 )
 missing_compact_vz_markers <- setdiff(
   requested_compact_vz_markers, available_vz_features
@@ -929,7 +965,7 @@ if (length(missing_compact_vz_markers)) {
   )
 }
 p1 <- workflow_dotplot(obj,
-              features = vz_all_compact_markers,
+              features = active_vz_dotplot_markers(active_vz_order),
               assay = "Xenium",
               cols = c("lightgrey", "red"),
               dot.scale = 6,
@@ -944,6 +980,7 @@ p1 <- workflow_dotplot(obj,
 dotplot_dimensions <- workflow_dotplot_dimensions(p1)
 dotplot_width <- dotplot_dimensions[["width"]]
 dotplot_height <- dotplot_dimensions[["height"]]
+dotplot_grob <- workflow_dotplot_grob(p1, strip_colors = vz_dotplot_strip_colors)
 
 Cairo::CairoTIFF(
   filename = file.path(plot_path, paste0("Xenium_VZ_SubclusterMarker_DotPlot.tif")),
@@ -952,15 +989,16 @@ Cairo::CairoTIFF(
   units = "in",
   res = 600
 )
-print(p1)
+grid::grid.newpage()
+grid::grid.draw(dotplot_grob)
 grDevices::dev.off()
 ggplot2::ggsave(
   file.path(plot_path, "Xenium_VZ_SubclusterMarker_DotPlot.pdf"),
-  p1, device = grDevices::cairo_pdf, width = dotplot_width, height = dotplot_height
+  dotplot_grob, device = grDevices::cairo_pdf, width = dotplot_width, height = dotplot_height
 )
 
-active_vz_lineage <- intersect(vz_lineage_subclusters, active_vz_order)
-active_vz_other <- intersect(vz_other_subclusters, active_vz_order)
+active_vz_lineage <- intersect(vz_dotplot_lineage_subclusters, active_vz_order)
+active_vz_other <- intersect(vz_dotplot_other_subclusters, active_vz_order)
 if (!length(active_vz_lineage) || !length(active_vz_other)) {
   stop("Both VZ lineage and Other identities are required for split DotPlots.")
 }
@@ -985,9 +1023,15 @@ build_vz_split_dotplot <- function(marker_sets, identities, title) {
 }
 
 save_vz_split_dotplot <- function(plot, filename_stem) {
-  dimensions <- workflow_dotplot_dimensions(plot)
+  is_other <- identical(filename_stem, "Xenium_VZ_Other_SubclusterMarker_DotPlot")
+  if (is_other) plot <- plot + theme(legend.box = "vertical")
+  dimensions <- workflow_dotplot_dimensions(
+    plot, minimum_width = if (is_other) 6 else 9,
+    feature_spacing = if (is_other) 0.22 else 0.28
+  )
   width <- dimensions[["width"]]
-  height <- dimensions[["height"]]
+  height <- dimensions[["height"]] + if (is_other) 0.5 else 0
+  display <- workflow_dotplot_grob(plot, strip_colors = vz_dotplot_strip_colors)
   Cairo::CairoTIFF(
     filename = file.path(plot_path, paste0(filename_stem, ".tif")),
     width = width,
@@ -995,16 +1039,17 @@ save_vz_split_dotplot <- function(plot, filename_stem) {
     units = "in",
     res = 600
   )
-  print(plot)
+  grid::grid.newpage()
+  grid::grid.draw(display)
   grDevices::dev.off()
   ggplot2::ggsave(
     file.path(plot_path, paste0(filename_stem, ".pdf")),
-    plot, device = grDevices::cairo_pdf, width = width, height = height
+    display, device = grDevices::cairo_pdf, width = width, height = height
   )
 }
 
 p_vz_lineage <- build_vz_split_dotplot(
-  vz_compact_lineage_markers,
+  active_vz_dotplot_markers(active_vz_lineage, "lineage"),
   active_vz_lineage,
   "VZ Lineage Subclusters: Compact Markers"
 )
@@ -1014,7 +1059,7 @@ save_vz_split_dotplot(
 )
 
 p_vz_other <- build_vz_split_dotplot(
-  vz_other_markers,
+  active_vz_dotplot_markers(active_vz_other, "other"),
   active_vz_other,
   "VZ Other Subclusters: Compact Markers"
 )

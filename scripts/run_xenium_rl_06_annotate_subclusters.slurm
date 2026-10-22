@@ -3,8 +3,8 @@
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_RL_Subclusters_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_RL_Subclusters_%j.err
 #SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=128G
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=256G
 #SBATCH --partition=short
 #SBATCH --constraint=intel
 #SBATCH --mail-user=acflint@uab.edu
@@ -20,7 +20,7 @@ export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
 driver_options=()
-subcluster_resolution="${RL_SUBCLUSTER_RESOLUTION:-0.5}"
+subcluster_resolution="${RL_SUBCLUSTER_RESOLUTION:-0.8}"
 case "${subcluster_resolution}" in
   0.3|0.5|0.8)
     driver_options+=("--resolution=${subcluster_resolution}")
@@ -36,6 +36,7 @@ fi
 
 case "${RL_SUBCLUSTER_MODE:-review}" in
   review)
+    # Review generates absent replicate evidence and reuses matching evidence.
     driver_options+=(--review-only)
     ;;
   apply)

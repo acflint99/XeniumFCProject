@@ -51,7 +51,7 @@ expected_outputs <- c(
 
 if (dry_run) {
   compact_dry_run(
-    paste0("RL count plots [", length(target_samples), "-sample focused cohort]"),
+    paste0("RL percent-abundance plots [", length(target_samples), "-sample focused cohort]"),
     inputs = input_path,
     outputs = expected_outputs
   )
@@ -62,7 +62,7 @@ if (!file.exists(input_path)) stop("RL subcluster input not found: ", input_path
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
 if (length(existing_outputs) && !overwrite) {
   stop(
-    "Refusing to overwrite existing RL count plots:\n- ",
+    "Refusing to overwrite existing RL percent-abundance plots:\n- ",
     paste(existing_outputs, collapse = "\n- "),
     "\nUse --overwrite only after reviewing them."
   )
@@ -115,17 +115,24 @@ for (set_name in names(cluster_sets)) {
   # Get the specific clusters for this iteration
   current_clusters <- cluster_sets[[set_name]]
   
-  # Filter and Aggregate
+  # Normalize within the plotted lineage in each sample (one sample per PCW).
   plot_df <- obj@meta.data %>%
     select(PCW, RL_subcluster, orig.ident) %>%
     filter(orig.ident %in% target_samples) %>%
     filter(RL_subcluster %in% current_clusters) %>%
     mutate(PCW_num = as.numeric(gsub("PCW", "", PCW))) %>%
     group_by(PCW_num, orig.ident, RL_subcluster) %>%
-    summarise(cell_count = n(), .groups = "drop") 
+    summarise(cell_count = n(), .groups = "drop") %>%
+    group_by(PCW_num, orig.ident) %>%
+    mutate(percent_abundance = 100 * cell_count / sum(cell_count)) %>%
+    ungroup() 
   
-  # Skip if the dataframe is empty (e.g., clusters not found in target samples)
-  if (nrow(plot_df) == 0) next
+  # An absent lineage has no defined percentage; do not silently omit outputs.
+  missing_lineage_samples <- setdiff(target_samples, as.character(plot_df$orig.ident))
+  if (length(missing_lineage_samples)) {
+    stop("Cannot calculate percent abundance for ", set_name,
+         "; no lineage cells in sample(s): ", paste(missing_lineage_samples, collapse = ", "))
+  }
   
   # Set Factor Levels
   plot_df$PCW_num <- factor(plot_df$PCW_num, levels = target_pcw_levels)
@@ -133,17 +140,19 @@ for (set_name in names(cluster_sets)) {
                                   levels = intersect(rl_subcluster_order, current_clusters))
   
   # Plot
-  p <- ggplot(plot_df, aes(x = PCW_num, y = cell_count, fill = RL_subcluster)) +
+  p <- ggplot(plot_df, aes(x = PCW_num, y = percent_abundance, fill = RL_subcluster)) +
     geom_bar(stat = "identity", color = "black", width = 0.8, linewidth = 0.2) +
     scale_fill_manual(values = rl_palette) + 
     scale_x_discrete(drop = FALSE) +
-    scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+    scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25),
+                       labels = function(x) paste0(x, "%"),
+                       expand = expansion(mult = c(0, 0.02))) +
     labs(
       title = paste("Cluster Set:", set_name),
       x = "Age (PCW)", 
-      y = "Number of Cells", 
+      y = "Abundance (% of lineage cells)", 
       fill = "Cell Type",
-      subtitle = paste("Included samples:", length(target_samples), "samples selected")
+      subtitle = paste(length(target_samples), "selected samples; 100% = plotted lineage within each sample")
     ) +
     theme_bw() +
     theme(panel.grid = element_blank(), axis.text = element_text(color = "black"))

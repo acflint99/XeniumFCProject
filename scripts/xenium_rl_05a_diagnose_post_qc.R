@@ -89,7 +89,8 @@ if (dry_run) {
     inputs = required_inputs,
     outputs = expected_outputs,
     checks = c(
-      sample_manifest_has_34_samples = length(sample_ids) == 34L,
+      sample_manifest_valid = length(sample_ids) > 0L &&
+        !anyNA(sample_ids) && !anyDuplicated(sample_ids) && all(nzchar(sample_ids)),
       removal_manifest = isTRUE(removal_inspection$valid),
       nonzero_removal = isTRUE(removal_inspection$valid) &&
         !isTRUE(removal_inspection$zero_removal)
@@ -102,12 +103,12 @@ missing_inputs <- required_inputs[!file.exists(required_inputs)]
 if (length(missing_inputs)) {
   stop("Missing RL diagnostic input(s):\n- ", paste(missing_inputs, collapse = "\n- "))
 }
-if (length(sample_ids) != 34L || anyDuplicated(sample_ids) || any(!nzchar(sample_ids))) {
-  stop("config/samples.csv must contain exactly 34 unique, nonblank sample IDs.")
+if (!length(sample_ids) || anyNA(sample_ids) || anyDuplicated(sample_ids) || any(!nzchar(sample_ids))) {
+  stop("config/samples.csv must contain unique, nonblank sample IDs and at least one sample.")
 }
 if (!isTRUE(removal_inspection$valid) || isTRUE(removal_inspection$zero_removal)) {
   stop(
-    "RL removal manifest must be a valid, nonzero 34-sample decision:\n- ",
+    "RL removal manifest must be a valid, nonzero manifest-defined decision:\n- ",
     paste(removal_inspection$errors, collapse = "\n- ")
   )
 }

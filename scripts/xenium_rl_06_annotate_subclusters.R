@@ -7,6 +7,7 @@ suppressPackageStartupMessages(library(here))
 source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "consensus_labels.R"))
 source(here("scripts", "R", "subcluster_review_markers.R"))
+source(here("scripts", "R", "xenium_replicate_marker_evidence.R"))
 
 config <- load_pipeline_config()
 args <- commandArgs(trailingOnly = TRUE)
@@ -15,7 +16,7 @@ if (length(resolution_args) > 1L) stop("Specify --resolution only once.")
 subcluster_resolution <- if (length(resolution_args)) {
   suppressWarnings(as.numeric(sub("^--resolution=", "", resolution_args)))
 } else {
-  0.5
+  0.8
 }
 supported_review_resolutions <- c(0.3, 0.5, 0.8)
 if (!is.finite(subcluster_resolution) ||
@@ -227,6 +228,13 @@ review_manifest_matches_input_file <- function() {
     identical(as.character(review$cluster_column), cluster_column)
 }
 
+# Production review now includes its replicate-evidence prerequisite.
+replicate_review_action <- if (review_only && production_replicate_evidence_required) {
+  plan_replicate_marker_review(
+    replicate_marker_paths, replicate_marker_provenance_matches_input(), overwrite
+  )
+} else "not_required"
+
 if (dry_run) {
   mode_label <- if (review_only) {
     "RL post-QC subcluster review"
@@ -238,7 +246,7 @@ if (dry_run) {
   dry_inputs <- if (review_only) {
     c(
       merged_path,
-      if (production_replicate_evidence_required) replicate_marker_paths else character()
+      if (identical(replicate_review_action, "reuse")) replicate_marker_paths else character()
     )
   } else if (apply_reviewed_labels) {
     c(
@@ -249,13 +257,7 @@ if (dry_run) {
     output_path
   }
   dry_checks <- if (review_only && production_replicate_evidence_required) {
-    c(
-      replicate_marker_outputs_nonempty = all(vapply(
-        replicate_marker_paths, file_is_nonempty, logical(1)
-      )),
-      replicate_marker_provenance_matches_input =
-        replicate_marker_provenance_matches_input()
-    )
+    c(replicate_evidence_can_build_or_reuse = replicate_review_action != "blocked")
   } else if (apply_reviewed_labels) {
     c(
       review_outputs_nonempty = all(vapply(review_outputs, file_is_nonempty, logical(1))),
@@ -266,11 +268,18 @@ if (dry_run) {
         replicate_marker_provenance_matches_input()
     )
   } else logical()
+  if (review_only && production_replicate_evidence_required) {
+    cat("  Replicate marker evidence: ", replicate_review_action, "\n", sep = "")
+    if (replicate_review_action == "blocked") {
+      cat("  Existing evidence is partial or stale. Review it before explicitly using --overwrite.\n")
+    }
+  }
   compact_dry_run(
     mode_label,
     inputs = dry_inputs,
     outputs = if (review_only) {
-      review_outputs
+      c(review_outputs, if (production_replicate_evidence_required &&
+        replicate_review_action != "reuse") replicate_marker_paths else character())
     } else if (apply_reviewed_labels) {
       expected_outputs
     } else {
@@ -304,22 +313,21 @@ if (apply_reviewed_labels) {
     stop("RL review outputs are empty:\n- ", paste(empty_review_outputs, collapse = "\n- "))
   }
 }
-if ((review_only || apply_reviewed_labels) &&
-    production_replicate_evidence_required) {
+if (apply_reviewed_labels && production_replicate_evidence_required) {
   missing_replicate_outputs <- replicate_marker_paths[
     !vapply(replicate_marker_paths, file_is_nonempty, logical(1))
   ]
   if (length(missing_replicate_outputs)) {
     stop(
-      "Run xenium_rl_06a_build_replicate_marker_evidence.R before the ",
-      "production resolution-0.8 review. Missing or empty:\n- ",
+      "Run Stage 6 with --review-only to generate the required ",
+      "resolution-0.8 evidence before applying labels. Missing or empty:\n- ",
       paste(missing_replicate_outputs, collapse = "\n- ")
     )
   }
   if (!replicate_marker_provenance_matches_input()) {
     stop(
       "RL replicate-aware marker evidence does not match the current ",
-      "post-QC object and resolution-0.8 cluster column; rerun Stage 06a."
+      "post-QC object and resolution-0.8 cluster column; rerun Stage 6 review."
     )
   }
 }
@@ -350,6 +358,29 @@ suppressPackageStartupMessages({
   library(patchwork)
 })
 source(here("scripts", "color_palette.R"))
+
+if (review_only && production_replicate_evidence_required) {
+  if (replicate_review_action == "blocked") {
+    stop("Existing RL replicate evidence is partial or stale. ",
+         "Inspect it before using --overwrite; no review outputs were written.")
+  }
+  if (replicate_review_action %in% c("build", "rebuild")) {
+    message("Building RL replicate-aware marker evidence before cluster review...")
+    build_replicate_marker_evidence(
+      "RL", merged_path, cluster_column, replicate_marker_dir,
+      overwrite = overwrite
+    )
+    # Release the builder's large local object before review loads its own object.
+    invisible(gc(full = TRUE))
+  } else {
+    message("Reusing RL replicate-aware marker evidence matched to the input.")
+  }
+  if (!all(vapply(replicate_marker_paths, file_is_nonempty, logical(1))) ||
+      !replicate_marker_provenance_matches_input()) {
+    stop("RL replicate evidence is incomplete or fails input provenance validation.")
+  }
+}
+
 rl_review_marker_sets <- if (!plots_only) {
   add_palette_markers_to_review(
     focused_marker_sets = rl_focused_review_markers,
@@ -358,10 +389,13 @@ rl_review_marker_sets <- if (!plots_only) {
   )
 } else NULL
 
-workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1")))
+workers <- suppressWarnings(as.integer(Sys.getenv("RL_SUBCLUSTER_WORKERS", unset = "1")))
 if (is.na(workers) || workers < 1L) {
-  stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
+  stop("RL_SUBCLUSTER_WORKERS must be a positive integer when set.")
 }
+allocated_cpus <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1")))
+if (is.na(allocated_cpus) || allocated_cpus < 1L) stop("Invalid SLURM_CPUS_PER_TASK.")
+workers <- min(workers, allocated_cpus)
 options(future.globals.maxSize = config$runtime$future_globals_max_gb_default * 1024^3)
 plan(sequential)
 set.seed(config$runtime$random_seed)
@@ -369,7 +403,7 @@ set.seed(config$runtime$random_seed)
 with_future_workers <- function(expr) {
   old_plan <- plan()
   on.exit(plan(old_plan), add = TRUE)
-  if (workers > 1L) plan(multisession, workers = workers)
+  if (workers > 1L) plan(multisession, workers = workers) else plan(sequential)
   force(expr)
 }
 
@@ -605,36 +639,32 @@ if (!review_is_current) {
   stop("RL post-QC input or clusters changed after review; rerun --review-only.")
 }
 
-# No earlier resolution-0.5 map is reused here. The resolution-0.8 map below
-# was reviewed against the current 30-dimension post-QC UMAP, top-50 marker
-# table, focused RL lineage DotPlot, and RL-VZ diagnostic DotPlot. Cell-cycle
-# subdivisions retain their biological lineage label rather than becoming
-# separate terminal cell types.
+# User-approved 2026-10-17 for the 827183-cell, 20-cluster review: marker tables
+# and focused DotPlot, with tentative UMAP/marker assignments for sparse 18/19.
+# Clusters 5, 6, 10, and 12 retain their reviewed uncertainty; approval selects
+# existing names, with cluster 6 explicitly named BG Progenitors. No cell removal.
 reviewed_label_maps <- list(
   "0.8" = c(
-    "0" = "Mature UBCs",
-    "1" = "Immature UBCs",
-    "2" = "Maturing GCPs",
-    "3" = "Migrating GCs",
-    "4" = "Differentiating GCs",
-    "5" = "Migrating GCs",
-    "6" = "BG",
-    "7" = "Differentiating GCs",
+    "0" = "Differentiating GCs",
+    "1" = "Mature UBCs",
+    "2" = "Differentiating GCs",
+    "3" = "Immature UBCs",
+    "4" = "Migrating GCs",
+    "5" = "Immature UBCs",
+    "6" = "BG Progenitors",
+    "7" = "Prolif GCPs",
     "8" = "RL SVZ",
     "9" = "Prolif GCPs",
-    "10" = "Migrating GCs",
+    "10" = "Differentiating GCs",
     "11" = "Mature GCs",
-    "12" = "RL SVZ",
-    "13" = "Maturing PCs",
-    "14" = "Differentiating GCs",
+    "12" = "Maturing PCs",
+    "13" = "Migrating GCs",
+    "14" = "Prolif GCPs",
     "15" = "Prolif GCPs",
     "16" = "Maturing GCPs",
-    "17" = "eCN",
-    "18" = "GABA Progenitors",
-    "19" = "Microglia",
-    "20" = "Endothelial",
-    "21" = "Maturing PCs",
-    "22" = "Maturing PCs"
+    "17" = "RL SVZ",
+    "18" = "Mature UBCs",
+    "19" = "Differentiating GCs"
   )
 )
 new_labels <- reviewed_label_maps[[subcluster_resolution_label]]
@@ -690,11 +720,15 @@ write.csv(
   data.frame(
     cluster_id = names(new_labels),
     RL_subcluster = unname(new_labels),
+    annotation_confidence = ifelse(
+      names(new_labels) %in% c("5", "6", "10", "12", "18", "19"),
+      "approved_provisional", "marker_supported"
+    ),
     source_column = cluster_column,
     review_resolution = subcluster_resolution_label,
     review_basis = paste(
-      "current post-QC UMAP, top-50 markers, focused lineage DotPlot,",
-      "and RL-VZ diagnostic DotPlot"
+      "user-approved 2026-10-17 marker-based map; top-50 markers and focused DotPlot;",
+      "sparse clusters 18/19 tentatively assigned using UMAP and DotPlot"
     ),
     input_rds = merged_path,
     output_rds = output_path,
@@ -709,12 +743,21 @@ active_rl_order <- rl_subcluster_order[rl_subcluster_order %in% reviewed_labels]
 
 DefaultAssay(obj) <- "Xenium"
 
+# Plot only observed approved identities; unused global taxonomy levels create
+# ghost heatmap labels and marker facets for populations absent from this object.
+obj$RL_subcluster <- factor(as.character(obj$RL_subcluster), levels = active_rl_order)
+Idents(obj) <- "RL_subcluster"
+active_rl_lineage <- intersect(rl_lineage_subclusters, active_rl_order)
+active_rl_other <- intersect(rl_other_subclusters, active_rl_order)
+production_rl_other_markers <- rl_other_markers[active_rl_other]
+production_rl_markers <- rl_production_marker_panel(active_rl_order)
+
 # Validate the complete production marker panel before writing any refreshed
 # table or plot, preventing a missing targeted gene from leaving partial output.
 requested_rl_markers <- unique(c(
-  unlist(rl_markers, use.names = FALSE),
+  unlist(production_rl_markers, use.names = FALSE),
   unlist(rl_compact_lineage_markers, use.names = FALSE),
-  unlist(rl_other_markers, use.names = FALSE)
+  unlist(production_rl_other_markers, use.names = FALSE)
 ))
 missing_rl_markers <- setdiff(requested_rl_markers, rownames(obj[["Xenium"]]))
 if (length(missing_rl_markers)) {
@@ -824,7 +867,7 @@ grDevices::dev.off()
 # 4. UMAP focused on the reviewed RL/UBC/granule lineages. The legacy stable
 # filename is retained even though the reviewed off-lineage set is now broader.
 off_lineage_clusters <- c(
-  "BG", "Maturing PCs", "eCN",
+  "BG", "BG Progenitors", "Maturing PCs", "eCN",
   "GABA Progenitors", "Microglia", "Endothelial"
 )
 clusters_to_remove <- intersect(
@@ -878,7 +921,7 @@ Idents(obj) <- "RL_subcluster_rev"
 # 3. Create the Plot
 # Adding 'assay = "Xenium"' is the safest way to avoid multi-assay conflicts
 p1 <- workflow_dotplot(obj,
-              features = rl_markers,
+              features = production_rl_markers,
               assay = "Xenium",
               cols = c("lightgrey", "red"),
               dot.scale = 6,
@@ -893,6 +936,7 @@ p1 <- workflow_dotplot(obj,
 dotplot_dimensions <- workflow_dotplot_dimensions(p1)
 dotplot_width <- dotplot_dimensions[["width"]]
 dotplot_height <- dotplot_dimensions[["height"]]
+dotplot_grob <- workflow_dotplot_grob(p1)
 
 Cairo::CairoTIFF(
   filename = file.path(plot_path, paste0("Xenium_RL_SubclusterMarker_DotPlot.tif")),
@@ -901,11 +945,12 @@ Cairo::CairoTIFF(
   units = "in",
   res = 600
 )
-print(p1)
+grid::grid.newpage()
+grid::grid.draw(dotplot_grob)
 grDevices::dev.off()
 ggplot2::ggsave(
   file.path(plot_path, "Xenium_RL_SubclusterMarker_DotPlot.pdf"),
-  p1, device = grDevices::cairo_pdf, width = dotplot_width, height = dotplot_height
+  dotplot_grob, device = grDevices::cairo_pdf, width = dotplot_width, height = dotplot_height
 )
 
 active_rl_lineage <- intersect(rl_lineage_subclusters, active_rl_order)
@@ -934,9 +979,15 @@ build_rl_split_dotplot <- function(marker_sets, identities, title) {
 }
 
 save_rl_split_dotplot <- function(plot, filename_stem) {
-  dimensions <- workflow_dotplot_dimensions(plot)
+  is_other <- identical(filename_stem, "Xenium_RL_Other_SubclusterMarker_DotPlot")
+  if (is_other) plot <- plot + theme(legend.box = "vertical")
+  dimensions <- workflow_dotplot_dimensions(
+    plot, minimum_width = if (is_other) 6 else 9,
+    feature_spacing = if (is_other) 0.22 else 0.28
+  )
   width <- dimensions[["width"]]
-  height <- dimensions[["height"]]
+  height <- dimensions[["height"]] + if (is_other) 0.5 else 0
+  display <- workflow_dotplot_grob(plot)
   Cairo::CairoTIFF(
     filename = file.path(plot_path, paste0(filename_stem, ".tif")),
     width = width,
@@ -944,18 +995,19 @@ save_rl_split_dotplot <- function(plot, filename_stem) {
     units = "in",
     res = 600
   )
-  print(plot)
+  grid::grid.newpage()
+  grid::grid.draw(display)
   grDevices::dev.off()
   ggplot2::ggsave(
     file.path(plot_path, paste0(filename_stem, ".pdf")),
-    plot, device = grDevices::cairo_pdf, width = width, height = height
+    display, device = grDevices::cairo_pdf, width = width, height = height
   )
 }
 
 p_rl_lineage <- build_rl_split_dotplot(
   rl_compact_lineage_markers,
   active_rl_lineage,
-  "RL Lineage Subclusters: Compact Markers"
+  "RL Lineage Subclusters: Lineage and Granule-State Markers"
 )
 save_rl_split_dotplot(
   p_rl_lineage,
@@ -963,9 +1015,9 @@ save_rl_split_dotplot(
 )
 
 p_rl_other <- build_rl_split_dotplot(
-  rl_other_markers,
+  production_rl_other_markers,
   active_rl_other,
-  "RL Other Subclusters: Compact Markers"
+  "RL Other Subclusters: Markers for Observed Identities"
 )
 save_rl_split_dotplot(
   p_rl_other,
@@ -1011,15 +1063,20 @@ top5_markers <- heatmap_markers %>%
 # (Necessary for DoHeatmap to show relative expression)
 # Just run the plot on a temporary scaled version:
 temp_obj <- ScaleData(obj, features = top5_markers, verbose = FALSE)
+temp_obj$RL_subcluster <- factor(as.character(temp_obj$RL_subcluster), levels = active_rl_order)
+Idents(temp_obj) <- "RL_subcluster"
+heatmap_obj <- subset(temp_obj, downsample = 100, seed = config$runtime$random_seed)
+heatmap_obj$RL_subcluster <- droplevels(heatmap_obj$RL_subcluster)
+Idents(heatmap_obj) <- "RL_subcluster"
 
 # 4. Create Heatmap
 # We downsample the plot to 100 cells per group so the labels are readable
 # 1. Prepare the plot without the default lines
 p4 <- DoHeatmap(
-  subset(temp_obj, downsample = 100),
+  heatmap_obj,
   features = top5_markers,
   group.by = "RL_subcluster",
-  group.colors = rl_palette,
+  group.colors = unname(rl_palette[levels(heatmap_obj$RL_subcluster)]),
   size = 4,
   angle = 45,
   draw.lines = TRUE,
@@ -1029,6 +1086,7 @@ p4 <- DoHeatmap(
   guides(color = "none") +
   theme(
     axis.text.y = element_text(size = 6, face = "italic"),
+    plot.margin = margin(t = 75, r = 12, b = 12, l = 12),
     plot.title = element_text(hjust = 0.5, face = "bold")
   ) +
   ggtitle("Top 5 Markers per RL Subcluster")
@@ -1053,5 +1111,17 @@ grDevices::dev.off()
 check_mem("HEATMAP COMPLETE")
 
 plan("sequential")
+
+# Preserve a reviewed visualization choice during subsequent plot-only refreshes.
+# Full label application creates a new source object and needs a new comparison.
+selected_umap_receipt <- file.path(table_path, "Xenium_RL_Selected_UMAP_manifest.csv")
+if (plots_only && file.exists(selected_umap_receipt)) {
+  source(here("scripts", "R", "rl_umap_selected.R"))
+  render_selected_rl_umap(
+    config, output_path,
+    file.path(output_root, "xenium", "rl", "06c_umap_comparison"),
+    overwrite = overwrite, object = obj
+  )
+}
 
 check_mem(if (plots_only) "PLOT REFRESH COMPLETE" else "PIPELINE COMPLETE - FILE SAVED")

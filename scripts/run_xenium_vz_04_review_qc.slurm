@@ -30,7 +30,7 @@ case "${VZ_QC_MODE:-review}" in
     ;;
   apply)
     if [[ -z "${VZ_QC_REMOVE_CLUSTERS:-}" ]]; then
-      echo "VZ_QC_REMOVE_CLUSTERS must explicitly name the newly reviewed clusters or 'none' (current reviewed decision: 9,25,26)." >&2
+      echo "VZ_QC_REMOVE_CLUSTERS must explicitly name the newly reviewed clusters or 'none' (current reviewed decision: 23,24,25,27,28)." >&2
       exit 2
     fi
     remove_clusters="${VZ_QC_REMOVE_CLUSTERS}"

@@ -1,5 +1,7 @@
 #!/usr/bin/env Rscript
 
+# Optional standalone compatibility entry point. Production RL Stage-6 review
+# now generates or reuses this evidence automatically; no separate job is needed.
 rm(list = ls())
 suppressPackageStartupMessages(library(here))
 source(here("scripts", "R", "config.R"))

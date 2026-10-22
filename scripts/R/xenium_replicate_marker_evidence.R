@@ -283,3 +283,14 @@ build_replicate_marker_evidence <- function(region,
   write.csv(provenance, output_paths[["provenance"]], row.names = FALSE)
   invisible(output_paths)
 }
+
+# A review can generate absent evidence, reuse matching evidence, or stop before
+# touching partial/stale files. This inspection never loads an analysis object.
+plan_replicate_marker_review <- function(paths, provenance_matches, overwrite = FALSE) {
+  info <- file.info(paths)
+  complete <- all(file.exists(paths) & !is.na(info$size) & info$size > 0)
+  if (complete && isTRUE(provenance_matches)) return("reuse")
+  if (!any(file.exists(paths))) return("build")
+  if (isTRUE(overwrite)) return("rebuild")
+  "blocked"
+}

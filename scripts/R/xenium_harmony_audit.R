@@ -2,6 +2,8 @@
 
 parse_pcw_numeric <- function(values) {
   values <- trimws(as.character(values))
+  # Production metadata can store either numeric ages or labels such as PCW12.
+  values <- sub("^PCW[[:space:]]*", "", values, ignore.case = TRUE)
   suppressWarnings(as.numeric(sub("[^0-9.].*$", "", values)))
 }
 
@@ -13,7 +15,7 @@ stratified_audit_cells <- function(metadata, max_cells, seed) {
     drop = TRUE, lex.order = TRUE
   )
   groups <- split(seq_len(n), strata)
-  allocation <- pmax(1L, floor(max_cells * lengths(groups) / n))
+  allocation <- pmax(1L, floor(as.double(max_cells) * lengths(groups) / n))
   while (sum(allocation) > max_cells) {
     eligible <- which(allocation > 1L)
     allocation[eligible[[which.max(allocation[eligible])]]] <-
@@ -33,6 +35,14 @@ stratified_audit_cells <- function(metadata, max_cells, seed) {
 }
 
 neighbor_metrics <- function(embedding, metadata, k) {
+  if (!is.matrix(embedding) || !is.numeric(embedding) ||
+      nrow(embedding) != nrow(metadata) || any(!is.finite(embedding))) {
+    stop("Harmony-audit neighbor input must be a finite numeric matrix aligned with metadata.")
+  }
+  if (length(k) != 1L || !is.finite(k) || k < 1L || k != as.integer(k) ||
+      nrow(embedding) <= k) {
+    stop("Harmony-audit neighbor count must be a positive integer below the audited cell count.")
+  }
   nn <- RANN::nn2(embedding, query = embedding, k = k + 1L)$nn.idx[, -1L, drop = FALSE]
   samples <- as.character(metadata$orig.ident)
   biology <- as.character(metadata$audit_biology_label)
@@ -105,14 +115,22 @@ run_harmony_audit <- function(region,
   if (!requireNamespace("RANN", quietly = TRUE)) {
     stop("The project renv must provide RANN for the Harmony neighborhood audit.")
   }
+  log_stage <- function(text) {
+    message(format(Sys.time(), tz = "UTC", usetz = TRUE), " | ", region, " | ", text)
+  }
+  log_stage(paste0("Loading integrated RDS: ", input_path))
   object <- readRDS(input_path)
+  total_cells <- ncol(object)
+  log_stage(paste0("RDS loaded: ", total_cells, " cells; extracting audit inputs."))
   if (!all(c("pca", "harmony") %in% Seurat::Reductions(object))) {
     stop("Harmony-audit input must contain pca and harmony reductions.")
   }
   required_metadata <- c("orig.ident", "PCW", "regional_consensus_label_pooled")
   missing <- setdiff(required_metadata, names(object[[]]))
   if (length(missing)) stop("Harmony-audit input lacks: ", paste(missing, collapse = ", "))
-  metadata <- object[[]]
+  # Retain only the three source fields used by the audit, rather than copying
+  # every integrated-object metadata column into the sampled data frame.
+  metadata <- object[[]][, required_metadata, drop = FALSE]
   metadata$audit_biology_label <- trimws(as.character(
     metadata$regional_consensus_label_pooled
   ))
@@ -123,14 +141,31 @@ run_harmony_audit <- function(region,
   }
   selected <- stratified_audit_cells(metadata, max_cells, seed)
   metadata <- metadata[selected, , drop = FALSE]
+  if (ncol(Seurat::Embeddings(object, "pca")) < dimensions ||
+      ncol(Seurat::Embeddings(object, "harmony")) < dimensions) {
+    stop("Harmony-audit input lacks the requested number of embedding dimensions.")
+  }
   pre <- Seurat::Embeddings(object, "pca")[selected, seq_len(dimensions), drop = FALSE]
   post <- Seurat::Embeddings(object, "harmony")[selected, seq_len(dimensions), drop = FALSE]
   if (!identical(rownames(pre), rownames(metadata)) ||
       !identical(rownames(post), rownames(metadata))) {
     stop("Harmony-audit embeddings do not align with selected metadata rows.")
   }
+  # Counts, scaled expression and SNN graphs are not used below. Release them
+  # before native neighbor searches; the initial read still needs ample memory.
+  rm(object)
+  invisible(gc())
+  log_stage(paste0("Released integrated object; auditing ", nrow(metadata),
+                   " cells, ", dimensions, " dimensions and ", neighbors, " neighbors."))
+  log_stage("Starting pre-Harmony neighbor search.")
   pre_result <- neighbor_metrics(pre, metadata, neighbors)
+  rm(pre)
+  invisible(gc())
+  log_stage("Starting post-Harmony neighbor search.")
   post_result <- neighbor_metrics(post, metadata, neighbors)
+  rm(post)
+  invisible(gc())
+  log_stage("Neighbor searches complete; compiling paired metrics and summaries.")
   paired <- pre_result$metrics
   metric_columns <- c(
     "different_sample_neighbor_fraction", "same_biology_neighbor_fraction",
@@ -163,7 +198,7 @@ run_harmony_audit <- function(region,
     input_rds = normalizePath(input_path, mustWork = TRUE),
     input_size = as.numeric(input_info$size),
     input_mtime = as.numeric(input_info$mtime),
-    total_cells = ncol(object),
+    total_cells = total_cells,
     audited_cells = nrow(metadata),
     dimensions = dimensions,
     neighbors = neighbors,
@@ -180,5 +215,6 @@ run_harmony_audit <- function(region,
   write.csv(summaries, output_paths[["summary"]], row.names = FALSE)
   write.csv(paired, output_paths[["paired"]], row.names = FALSE)
   write.csv(provenance, output_paths[["provenance"]], row.names = FALSE)
+  log_stage("Saved all three Harmony-audit tables; integrated input was not modified.")
   invisible(output_paths)
 }

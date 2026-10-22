@@ -4,19 +4,23 @@
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/%x_%j.err
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=64G
+#SBATCH --mem=256G
 #SBATCH --partition=express
 #SBATCH --account=acflint
 #SBATCH --qos=normal
 #SBATCH --constraint=intel
 #SBATCH --mail-user=acflint@uab.edu
 #SBATCH --mail-type=END,FAIL,INVALID_DEPEND
+set -euo pipefail
 module purge
 module load rc-base
 module load R/4.4.1-foss-2023b
 cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 export RENV_CONFIG_SANDBOX_ENABLED=FALSE
-driver_options=()
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+driver_options=(scripts/xenium_rl_03a_audit_harmony.R)
 if [[ "${RL_HARMONY_AUDIT_OVERWRITE:-false}" == "true" ]]; then driver_options+=(--overwrite); fi
 Rscript --max-ppsize=500000 scripts/xenium_rl_03a_audit_harmony.R --dry-run || exit 2
-Rscript --max-ppsize=500000 scripts/xenium_rl_03a_audit_harmony.R "${driver_options[@]}"
+Rscript --max-ppsize=500000 "${driver_options[@]}"

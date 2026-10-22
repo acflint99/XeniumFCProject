@@ -58,12 +58,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     paste(sample_id, "VZ Subclusters"),
     targets = sample_vz_order
   )
-  vz_lineage_clusters <- c(
-    "VZPs", "Cycling VZPs",
-    "Maturing PCs", "Early-born PCs", "Late-born PCs", "Patterning PCs",
-    "GABA Progenitors", "Golgi Cells", "MLIs", "iCN", "RG Progenitors", "BG",
-    "Cycling Glia", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs"
-  )
+  vz_lineage_clusters <- intersect(vz_lineage_subclusters, sample_vz_order)
   p_global_no_other <- build_layered_spatial_plot(
     spatial_data,
     vz_palette,
@@ -72,15 +67,15 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   )
   highlight_definitions <- list(
     Purkinje_Lineage = c(
-      "VZPs", "Cycling VZPs", "Maturing PCs", "Early-born PCs",
+      "VZPs", "Maturing PCs", "Early-born PCs",
       "Late-born PCs", "Patterning PCs"
     ),
     Glia_Lineage = c(
-      "VZPs", "Cycling VZPs", "RG Progenitors", "Cycling Glia",
+      "VZPs", "RG Progenitors", "Cycling Glia",
       "BG", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs"
     ),
     GABA_Lineage = c(
-      "VZPs", "Cycling VZPs", "GABA Progenitors", "Golgi Cells", "MLIs", "iCN"
+      "VZPs", "GABA Progenitors", "GABA Interneurons", "Golgi Cells", "MLIs", "iCN"
     )
   )
   highlight_plots <- lapply(names(highlight_definitions), function(plot_name) {
@@ -95,15 +90,15 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
 
   lineage_rows <- list(
     c(
-      "VZPs", "Cycling VZPs", "Maturing PCs", "Early-born PCs",
+      "VZPs", "Maturing PCs", "Early-born PCs",
       "Late-born PCs", "Patterning PCs"
     ),
-    c("GABA Progenitors", "Golgi Cells", "MLIs", "iCN"),
+    c("GABA Progenitors", "GABA Interneurons", "Golgi Cells", "MLIs", "iCN"),
     c("RG Progenitors", "Cycling Glia", "BG", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs")
   )
   other_rows <- list(
-    c("RL VZ", "Immature UBCs", "Mature UBCs", "eCN"),
-    c("Cycling Cells", "Microglia")
+    c("RL VZ", "Differentiating GCs", "eCN"),
+    "Unresolved"
   )
   p_facet <- build_faceted_spatial_rows(spatial_data, vz_palette, lineage_rows)
   p_other <- build_faceted_spatial_rows(spatial_data, vz_palette, other_rows)
@@ -142,7 +137,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   Idents(obj) <- "subcluster_rev"
   xenium_features <- rownames(obj[["Xenium"]])
   requested_compact_vz_markers <- unlist(
-    vz_all_compact_markers, use.names = FALSE
+    active_vz_dotplot_markers(sample_vz_order), use.names = FALSE
   )
   missing_compact_vz_markers <- setdiff(
     requested_compact_vz_markers, xenium_features
@@ -156,7 +151,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   }
   p_dot <- workflow_dotplot(
     obj,
-    features = vz_all_compact_markers,
+    features = active_vz_dotplot_markers(sample_vz_order),
     assay = "Xenium",
     idents = rev(sample_vz_order),
     cols = c("lightgrey", "red"),
@@ -172,12 +167,15 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     ggtitle(paste(sample_id, "VZ Markers"))
 
   dotplot_dimensions <- workflow_dotplot_dimensions(p_dot)
+  p_dot_display <- patchwork::wrap_elements(full = workflow_dotplot_grob(
+    p_dot, strip_colors = vz_dotplot_strip_colors
+  ))
 
   p_report <- build_spatial_report_page(
     p_global_report,
     p_global_no_other_report,
     p_facet_report,
-    p_dot,
+    p_dot_display,
     sample_id
   )
 
@@ -225,7 +223,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     height = 8
   )
   save_cairo_tiff(
-    p_dot,
+    p_dot_display,
     file.path(sample_plot_dir, paste0(output_stem, "_Markers_DotPlot.tif")),
     width = dotplot_dimensions[["width"]],
     height = dotplot_dimensions[["height"]],
@@ -233,7 +231,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   )
   ggplot2::ggsave(
     file.path(sample_plot_dir, paste0(output_stem, "_Markers_DotPlot.pdf")),
-    plot = p_dot,
+    plot = p_dot_display,
     device = grDevices::cairo_pdf,
     width = dotplot_dimensions[["width"]],
     height = dotplot_dimensions[["height"]],
@@ -246,7 +244,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
 
   message("Finished sample: ", sample_id)
   rm(
-    obj, p_global, p_global_no_other, p_facet, p_other, p_dot, p_report,
+    obj, p_global, p_global_no_other, p_facet, p_other, p_dot, p_dot_display, p_report,
     p_global_report, p_global_no_other_report, p_facet_report, spatial_data, stats
   )
   gc()

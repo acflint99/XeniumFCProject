@@ -60,7 +60,9 @@ summary_path <- file.path(table_dir, "Xenium_VZ_RawSubcluster_QC_Summary.csv")
 cluster_sample_summary_path <- file.path(
   table_dir, "Xenium_VZ_RawSubcluster_BySample_QC_Summary.csv"
 )
-marker_path <- file.path(table_dir, "Xenium_VZ_RawSubcluster_top10_Markers_Res0.8.csv")
+marker_path <- file.path(
+  table_dir, "Xenium_VZ_RawSubcluster_top10_Markers_Res0.8.csv"
+)
 review_path <- file.path(table_dir, "Xenium_VZ_QC_review_manifest.csv")
 pdf_path <- file.path(plot_dir, "Xenium_VZ_RawSubcluster_QC_Violins.pdf")
 cluster_sample_qc_heatmap_path <- file.path(
@@ -113,7 +115,7 @@ if (!qc_only && !remove_supplied) {
   stop(
     "Choose a QC stage explicitly:\n",
     "- --qc-only to create evidence for review\n",
-    "- --remove-clusters=9,25,26 for the reviewed VZ QC decision\n",
+    "- --remove-clusters=23,24,25,27,28 for the reviewed VZ QC decision\n",
     "- --remove-clusters=none after review when no cells should be removed"
   )
 }

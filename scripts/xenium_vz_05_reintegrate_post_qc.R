@@ -187,7 +187,7 @@ if (is.na(workers) || workers < 1L) {
   stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
 }
 cluster_workers <- suppressWarnings(as.integer(
-  Sys.getenv("VZ_POST_QC_CLUSTER_WORKERS", unset = as.character(workers))
+  Sys.getenv("VZ_POST_QC_CLUSTER_WORKERS", unset = "1")
 ))
 if (is.na(cluster_workers) || cluster_workers < 1L) {
   stop("VZ_POST_QC_CLUSTER_WORKERS must be a positive integer when set.")

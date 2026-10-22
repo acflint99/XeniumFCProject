@@ -2,8 +2,8 @@
 #SBATCH --job-name=RL_kRes_Sensitivity
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/RL_kRes_Sensitivity_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/RL_kRes_Sensitivity_%j.err
-#SBATCH --time=04:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=256G
 #SBATCH --partition=short
 #SBATCH --constraint=intel
@@ -28,3 +28,4 @@ if [[ "${RL_K_RES_SENSITIVITY_OVERWRITE:-false}" == "true" ]]; then
 fi
 
 Rscript --max-ppsize=500000 scripts/xenium_rl_05b_k_resolution_sensitivity.R "${driver_options[@]}"
+

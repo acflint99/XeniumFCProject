@@ -324,7 +324,7 @@ if (plots_only) {
   missing_metadata <- setdiff(required_metadata, colnames(obj[[]]))
   if (length(missing_metadata)) stop("Merged VZ input lacks metadata: ", paste(missing_metadata, collapse = ", "))
   if (!setequal(unique(as.character(obj$orig.ident)), sample_ids)) {
-    stop("Merged VZ input does not contain exactly the 34 configured sample IDs.")
+    stop("Merged VZ input does not contain exactly the ", length(sample_ids), " configured sample IDs.")
   }
   manifest_order <- match(sample_ids, as.character(merge_manifest_preview$sample_id))
   expected_cells <- as.integer(merge_manifest_preview$cells[manifest_order])

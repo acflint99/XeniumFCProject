@@ -101,7 +101,8 @@ if (dry_run) {
     inputs = c(input_path, input_manifest_path),
     outputs = expected_outputs,
     checks = c(
-      sample_manifest_has_34_samples = length(sample_ids) == 34L,
+      sample_manifest_valid = length(sample_ids) > 0L &&
+        !anyNA(sample_ids) && !anyDuplicated(sample_ids) && all(nzchar(sample_ids)),
       k_values_are_10_and_20 = identical(k_values, c(10L, 20L)),
       resolutions_are_0.8_and_1.0 = identical(resolutions, c(0.8, 1.0))
     )
@@ -115,8 +116,8 @@ missing_inputs <- c(input_path, input_manifest_path)[
 if (length(missing_inputs)) {
   stop("Missing sensitivity input(s):\n- ", paste(missing_inputs, collapse = "\n- "))
 }
-if (length(sample_ids) != 34L || anyDuplicated(sample_ids) || any(!nzchar(sample_ids))) {
-  stop("config/samples.csv must contain exactly 34 unique, nonblank sample IDs.")
+if (!length(sample_ids) || anyNA(sample_ids) || anyDuplicated(sample_ids) || any(!nzchar(sample_ids))) {
+  stop("config/samples.csv must contain unique, nonblank sample IDs and at least one sample.")
 }
 existing_outputs <- expected_outputs[file.exists(expected_outputs)]
 if (length(existing_outputs) && !overwrite) {

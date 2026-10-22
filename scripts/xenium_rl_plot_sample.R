@@ -88,7 +88,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     c("RL SVZ", "Immature UBCs", "Mature UBCs"),
     c("Prolif GCPs", "Maturing GCPs", "Differentiating GCs", "Migrating GCs", "Mature GCs")
   )
-  other_rows <- list(c("BG", "Maturing PCs", "eCN", "GABA Progenitors", "Microglia", "Endothelial"))
+  other_rows <- list(c("BG", "BG Progenitors", "Maturing PCs", "eCN", "GABA Progenitors", "Microglia", "Endothelial"))
   p_facet <- build_faceted_spatial_rows(spatial_data, rl_palette, lineage_rows)
   p_other <- build_faceted_spatial_rows(spatial_data, rl_palette, other_rows)
 
@@ -125,14 +125,14 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
   )
   Idents(obj) <- "subcluster_rev"
   xenium_features <- rownames(obj[["Xenium"]])
-  missing_rl_markers <- setdiff(unlist(rl_markers, use.names = FALSE), xenium_features)
+  existing_rl_markers <- rl_production_marker_panel(sample_rl_order)
+  missing_rl_markers <- setdiff(unlist(existing_rl_markers, use.names = FALSE), xenium_features)
   if (length(missing_rl_markers)) {
     stop(
       sample_id, " Xenium assay lacks requested RL marker gene(s): ",
       paste(missing_rl_markers, collapse = ", ")
     )
   }
-  existing_rl_markers <- rl_markers
 
   p_dot <- workflow_dotplot(
     obj,
@@ -152,6 +152,9 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     ggtitle(paste(sample_id, "RL Markers"))
 
   dotplot_dimensions <- workflow_dotplot_dimensions(p_dot)
+  # A wrapped grob keeps the broad-colored strips in TIFF, PDF, and the
+  # patchwork report while remaining printable by the existing save helper.
+  p_dot <- patchwork::wrap_elements(full = workflow_dotplot_grob(p_dot))
 
   p_report <- build_spatial_report_page(
     p_global_report,

@@ -24,10 +24,10 @@ if [[ "${RL_QC_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
-# Reviewed 2026-10-02 from the resolution-0.8 cluster QC, sample-composition,
-# and top-50 marker evidence. Review mode remains the launcher default; this
+# Approved 2026-10-16 for the 41-sample resolution-0.8 RL object: clusters
+# 19-23 each contain two cells (10 cells total). Review remains the default; this
 # decision is used only when RL_QC_MODE=apply is explicitly requested.
-reviewed_removal_clusters="6,15,24,26,27"
+reviewed_removal_clusters="19,20,21,22,23"
 
 case "${RL_QC_MODE:-review}" in
   review)

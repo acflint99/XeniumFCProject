@@ -2,10 +2,10 @@
 #SBATCH --job-name=RL_PostQC_Diag
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/RL_PostQC_Diag_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/RL_PostQC_Diag_%j.err
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=256G
-#SBATCH --partition=short
+#SBATCH --partition=medium
 #SBATCH --constraint=intel
 #SBATCH --mail-user=acflint@uab.edu
 #SBATCH --mail-type=END,FAIL,INVALID_DEPEND
