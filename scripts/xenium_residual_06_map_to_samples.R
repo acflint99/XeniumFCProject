@@ -12,10 +12,12 @@ suppressPackageStartupMessages({
   library(future)
   library(future.apply)
 })
+here::i_am("scripts/xenium_residual_06_map_to_samples.R")
 source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "consensus_labels.R"))
 source(here("scripts", "R", "xenium_unknown_qc_review.R"))
 source(here("scripts", "R", "xenium_unknown_reference_routes.R"))
+source(here("scripts", "R", "xenium_residual_qc_removal.R"))
 
 config <- load_pipeline_config()
 sample_ids <- as.character(load_sample_manifest(config)$sample_id)
@@ -31,6 +33,7 @@ if (any(!args %in% valid_options)) {
 dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
+qc_state <- load_residual_qc_state(config)
 
 output_root <- here(config$project$outputs_dir)
 residual_root <- file.path(output_root, "xenium", "residual")
@@ -77,14 +80,16 @@ if (dry_run) {
     outputs = c(output_paths, mapping_manifest_path),
     checks = c(
       reviewed_input_manifest = isTRUE(reviewed_input_state$valid),
-      sample_count_34 = length(sample_ids) == 34L
+      sample_manifest_valid = length(sample_ids) > 0L &&
+        !anyNA(sample_ids) && !anyDuplicated(sample_ids) && all(nzchar(sample_ids))
     )
   )
   if (!isTRUE(reviewed_input_state$valid)) {
     cat("  Reviewed input manifest: ", reviewed_input_state$error, "\n")
   }
   quit(save = "no", status = if (all(existing_inputs) &&
-    isTRUE(reviewed_input_state$valid) && length(sample_ids) == 34L) 0L else 1L)
+    isTRUE(reviewed_input_state$valid) && length(sample_ids) > 0L &&
+    !anyNA(sample_ids) && !anyDuplicated(sample_ids) && all(nzchar(sample_ids))) 0L else 1L)
 }
 
 missing_inputs <- all_input_paths[is.na(all_input_paths) | !file.exists(all_input_paths)]
@@ -130,15 +135,23 @@ expected_cells_by_sample <- suppressWarnings(as.integer(statuses$residual_cells)
 if (anyNA(expected_cells_by_sample) || any(expected_cells_by_sample < 0L)) {
   stop("Residual Stage-1 statuses contain invalid residual cell counts.")
 }
+if (qc_state$active) {
+  if (!identical(expected_cells_by_sample, as.integer(qc_state$manifest$input_cells))) {
+    stop("Pre-QC Stage-1 counts differ from the QC-removal manifest.")
+  }
+  expected_cells_by_sample <- as.integer(qc_state$manifest$remaining_cells)
+}
 
 message("Loading reviewed residual subcluster object...")
 master_obj <- readRDS(master_path)
+validate_residual_qc_object(master_obj, qc_state)
 label_manifest <- read.csv(
   label_manifest_path, stringsAsFactors = FALSE, check.names = FALSE
 )
 required_label_manifest <- c(
   "cluster", "final_label", "approved", "source_cluster_column",
-  "review_manifest", "review_manifest_size", "review_manifest_mtime"
+  "review_manifest", "review_manifest_size", "review_manifest_mtime",
+  "input_rds", "input_size", "input_mtime"
 )
 missing_label_manifest <- setdiff(required_label_manifest, names(label_manifest))
 if (length(missing_label_manifest)) {
@@ -146,6 +159,14 @@ if (length(missing_label_manifest)) {
     "Residual Stage-5 label manifest lacks: ",
     paste(missing_label_manifest, collapse = ", ")
   )
+}
+if (length(unique(label_manifest$input_rds)) != 1L ||
+    length(unique(label_manifest$input_size)) != 1L ||
+    length(unique(label_manifest$input_mtime)) != 1L ||
+    !identical(normalizePath(label_manifest$input_rds[[1]], mustWork = TRUE),
+               normalizePath(qc_state$input, mustWork = TRUE)) ||
+    !residual_qc_file_matches(qc_state$input, label_manifest$input_size[[1]], label_manifest$input_mtime[[1]])) {
+  stop("Stage-5 labels do not match the current residual QC analysis input.")
 }
 approved <- suppressWarnings(as.logical(label_manifest$approved))
 if (!nrow(label_manifest) || anyNA(approved) || any(!approved) ||
@@ -245,12 +266,15 @@ if (!identical(as.integer(observed_cells_by_sample), expected_cells_by_sample)) 
 rm(master_obj, master_sample_index)
 invisible(gc(verbose = FALSE))
 
-workers <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "4")))
+workers <- suppressWarnings(as.integer(Sys.getenv("RESIDUAL_MAPPING_WORKERS", unset = "1")))
 if (is.na(workers) || workers < 1L) {
-  stop("SLURM_CPUS_PER_TASK must be a positive integer when set.")
+  stop("RESIDUAL_MAPPING_WORKERS must be a positive integer when set.")
 }
+allocated_cpus <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1")))
+if (is.na(allocated_cpus) || allocated_cpus < 1L) stop("Invalid SLURM_CPUS_PER_TASK.")
+workers <- min(workers, allocated_cpus)
 options(future.globals.maxSize = 200 * 1024^3)
-plan(multisession, workers = workers)
+if (workers > 1L) plan(multisession, workers = workers) else plan(sequential)
 on.exit(plan(sequential), add = TRUE)
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(dirname(mapping_manifest_path), recursive = TRUE, showWarnings = FALSE)
@@ -277,8 +301,10 @@ mapping_rows <- future_lapply(seq_along(sample_ids), function(i) {
   }
 
   prefixed_cells <- paste0(sample_id, "_", colnames(object))
+  qc_removed <- residual_qc_exclusions_for_sample(colnames(object), object$consensus_label, sample_id, qc_state)
   match_index <- match(prefixed_cells, rownames(master_metadata))
   mapped <- !is.na(match_index)
+  if (any(qc_removed & mapped)) stop(sample_id, ": a QC-excluded cell regained a residual label.")
   if (sum(mapped) != expected_cells_by_sample[[i]]) {
     stop(
       sample_id, ": mapped ", sum(mapped), " residual cells; Stage 1 and the master contain ",
@@ -293,6 +319,8 @@ mapping_rows <- future_lapply(seq_along(sample_ids), function(i) {
     stop(sample_id, " consensus labels changed between the reviewed input and residual master.")
   }
   object <- AddMetaData(object, metadata = mapped_metadata)
+  object$residual_qc_status <- ifelse(qc_removed, "removed", ifelse(mapped, "retained", "not_residual"))
+  object@misc$residual_qc_decision_md5 <- qc_state$decision_md5
   if (sum(!is.na(object$residual_subcluster)) != expected_cells_by_sample[[i]]) {
     stop(sample_id, ": residual metadata failed post-injection validation.")
   }
@@ -308,6 +336,7 @@ mapping_rows <- future_lapply(seq_along(sample_ids), function(i) {
     output_path = output_paths[[i]],
     total_cells = ncol(object),
     mapped_residual_cells = sum(mapped),
+    removed_residual_qc_cells = sum(qc_removed),
     mapped_reviewed_label_cells = sum(
       mapped & master_metadata$residual_annotation_status[match_index] == "reviewed_label",
       na.rm = TRUE
@@ -328,6 +357,9 @@ if (!identical(as.character(mapping_manifest$sample_id), sample_ids)) {
 }
 if (sum(mapping_manifest$mapped_residual_cells) != nrow(master_metadata)) {
   stop("Mapped residual cell total does not equal the residual master object cell count.")
+}
+if (sum(mapping_manifest$removed_residual_qc_cells) != nrow(qc_state$removed)) {
+  stop("Mapped QC-exclusion total differs from the approved removed-cell manifest.")
 }
 if (sum(mapping_manifest$mapped_reviewed_label_cells) +
     sum(mapping_manifest$mapped_retained_unknown_cells) != nrow(master_metadata)) {

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=Xen_residual_subset
-#SBATCH --array=1-34%3
+#SBATCH --array=1-41%3
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/%x_%A_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/%x_%A_%a.err
 #SBATCH --time=00:30:00

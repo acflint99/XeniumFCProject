@@ -5,7 +5,9 @@
 
 rm(list = ls())
 suppressPackageStartupMessages(library(here))
+here::i_am("scripts/xenium_residual_05_apply_reviewed_labels.R")
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "xenium_residual_qc_removal.R"))
 config <- load_pipeline_config()
 args <- commandArgs(trailingOnly=TRUE)
 valid <- c("--dry-run", "--overwrite")
@@ -13,14 +15,16 @@ if (any(!args %in% valid)) stop("Usage: Rscript scripts/xenium_residual_05_apply
 dry_run <- "--dry-run" %in% args; overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 root <- here(config$project$outputs_dir, "xenium", "residual")
-input <- file.path(root, "03_integrated", "rds", "Xenium_Residual_Integrated.rds")
-evidence <- file.path(root, "04_subcluster_review", "tables", "Xenium_Residual_ReplicateAware_Marker_Evidence.csv")
-positive <- file.path(root, "04_subcluster_review", "tables", "Xenium_Residual_Positive_Marker_Candidates.csv")
-anti <- file.path(root, "04_subcluster_review", "tables", "Xenium_Residual_AntiMarker_Candidates.csv")
+qc_state <- load_residual_qc_state(config)
+input <- qc_state$input
+evidence <- file.path(qc_state$markers, "Xenium_Residual_ReplicateAware_Marker_Evidence.csv")
+positive <- file.path(qc_state$markers, "Xenium_Residual_Positive_Marker_Candidates.csv")
+anti <- file.path(qc_state$markers, "Xenium_Residual_AntiMarker_Candidates.csv")
+marker_provenance <- file.path(qc_state$markers, "Xenium_Residual_ReplicateAware_Marker_Provenance.csv")
 review_path <- resolve_config_path(config$manifests$reviewed_residual_subcluster_labels, config)
 output <- file.path(root, "05_subclusters", "rds", "Xenium_Residual_Subclusters.rds")
 manifest <- file.path(root, "05_subclusters", "tables", "Xenium_Residual_Subcluster_Labels.csv")
-inputs <- c(input, evidence, positive, anti, review_path)
+inputs <- c(input, evidence, positive, anti, marker_provenance, review_path)
 if (dry_run) { compact_dry_run("Apply reviewed residual subcluster labels", inputs=inputs, outputs=c(output, manifest)); quit(save="no", status=if(all(file.exists(inputs))) 0L else 1L) }
 missing <- inputs[!file.exists(inputs)]
 if (length(missing)) stop("Missing residual label input(s):\n- ", paste(missing, collapse="\n- "))
@@ -28,6 +32,14 @@ existing <- c(output, manifest)[file.exists(c(output, manifest))]
 if (length(existing) && !overwrite) stop("Refusing to overwrite residual label output(s):\n- ", paste(existing, collapse="\n- "))
 suppressPackageStartupMessages(library(Seurat))
 object <- readRDS(input)
+validate_residual_qc_object(object, qc_state)
+marker_source <- read.csv(marker_provenance, stringsAsFactors = FALSE)
+if (nrow(marker_source) != 1L ||
+    !all(c("input_rds", "input_size", "input_mtime") %in% names(marker_source)) ||
+    !identical(normalizePath(marker_source$input_rds, mustWork = TRUE), normalizePath(input, mustWork = TRUE)) ||
+    !residual_qc_file_matches(input, marker_source$input_size, marker_source$input_mtime)) {
+  stop("Residual marker evidence does not match the current analysis input.")
+}
 cluster_column <- "Xenium_snn_res.0.8"
 if (!cluster_column %in% names(object[[]])) stop("Residual object lacks ", cluster_column, ".")
 clusters <- unique(trimws(as.character(object[[cluster_column, drop=TRUE]])))
