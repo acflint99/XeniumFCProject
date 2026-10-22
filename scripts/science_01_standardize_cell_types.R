@@ -27,10 +27,8 @@ if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 plot_path <- here("outputs", "references", "science", "plots")
 RDS_path <- here("outputs", "references", "science", "rds")
 
-input_path <- file.path(
-  config$inputs$published_data_root,
-  "ScienceBraunFC", "Luo", "Science_9-15pcw_res1.2_broad_label_clusters.rds"
-)
+input_path <- here(config$project$outputs_dir, "references", "science", "reprocessed", "res2",
+                   "reviewed_retained", "Science_res2_reviewed_retained_reprocessed.rds")
 output_paths <- c(
   file.path(plot_path, "ScienceUMAP_newClusters.tiff"),
   file.path(plot_path, "ScienceUMAP_newClusters_newUMAP50v1.tiff"),
@@ -82,11 +80,13 @@ if (!"umap" %in% Reductions(Science)) stop("Science source object lacks the expe
 Idents(Science) <- "science_broad_label"
 
 # remove clusters----
-Science <- subset(Science, idents = c("RBC", "Brainstem", "Cycling", "Other"), invert = TRUE)
+excluded_labels <- intersect(c("RBC", "Brainstem", "Cycling", "Other"),
+                             unique(as.character(Science$science_broad_label)))
+if (length(excluded_labels)) Science <- subset(Science, idents = excluded_labels, invert = TRUE)
 
 expected_labels <- c(
   "Purkinje", "GABA", "Granule", "RL", "UBC", "Glia",
-  "OPC", "Immune", "Endothelial", "Meninges", "VZ"
+  "OPC", "Immune", "Vascular", "eCN", "Endothelial", "Meninges", "VZ"
 )
 
 unexpected_labels <- setdiff(
@@ -113,6 +113,7 @@ Science$clusters_refined <- factor(
   Science$clusters_refined, 
   levels = intersect(celltype_order, unique(Science$clusters_refined))
 )
+if (anyNA(Science$clusters_refined)) stop("Science factor ordering lost a reviewed broad label.")
 
 Idents(Science) <- "clusters_refined"
 

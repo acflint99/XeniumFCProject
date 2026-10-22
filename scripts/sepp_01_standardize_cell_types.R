@@ -272,8 +272,8 @@ ggplot2::ggsave(
 #get cluster markers for mixed clusters----
 #markers_GC_UBC <- FindMarkers(SeuratObj, ident.1 = "GC/UBC", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 
-#remove clusters----
-SeuratObj_FC_filtered <- subset(SeuratObj_FC, idents = c("GABA_MB", "isth_N", "isthmic_neuroblast", "glut_DN", "erythroid", "NTZ_mixed", "noradrenergic", "NTZ_neuroblast", "parabrachial"), invert = TRUE)
+#remove clusters; retain glut_DN for the eCN reference identity----
+SeuratObj_FC_filtered <- subset(SeuratObj_FC, idents = c("GABA_MB", "isth_N", "isthmic_neuroblast", "erythroid", "NTZ_mixed", "noradrenergic", "NTZ_neuroblast", "parabrachial"), invert = TRUE)
 
 #rename clusters with simple/harmonized names----
 SeuratObj_FC_filtered$clusters_refined <- SeuratObj_FC_filtered$cell_type
@@ -282,6 +282,7 @@ SeuratObj_FC_filtered$clusters_refined <- dplyr::recode(
   SeuratObj_FC_filtered$clusters_refined,
   "astroglia" = "Glia",
   "GABA_DN" = "GABA",
+  "glut_DN" = "eCN",
   "GC" = "Granule",
   "immune" = "Immune",
   "interneuron" = "GABA",
