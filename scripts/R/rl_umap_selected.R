@@ -1,7 +1,8 @@
 # Render every cell from the user-selected, previously fitted comparison.
 # Load the approved object for its original DimPlot format; never write it.
 render_selected_rl_umap <- function(config, input, comparison_dir,
-                                    dry_run = FALSE, overwrite = FALSE, object = NULL) {
+                                    dry_run = FALSE, overwrite = FALSE, object = NULL,
+                                    upstream_only = FALSE) {
   selected <- "nn30_md0.05"
   coordinates <- file.path(comparison_dir, paste0("Xenium_RL_", selected, "_coordinates.rds"))
   source_manifest <- file.path(comparison_dir, "Xenium_RL_UMAP_Comparison_manifest.csv")
@@ -14,8 +15,19 @@ render_selected_rl_umap <- function(config, input, comparison_dir,
   receipt <- file.path(table_dir, "Xenium_RL_Selected_UMAP_manifest.csv")
   inputs <- c(input, coordinates, source_manifest)
   outputs <- c(full_tiff, filtered_tiff, pdf_path, receipt)
+  upstream_dir <- here::here(config$project$outputs_dir, "xenium", "rl", "05_post_qc", "plots")
+  upstream_paths <- c(
+    file.path(upstream_dir, "Xenium_RL_PostQC_OrigCluster_UMAP.tif"),
+    file.path(upstream_dir, paste0("Xenium_RL_PostQC_UMAP_Res_", c(0.3, 0.5, 0.8), ".tif")),
+    file.path(plot_dir, "Xenium_RL_RawSubcluster_postQC_UMAP_Res0.8.tif")
+  )
+  if (upstream_only) {
+    receipt <- file.path(table_dir, "Xenium_RL_Upstream_UMAP_refresh_manifest.csv")
+    outputs <- c(upstream_paths, receipt)
+  }
   if (dry_run) {
-    ok <- compact_dry_run("Selected RL UMAP all-cell rendering (paths only)", inputs, outputs)
+    ok <- compact_dry_run(if (upstream_only) "Upstream RL UMAP refresh (paths only)" else
+                           "Selected RL UMAP all-cell rendering (paths only)", inputs, outputs)
     if (!ok) stop("Selected UMAP preflight failed; no objects were loaded.")
     return(invisible(outputs))
   }
@@ -71,6 +83,62 @@ render_selected_rl_umap <- function(config, input, comparison_dir,
   active_order <- rl_subcluster_order[rl_subcluster_order %in% d$RL_subcluster]
   obj$RL_subcluster <- factor(as.character(obj$RL_subcluster), levels = active_order)
   Idents(obj) <- "RL_subcluster"
+  if (upstream_only) {
+    # The approved Stage-6 object retains Stage-5 metadata/cluster columns.
+    # Reuse those columns, never rerun clustering or rewrite analysis objects.
+    resolutions <- c(0.3, 0.5, 0.8)
+    cluster_columns <- paste0(DefaultAssay(obj), "_snn_res.", resolutions)
+    needed <- c("regional_consensus_label_pooled", cluster_columns)
+    if (any(!needed %in% colnames(obj[[]]))) {
+      stop("Approved object lacks upstream metadata: ", paste(setdiff(needed, colnames(obj[[]])), collapse = ", "))
+    }
+    if (any(vapply(needed, function(nm) anyNA(obj[[nm, drop = TRUE]]) ||
+                     any(!nzchar(as.character(obj[[nm, drop = TRUE]]))), logical(1)))) {
+      stop("Missing/blank upstream identities.")
+    }
+    for (nm in cluster_columns) {
+      values <- as.character(obj[[nm, drop = TRUE]])
+      numeric_values <- suppressWarnings(as.numeric(unique(values)))
+      if (any(!is.finite(numeric_values))) stop("Non-numeric cluster IDs in ", nm)
+      obj[[nm]] <- factor(values, levels = as.character(sort(numeric_values)))
+    }
+    pooled_levels <- order_regional_consensus_levels(obj$regional_consensus_label_pooled, celltype_order)
+    obj$regional_consensus_label_pooled <- factor(as.character(obj$regional_consensus_label_pooled), levels = pooled_levels)
+    pooled_colors <- resolve_regional_consensus_colors(pooled_levels)
+    p_original <- DimPlot(obj, reduction = "umap_clean",
+      group.by = "regional_consensus_label_pooled", cols = pooled_colors,
+      label = TRUE, label.size = 5, label.box = TRUE, raster = TRUE,
+      pt.size = 0.6, alpha = 0.8) +
+      ggtitle("Refined RL UMAP - Pooled input labels") + theme_classic() +
+      theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+    # Build/validate every plot before opening output devices.
+    plots <- list(p_original)
+    for (i in seq_along(resolutions)) {
+      plots[[i + 1L]] <- DimPlot(obj, reduction = "umap_clean",
+        group.by = cluster_columns[i], label = TRUE, label.size = 5,
+        label.box = TRUE, raster = TRUE, pt.size = 0.6, alpha = 0.8) +
+        ggtitle(paste0("Refined RL UMAP - Resolution ", resolutions[i])) +
+        theme_classic() + theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+    }
+    plots[[5L]] <- DimPlot(obj, reduction = "umap_clean", group.by = cluster_columns[3L],
+      label = TRUE, label.size = 4, repel = TRUE, raster = TRUE) +
+      ggtitle("RL post-QC raw clusters - resolution 0.8") + theme_classic()
+    dir.create(upstream_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
+    save_upstream <- function(p, path, width, height) {
+      Cairo::CairoTIFF(path, width = width, height = height, units = "in", res = 600)
+      on.exit(grDevices::dev.off(), add = TRUE)
+      print(p)
+    }
+    for (i in seq_along(plots)) {
+      save_upstream(plots[[i]], upstream_paths[i], if (i == 5L) 12 else 10, if (i == 5L) 9 else 8)
+    }
+    write.csv(data.frame(m, refreshed_on = as.character(Sys.time()),
+      cells_displayed = nrow(d), output_tiff = upstream_paths), receipt, row.names = FALSE)
+    message("Refreshed five upstream UMAPs with original formats; all ", nrow(d), " cells displayed.")
+    return(invisible(outputs))
+  }
   plot_cells <- function(x, title) {
     xy <- Embeddings(x, "umap_clean")
     centers <- stats::aggregate(data.frame(label_x = xy[, 1], label_y = xy[, 2]),
@@ -86,7 +154,7 @@ render_selected_rl_umap <- function(config, input, comparison_dir,
       ggtitle(title) + theme(legend.text = element_text(size = 8))
   }
   full <- plot_cells(obj, "Xenium Merged RL Subclusters")
-  excluded <- c("BG", "BG Progenitors", "Maturing PCs", "eCN", "GABA Progenitors", "Microglia", "Endothelial")
+  excluded <- c("BG", "BG Progenitors", "Maturing PCs", "eCN", "GABA Progenitors", "Microglia", "Vascular")
   retained_ids <- d$cell_id[!d$RL_subcluster %in% excluded]
   if (!length(retained_ids)) stop("No cells remain for the established lineage-only display.")
   lineage <- subset(obj, cells = retained_ids)

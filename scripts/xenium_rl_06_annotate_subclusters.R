@@ -8,6 +8,7 @@ source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "consensus_labels.R"))
 source(here("scripts", "R", "subcluster_review_markers.R"))
 source(here("scripts", "R", "xenium_replicate_marker_evidence.R"))
+source(here("scripts", "R", "rl_label_approval.R"))
 
 config <- load_pipeline_config()
 args <- commandArgs(trailingOnly = TRUE)
@@ -99,6 +100,13 @@ review_manifest_path <- file.path(
     ".csv"
   )
 )
+label_approval_template_path <- file.path(
+  table_path, paste0("Xenium_RL_Subcluster_Label_Approval_Template_Res",
+                     subcluster_resolution_label, ".csv")
+)
+label_approval_path <- here("scripts", "reviews", paste0(
+  "RL_subcluster_labels_Res", subcluster_resolution_label, ".csv"
+))
 review_umap_path <- file.path(
   plot_path,
   paste0(
@@ -147,7 +155,7 @@ production_replicate_evidence_required <- identical(
 review_outputs <- c(
   review_top10_marker_path, review_top50_marker_path,
   review_top50_antimarker_path,
-  review_manifest_path, review_umap_path,
+  review_manifest_path, label_approval_template_path, review_umap_path,
   review_focused_marker_availability_path,
   review_focused_dotplot_tiff_path, review_focused_dotplot_pdf_path
 )
@@ -236,6 +244,14 @@ replicate_review_action <- if (review_only && production_replicate_evidence_requ
 } else "not_required"
 
 if (dry_run) {
+  approval_valid <- if (apply_reviewed_labels) tryCatch({
+    validate_rl_label_approval(label_approval_path, merged_path,
+                               review_manifest_path, cluster_column)
+    TRUE
+  }, error = function(error) {
+    cat("  RL label approval: ", conditionMessage(error), "\n", sep = "")
+    FALSE
+  }) else TRUE
   mode_label <- if (review_only) {
     "RL post-QC subcluster review"
   } else if (apply_reviewed_labels) {
@@ -250,7 +266,7 @@ if (dry_run) {
     )
   } else if (apply_reviewed_labels) {
     c(
-      merged_path, review_outputs,
+      merged_path, review_outputs, label_approval_path,
       if (production_replicate_evidence_required) replicate_marker_paths else character()
     )
   } else {
@@ -260,6 +276,7 @@ if (dry_run) {
     c(replicate_evidence_can_build_or_reuse = replicate_review_action != "blocked")
   } else if (apply_reviewed_labels) {
     c(
+      explicit_source_bound_label_approval = approval_valid,
       review_outputs_nonempty = all(vapply(review_outputs, file_is_nonempty, logical(1))),
       review_manifest_matches_input = review_manifest_matches_input_file(),
       replicate_marker_outputs_nonempty = !production_replicate_evidence_required ||
@@ -299,6 +316,9 @@ if (plots_only) {
   stop("RL post-QC input not found: ", merged_path)
 }
 if (apply_reviewed_labels) {
+  # Check the explicit human decision before loading the large source object.
+  validate_rl_label_approval(label_approval_path, merged_path,
+                             review_manifest_path, cluster_column)
   missing_review_outputs <- review_outputs[!file.exists(review_outputs)]
   if (length(missing_review_outputs)) {
     stop(
@@ -584,7 +604,16 @@ if (review_only) {
     review_manifest_path,
     row.names = FALSE
   )
+  write.csv(
+    rl_label_approval_template(
+      merged_path, review_manifest_path, colnames(obj),
+      obj[[cluster_column, drop = TRUE]], cluster_column
+    ),
+    label_approval_template_path, row.names = FALSE
+  )
   message("RL post-QC review outputs are ready. No subcluster labels were applied.")
+  message("After reviewing markers, complete the blank approval template and save it to: ",
+          label_approval_path)
   quit(save = "no", status = 0L)
 }
 
@@ -688,6 +717,12 @@ if (length(missing_label_mappings) || length(unused_label_mappings)) {
   )
 }
 if (anyNA(new_labels) || any(!nzchar(new_labels))) stop("RL label mapping contains missing or blank labels.")
+label_approval <- validate_rl_label_approval(
+  label_approval_path, merged_path, review_manifest_path, cluster_column,
+  labels = new_labels, cell_ids = colnames(obj),
+  cluster_ids = obj[[cluster_column, drop = TRUE]]
+)
+label_approval_md5 <- unname(tools::md5sum(label_approval_path))
 reviewed_labels <- unique(unname(new_labels))
 labels_missing_from_order <- setdiff(reviewed_labels, rl_subcluster_order)
 labels_missing_from_palette <- setdiff(reviewed_labels, names(rl_palette))
@@ -726,10 +761,10 @@ write.csv(
     ),
     source_column = cluster_column,
     review_resolution = subcluster_resolution_label,
-    review_basis = paste(
-      "user-approved 2026-10-17 marker-based map; top-50 markers and focused DotPlot;",
-      "sparse clusters 18/19 tentatively assigned using UMAP and DotPlot"
-    ),
+    review_basis = label_approval$review_notes[match(names(new_labels), label_approval$cluster_id)],
+    label_approval_path = normalizePath(label_approval_path, mustWork = TRUE),
+    label_approval_md5 = label_approval_md5,
+    source_partition_md5 = unique(label_approval$source_partition_md5),
     input_rds = merged_path,
     output_rds = output_path,
     stringsAsFactors = FALSE
@@ -868,7 +903,7 @@ grDevices::dev.off()
 # filename is retained even though the reviewed off-lineage set is now broader.
 off_lineage_clusters <- c(
   "BG", "BG Progenitors", "Maturing PCs", "eCN",
-  "GABA Progenitors", "Microglia", "Endothelial"
+  "GABA Progenitors", "Microglia", "Vascular"
 )
 clusters_to_remove <- intersect(
   off_lineage_clusters,
