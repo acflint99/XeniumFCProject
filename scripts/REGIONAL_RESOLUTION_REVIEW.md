@@ -1,4 +1,4 @@
-# VZ and RL resolution review (Stage 5c)
+# VZ, RL and residual resolution review (Stage 5c)
 
 Run this diagnostic after Stage 5 and before selecting a partition for Stage 6.
 For existing completed analyses, start directly from their saved Stage-5 objects.
@@ -7,11 +7,22 @@ The current resolution-0.8 selection and all production RDS files remain unchang
 
 ## Method and scope
 
-`xenium_regional_05c_resolution_stability.R` provides both branches through
-`--region=VZ|RL`. It reads the resolutions recorded in the Stage-5 provenance:
+`xenium_regional_05c_resolution_stability.R` provides all three branches through
+`--region=VZ|RL|Residual`. It reads the resolutions recorded in the Stage-5 provenance:
 VZ full path 0.3/0.5/0.8/1.0, RL full path 0.3/0.5/0.8; zero-removal reuse can
 contain fewer resolutions. Missing recorded partitions are errors, not silently
 skipped. No new resolution is introduced by the diagnostic.
+
+Residual has a dedicated entry point, `xenium_residual_05c_resolution_stability.R`,
+which calls this same engine on the new `05_post_qc/rds/Xenium_Residual_postQC.rds`.
+Like VZ/RL, residual now refits after approved removals and reuses representations
+only after an explicit no-removal decision. The diagnostic uses the
+`residual_postQC_Xenium_snn_res.*` assignments at 0.5/0.8/1.0; original metadata
+columns remain available for provenance. Expected per-sample counts come from
+the source-bound post-QC coverage table. Explicit zero-cell samples remain in
+coverage outputs; unexpected missing/extra samples and count mismatches fail.
+See [RESIDUAL_POST_QC_PROCESSING.md](RESIDUAL_POST_QC_PROCESSING.md) for migration,
+review requirements, runtimes and protected output paths.
 
 1. Draw a clustree using full-object saved assignments at all recorded resolutions.
 2. In each repeat, sample 80% of cells without replacement **within every sample**
@@ -97,15 +108,16 @@ or network delays (low confidence). Review dependency changes before accepting
 updates; no installation, package upgrade or lockfile change is performed by this
 diagnostic. The snapshot is appropriate only if the package environment changed.
 
-## Submit the five-repeat review for both branches
+## Submit the five-repeat review for all branches
 
-These are two independent pooled jobs, not sample arrays. Each launcher uses one
+These are three independent pooled jobs, not sample arrays. Each launcher uses one
 CPU and sequential clustering to avoid the earlier parallel-memory failures.
 The launcher performs a path-only dry-run before starting a fresh diagnostic.
 
 ```bash
 sbatch scripts/run_xenium_vz_05c_resolution_stability.slurm
 sbatch scripts/run_xenium_rl_05c_resolution_stability.slurm
+sbatch scripts/run_xenium_residual_05c_resolution_stability.slurm
 ```
 
 Low-confidence expected active runtimes: **VZ 4–20 hours**, **RL 2–12 hours**
@@ -143,9 +155,10 @@ Use `STABILITY_FRACTION` only for an explicitly documented sensitivity compariso
 ## Outputs and review
 
 Each branch writes beneath
-`outputs/xenium/<vz-or-rl>/05_post_qc/diagnostics/resolution_stability/pilot5/`:
+`outputs/xenium/<vz-or-rl-or-residual>/05_post_qc/diagnostics/resolution_stability/pilot5/`:
 
 - `clustree.pdf`: full-data cluster relationships across resolutions.
+- `source_inputs.csv`: exact source/sidecar paths, sizes and modification times.
 - `stability.pdf`: cluster-wise recovery distributions by resolution.
 - `cluster_summary.csv`, `recovery_by_repeat.csv`, `resolution_summary.csv`:
   all recovery metrics, including rare/absent clusters.
@@ -202,3 +215,26 @@ Before an authorized Git checkpoint in the actual repository, review `git status
 and `git diff`, run the checks, and commit this logical unit when ready. The local
 scripts directory used for development is not a Git checkout; no commit or push
 was created.
+
+## Residual runtime and workflow ordering
+
+Expected residual runtime is 5–60 minutes for about 10,000 cells and five 80%
+repeats; low confidence from static inspection and the prior 9,356–10,333-cell
+cohort. The new single-job launcher reuses the existing residual marker-review
+envelope: requested four hours, one CPU, 96 GB, short. No array or resource changes
+to existing VZ/RL launchers. A refreshed residual cohort may differ substantially;
+measure its cell count, per-repeat timings and sacct Elapsed/MaxRSS before refining
+requests. Queue wait is excluded. Residual usually adds little to the concurrently
+running VZ/RL diagnostic wall time (roughly 4–20 hours total at the prior sizes).
+
+The refresh helper now schedules each branch's marker review after its stability
+job. Review both reports before approving labels. Standalone existing results
+can be inspected without rerunning integration or labels:
+
+```bash
+Rscript --max-ppsize=500000 scripts/xenium_residual_05c_resolution_stability.R --list
+Rscript --max-ppsize=500000 scripts/xenium_residual_05c_resolution_stability.R --dry-run
+```
+
+Each path-only inspection should take under one minute and does not load RDS.
+Use the same existing project R/4.4.1 environment and renv library as production.

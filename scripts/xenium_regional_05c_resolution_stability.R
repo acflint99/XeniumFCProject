@@ -5,12 +5,13 @@ suppressPackageStartupMessages(library(here))
 here::i_am("scripts/xenium_regional_05c_resolution_stability.R")
 source(here("scripts", "R", "config.R"))
 source(here("scripts", "R", "regional_cluster_stability.R"))
+source(here("scripts", "R", "xenium_residual_qc_removal.R"))
+source(here("scripts", "R", "regional_resolution_inputs.R"))
 
-main <- function() {
-  args <- commandArgs(trailingOnly = TRUE)
+main <- function(args = commandArgs(trailingOnly = TRUE)) {
   flags <- c("--dry-run", "--list", "--overwrite", "--check-packages")
   if (any(!args %in% flags & !grepl("^--(region|repeats|fraction|run-id)=.+$", args))) {
-    stop("Usage: --region=VZ|RL [--repeats=5] [--fraction=0.8] [--run-id=pilot5] ",
+    stop("Usage: --region=VZ|RL|Residual [--repeats=5] [--fraction=0.8] [--run-id=pilot5] ",
          "[--list|--dry-run|--check-packages] [--overwrite]")
   }
   option <- function(key, default) {
@@ -19,7 +20,8 @@ main <- function() {
     if (length(values)) values else default
   }
   region <- option("region", "")
-  if (!region %in% c("VZ", "RL")) stop("Specify --region=VZ or --region=RL.")
+  if (toupper(region) == "RESIDUAL") region <- "Residual"
+  if (!region %in% c("VZ", "RL", "Residual")) stop("Specify --region=VZ, RL or Residual.")
   repeats <- suppressWarnings(as.numeric(option("repeats", "5")))
   fraction <- suppressWarnings(as.numeric(option("fraction", "0.8")))
   if (length(repeats) != 1L || !is.finite(repeats) || repeats < 2 ||
@@ -34,14 +36,14 @@ main <- function() {
   if (!length(samples) || anyNA(samples) || any(!nzchar(samples)) || anyDuplicated(samples)) {
     stop("Invalid authoritative sample manifest.")
   }
-  root <- here(config$project$outputs_dir, "xenium", tolower(region), "05_post_qc")
-  input <- file.path(root, "rds", paste0("Xenium_", region, "_postQC.rds"))
-  provenance <- file.path(root, "tables", paste0("Xenium_", region, "_postQC_manifest.csv"))
-  parent <- file.path(root, "diagnostics", "resolution_stability")
+  source_paths <- regional_resolution_paths(config, region)
+  input <- source_paths$input
+  provenance <- source_paths$provenance
+  parent <- source_paths$parent
   destination <- file.path(parent, run_id)
   output_names <- c("clustree.pdf", "stability.pdf", "cluster_summary.csv", "recovery_by_repeat.csv",
                     "sample_composition.csv", "sampling_by_repeat.csv", "resolution_summary.csv",
-                    "provenance.csv", "samples.csv", "sessionInfo.txt", "METHODS.txt", "outputs.csv")
+                    "provenance.csv", "source_inputs.csv", "samples.csv", "sessionInfo.txt", "METHODS.txt", "outputs.csv")
   packages <- c("Seurat", "SeuratObject", "Matrix", "clustree", "ggraph", "ggplot2", "future")
   if ("--check-packages" %in% args) {
     available <- vapply(packages, requireNamespace, logical(1), quietly = TRUE)
@@ -57,13 +59,13 @@ main <- function() {
   }
   if ("--dry-run" %in% args) {
     ok <- compact_dry_run(paste(region, "resolution stability (paths only; no RDS load)"),
-      inputs = c(input, provenance), outputs = file.path(destination, output_names),
+      inputs = source_paths$inputs, outputs = file.path(destination, output_names),
       checks = c(manifest_valid = TRUE, destination_protected =
         !file.exists(destination)))
     if (!ok) stop("Dry-run failed; inspect missing inputs or select a fresh run-id.")
     return(invisible(NULL))
   }
-  if (!all(file.exists(c(input, provenance)))) stop("Missing Stage-5 RDS or provenance: ", root)
+  if (!all(file.exists(source_paths$inputs))) stop("Missing diagnostic inputs; run --dry-run for paths.")
   if (file.exists(destination) && !"--overwrite" %in% args) {
     stop("Output directory already exists. Use a new --run-id, or --overwrite after review: ", destination)
   }
@@ -83,7 +85,9 @@ main <- function() {
   base_seed <- as.integer(config$runtime$random_seed)
   if (length(base_seed) != 1L || is.na(base_seed) || base_seed < 0 ||
       base_seed > .Machine$integer.max - repeats) stop("Invalid configured seed.")
-  manifest <- read.csv(provenance, stringsAsFactors = FALSE)
+  source_info <- file.info(source_paths$inputs)
+  source_state <- regional_resolution_manifest(source_paths, config, region)
+  manifest <- source_state$manifest
   fields <- c("output_rds", "output_size", "output_mtime", "cells_after_qc", "resolutions", "random_seed")
   if (nrow(manifest) != 1L || !all(fields %in% names(manifest))) stop("Invalid Stage-5 provenance.")
   info <- file.info(input)
@@ -92,11 +96,12 @@ main <- function() {
       !isTRUE(all.equal(as.numeric(info$mtime), as.numeric(manifest$output_mtime))) ||
       !identical(base_seed, as.integer(manifest$random_seed))) stop("Stage-5 input does not match its manifest.")
   resolutions <- suppressWarnings(as.numeric(strsplit(manifest$resolutions, "|", fixed = TRUE)[[1]]))
-  allowed <- if (region == "VZ") c(0.3, 0.5, 0.8, 1) else c(0.3, 0.5, 0.8)
+  allowed <- if (region == "VZ") c(0.3, 0.5, 0.8, 1) else if (region == "RL") c(0.3, 0.5, 0.8) else c(0.5, 0.8, 1)
   if (length(resolutions) < 2L || anyNA(resolutions) || anyDuplicated(resolutions) ||
       !all(resolutions %in% allowed) || !0.8 %in% resolutions) stop("Unexpected Stage-5 resolutions.")
   resolutions <- sort(resolutions)
-  columns <- paste0("Xenium_snn_res.", resolutions)
+  cluster_prefix <- if (region == "Residual") "residual_postQC_Xenium_snn_res." else "Xenium_snn_res."
+  columns <- paste0(cluster_prefix, resolutions)
   message(Sys.time(), ": reading ", input)
   obj <- readRDS(input)
   metadata <- obj[[]]
@@ -105,11 +110,8 @@ main <- function() {
       !identical(rownames(metadata), ids) || ncol(obj) != manifest$cells_after_qc ||
       !all(c("orig.ident", columns) %in% names(metadata))) stop("Invalid cell IDs, count, or required metadata.")
   sample_id <- as.character(metadata$orig.ident)
-  if (anyNA(sample_id) || any(!nzchar(sample_id)) || !setequal(unique(sample_id), samples)) {
-    stop("Object sample coverage differs from config/samples.csv. Missing: ",
-         paste(setdiff(samples, sample_id), collapse = ", "), "; unexpected: ",
-         paste(setdiff(sample_id, samples), collapse = ", "))
-  }
+  regional_resolution_check_coverage(sample_id, samples, source_state$expected_counts)
+  if (region == "Residual") validate_residual_qc_object(obj, source_state$state)
   labels <- lapply(metadata[columns], as.character)
   if (any(vapply(labels, function(x) anyNA(x) || any(!nzchar(x)) || length(unique(x)) < 2L, logical(1)))) {
     stop("Missing, blank, or single-cluster partitions.")
@@ -150,11 +152,13 @@ main <- function() {
   on.exit(if (!published) message("Incomplete results retained only at: ", staging), add = TRUE)
   write_table <- function(x, name) write.csv(x, file.path(staging, name), row.names = FALSE)
   write_table(data.frame(sample_id = samples), "samples.csv")
+  write_table(data.frame(path = normalizePath(source_paths$inputs), bytes = source_info$size,
+    mtime = as.numeric(source_info$mtime)), "source_inputs.csv")
   tree_data <- as.data.frame(lapply(labels, function(x) suppressWarnings(as.numeric(x))), check.names = FALSE)
   if (any(!vapply(tree_data, function(x) all(is.finite(x)) && all(x == floor(x)), logical(1)))) {
     stop("clustree requires numeric production cluster IDs.")
   }
-  tree <- regional_stability_tree(tree_data)
+  tree <- regional_stability_tree(tree_data, prefix = cluster_prefix)
   ggplot2::ggsave(file.path(staging, "clustree.pdf"), tree, width = 12, height = 10, limitsize = FALSE)
   rm(tree_data, tree)
   composition <- do.call(rbind, lapply(seq_along(columns), function(i) {
@@ -240,6 +244,8 @@ main <- function() {
   parameters <- c(region = region, input = normalizePath(input), input_size = info$size,
     input_mtime = as.numeric(info$mtime), stage5_manifest = normalizePath(provenance),
     stage5_manifest_md5 = unname(tools::md5sum(provenance)),
+    residual_qc_decision_md5 = if (region == "Residual") source_state$state$decision_md5 else "",
+    representation = "Post-QC representation (refitted after removals; reused if none)", cluster_prefix = cluster_prefix,
     sample_manifest_md5 = unname(tools::md5sum(resolve_config_path(config$manifests$samples, config))),
     config_md5 = unname(tools::md5sum(attr(config, "config_path"))),
     driver_md5 = unname(tools::md5sum(here("scripts", "xenium_regional_05c_resolution_stability.R"))),
@@ -274,6 +280,9 @@ main <- function() {
   ), file.path(staging, "METHODS.txt"))
   if (!all(file.exists(file.path(staging, setdiff(output_names, "outputs.csv"))))) stop("Partial output set.")
   # Confirm the input was not replaced while the diagnostic ran.
+  source_after <- file.info(source_paths$inputs)
+  if (!identical(source_info$size, source_after$size) ||
+      !identical(source_info$mtime, source_after$mtime)) stop("A diagnostic input or QC sidecar changed during review.")
   after <- file.info(input)
   if (!identical(after$size, info$size) || !identical(after$mtime, info$mtime)) stop("Stage-5 input changed during review.")
   files <- file.path(staging, setdiff(output_names, "outputs.csv"))
@@ -290,4 +299,4 @@ main <- function() {
   published <- TRUE
   message("Complete ", region, " resolution review: ", destination)
 }
-main()
+if (sys.nframe() == 0L) main()
