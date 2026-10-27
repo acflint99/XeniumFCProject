@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 #SBATCH --job-name=Aldinger_R_job
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Aldinger_R_job_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Aldinger_R_job_%j.err
@@ -6,17 +8,23 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 #SBATCH --partition=short
+#SBATCH --constraint=intel
+#SBATCH --export=ALL
 
 # Load R module first
 module purge
 module load rc-base
 module load R/4.4.1-foss-2023b
 
-# Move into the project directory (CRITICAL)
-cd ~/R/Projects/XeniumFCProject
+# Move into the project directory.
+cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 
 # The project .Rprofile activates renv. Run renv::restore() manually before
 # submission when the lockfile changes; never mutate the library inside a job.
+export RENV_CONFIG_SANDBOX_ENABLED=FALSE
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
 
 # Run the analysis using the existing project library
 Rscript --max-ppsize=500000 scripts/aldinger_03_subset_gene_panel.R

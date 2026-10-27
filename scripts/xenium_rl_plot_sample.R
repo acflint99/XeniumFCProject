@@ -88,7 +88,7 @@ generate_spatial_reports <- function(sample_id, input_rds_path, base_plot_dir) {
     c("RL SVZ", "Immature UBCs", "Mature UBCs"),
     c("Prolif GCPs", "Maturing GCPs", "Differentiating GCs", "Migrating GCs", "Mature GCs")
   )
-  other_rows <- list(c("BG", "BG Progenitors", "Maturing PCs", "eCN", "GABA Progenitors", "Microglia", "Endothelial"))
+  other_rows <- list(c("BG", "BG Progenitors", "Maturing PCs", "eCN", "GABA Progenitors", "Microglia", "Vascular"))
   p_facet <- build_faceted_spatial_rows(spatial_data, rl_palette, lineage_rows)
   p_other <- build_faceted_spatial_rows(spatial_data, rl_palette, other_rows)
 

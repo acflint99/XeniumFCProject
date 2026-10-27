@@ -100,7 +100,6 @@ regional_subsets:
     - "eCN"
   nonregional_broad_labels:
     - "Meninges"
-    - "Endothelial"
     - "Vascular"
     - "Immune"
   integration_dimensions_default: 30

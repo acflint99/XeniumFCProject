@@ -8,8 +8,10 @@ rm(list = ls())
 
 # Load only the path dependency before the path-only dry-run exits.
 suppressPackageStartupMessages(library(here))
+here::i_am("scripts/science_01_standardize_cell_types.R")
 
 source(here("scripts", "R", "config.R"))
+source(here("scripts", "R", "science_reviewed_mapping.R"))
 config <- load_pipeline_config()
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -86,11 +88,12 @@ if (length(excluded_labels)) Science <- subset(Science, idents = excluded_labels
 
 expected_labels <- c(
   "Purkinje", "GABA", "Granule", "RL", "UBC", "Glia",
-  "OPC", "Immune", "Vascular", "eCN", "Endothelial", "Meninges", "VZ"
+  "OPC", "Immune", "Vascular", "eCN", "Meninges", "VZ"
 )
 
+standardized_labels <- harmonize_vascular_reference_labels(Science$science_broad_label)
 unexpected_labels <- setdiff(
-  unique(as.character(Science$science_broad_label)),
+  unique(standardized_labels),
   expected_labels
 )
 
@@ -101,7 +104,7 @@ if (length(unexpected_labels) > 0) {
   )
 }
 
-Science$clusters_refined <- as.character(Science$science_broad_label)
+Science$clusters_refined <- standardized_labels
 
 if (anyNA(Science$clusters_refined) || any(!nzchar(as.character(Science$clusters_refined)))) {
   stop("Science standardized labels contain missing or blank values.")

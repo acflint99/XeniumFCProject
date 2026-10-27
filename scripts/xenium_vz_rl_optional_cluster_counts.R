@@ -39,7 +39,7 @@ cluster_sets <- list(
     "BG", "BG Progenitors", "Astrocytes/Ependyma", "Pre-OPCs", "OPCs"
   ),
   "Other_Lineage" = c(
-    "Cycling Cells", "Meninges", "Microglia", "Endothelial", "Immune"
+    "Cycling Cells", "Meninges", "Microglia", "Vascular", "Immune"
   )
 )
 

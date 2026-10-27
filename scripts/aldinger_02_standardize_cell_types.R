@@ -119,8 +119,8 @@ ggplot(df_clusters, aes(x = Cluster, y = Proportion)) +
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 
-# remove clusters----
-Aldinger_filtered <- subset(Aldinger, idents = c("19-Ast/Ependymal", "21-BS Choroid/Ependymal", "16-Pericytes", "17-Brainstem", "20-Choroid"), invert = TRUE)
+# remove clusters; retain pericytes for the harmonized Vascular identity----
+Aldinger_filtered <- subset(Aldinger, idents = c("19-Ast/Ependymal", "21-BS Choroid/Ependymal", "17-Brainstem", "20-Choroid"), invert = TRUE)
 
 # rename clusters with simple/harmonized names----
 Aldinger_filtered@meta.data$clusters_refined <- Aldinger_filtered@meta.data$figure_clusters
@@ -139,17 +139,28 @@ Aldinger_filtered@meta.data$clusters_refined <- dplyr::recode(
   "10-Glia" = "Glia",
   "11-OPC" = "OPC",
   "12-Committed OPC" = "OPC",
-  "13-Endothelial" = "Endothelial",
+  # Accept both the figure-cluster and already-shortened source spellings.
+  "13-Endothelial" = "Vascular",
+  "Endothelial" = "Vascular",
   "14-Microglia" = "Immune",
   "15-Meninges" = "Meninges",
+  "16-Pericytes" = "Vascular",
+  "Pericytes" = "Vascular",
   "18-MLI" = "GABA"
 )
+
+if (any(Aldinger_filtered@meta.data$clusters_refined %in% c("Endothelial", "Pericytes"))) {
+  stop("Legacy Aldinger vascular labels remain after refinement.")
+}
 
 # Apply celltype order from color_palette.R as factor levels
 Aldinger_filtered$clusters_refined <- factor(
   Aldinger_filtered$clusters_refined, 
   levels = intersect(celltype_order, unique(Aldinger_filtered$clusters_refined))
 )
+if (anyNA(Aldinger_filtered$clusters_refined)) {
+  stop("Aldinger factor ordering lost one or more refined labels.")
+}
 Idents(Aldinger_filtered) <- "clusters_refined"
 
 # plot UMAP again with new cluster labels and color_palette.R colors ----

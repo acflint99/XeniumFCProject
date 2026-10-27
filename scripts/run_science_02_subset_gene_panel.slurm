@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 #SBATCH --job-name=Science_R_job
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Science_R_job_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Science_R_job_%j.err
@@ -6,6 +8,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 #SBATCH --partition=express
+#SBATCH --constraint=intel
+#SBATCH --export=ALL
 
 # Load R module first
 module purge
@@ -17,6 +21,10 @@ cd /home/acflint/R/Projects/XeniumFCProject || exit 1
 
 # The project .Rprofile activates renv. Run renv::restore() manually before
 # submission when the lockfile changes; never mutate the library inside a job.
+export RENV_CONFIG_SANDBOX_ENABLED=FALSE
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
 
 # Inspect paths without loading either RDS before the protected rerun.
 Rscript --max-ppsize=500000 scripts/science_02_subset_gene_panel.R --dry-run || exit 2

@@ -19,10 +19,9 @@ cluster_colors <- c(
   Glia        = "#8A2BE2",  # electric violet; matches BG
   OPC         = "#FFD700",  # neon yellow
   Meninges    = "#9370DB",  # medium purple
-  Endothelial = "#FF1A1A",  # vivid red; retained unchanged
+  Vascular    = "#FF1A1A",  # harmonized vascular cells across references
   Immune      = "#E066FF",   # neon lavender
   eCN         = "#FF4500",  # approved new broad identity
-  Pericytes   = "#8B4513",  # approved new broad identity
   "Cycling Cells" = "#FFFF00",
   Unresolved  = "#707070",
   Unknown = "grey80"
@@ -116,7 +115,7 @@ resolve_sample_qualified_unknown_colors <- function(labels) {
 celltype_order <- c(
   "RL", "UBC", "Granule", "eCN",
   "VZ", "Purkinje", "GABA", "Glia", "OPC", "Meninges",
-  "Endothelial", "Pericytes", "Immune",
+  "Vascular", "Immune",
   "Cycling Cells", "Unresolved", "Unknown"
 )
 
@@ -160,10 +159,9 @@ markers <- list(
   "Glia" = c("SOX9", "TNC"),
   "OPC" = c("PDGFRA", "OLIG1"),
   "Meninges" = c("FOXC1", "SLC7A11"),
-  "Endothelial" = c("CLDN5", "PECAM1"),
+  "Vascular" = c("CLDN5", "PECAM1", "PDGFRB", "ABCC9", "KCNJ8"),
   "Immune" = c("P2RY12"),
   "eCN" = c("SLC17A6", "MEIS2", "NEUROD2"),
-  "Pericytes" = c("PDGFRB", "ABCC9", "KCNJ8"),
   "Cycling Cells" = c("TOP2A", "MKI67", "CENPF")
 )
 
@@ -217,7 +215,7 @@ vz_markers <- list(
   "Microglia" = c(
     "P2RY12", "AIF1", "TYROBP", "C1QB", "SLCO2B1", "OLFML3", "ITM2A"
   ),
-  "Endothelial contrast" = c("CLDN5", "PECAM1", "KDR", "EPAS1")
+  "Vascular contrast" = c("CLDN5", "PECAM1", "KDR", "EPAS1")
 )
 
 # 1. Define the subcluster order (shared across scripts)
@@ -374,7 +372,7 @@ rl_subcluster_order <- c(
   "Prolif GCPs", "Maturing GCPs",
   "Differentiating GCs", "Migrating GCs", "Mature GCs",
   "BG Progenitors", "Maturing PCs",
-  "eCN", "GABA Progenitors", "Microglia", "Endothelial"
+  "eCN", "GABA Progenitors", "Microglia", "Vascular"
 )
 
 rl_palette <- c(
@@ -401,7 +399,7 @@ rl_palette <- c(
   "GABA Progenitors" = "#00FFD5",
   "Immune" = "#E066FF",
   "Microglia" = "#E066FF", # Legacy stored-label alias
-  "Endothelial" = "#FF1A1A"
+  "Vascular" = "#FF1A1A"
 
 )
 rl_palette["NA"] <- alpha("gray20", 0.3)
@@ -436,7 +434,7 @@ rl_lineage_subclusters <- c(
   "Migrating GCs", "Mature GCs"
 )
 rl_other_subclusters <- c(
-  "BG Progenitors", "Maturing PCs", "eCN", "GABA Progenitors", "Microglia", "Endothelial"
+  "BG Progenitors", "Maturing PCs", "eCN", "GABA Progenitors", "Microglia", "Vascular"
 )
 
 rl_compact_lineage_markers <- list(
@@ -453,7 +451,7 @@ rl_other_markers <- list(
   "eCN" = c("SLC17A6", "MEIS2", "NTNG2"),
   "GABA Progenitors" = c("PAX2", "GAD1", "GAD2"),
   "Microglia" = c("P2RY12", "SLCO2B1", "OLFML3"),
-  "Endothelial" = c("CLDN5", "PECAM1", "KDR")
+  "Vascular" = c("CLDN5", "PECAM1", "KDR")
 )
 
 validate_compact_marker_panel(
@@ -513,6 +511,6 @@ master_subcluster_order <- c(
   "RL VZ", "RL SVZ", "Immature UBCs", "Mature UBCs", "eCN",
   "Prolif GCPs", "Maturing GCPs",
   "Differentiating GCs", "Migrating GCs", "Mature GCs",
-  "Cycling Cells", "Pericytes", "Meninges", "Microglia", "Endothelial",
+  "Cycling Cells", "Pericytes", "Meninges", "Microglia", "Vascular",
   "Immune", "Unresolved", "Unknown"
 )

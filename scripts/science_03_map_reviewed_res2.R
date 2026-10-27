@@ -61,7 +61,7 @@ if ("science_broad_label" %in% names(metadata)) {
 pbmc$science_broad_label <- factor(cell_mapping$broad_label, levels = label_order)
 Idents(pbmc) <- "science_broad_label"
 label_colors <- cluster_colors
-label_colors["Vascular"] <- cluster_colors[["Endothelial"]]
+label_colors["Vascular"] <- cluster_colors[["Vascular"]]
 label_colors[c("Brainstem", "RBC", "Other")] <- c("#A6761D", "#B2182B", "grey70")
 source_coordinates <- Embeddings(pbmc, "umap")
 if (any(!is.finite(source_coordinates)) || !identical(rownames(source_coordinates), colnames(pbmc))) stop("Invalid source UMAP coordinates.")

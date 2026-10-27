@@ -31,7 +31,7 @@ rl_focused_review_markers <- list(
   "OPC / ependymal" = c(
     "OLIG1", "OLIG2", "PDGFRA", "SOX10", "FOXJ1", "PIFO", "TTR"
   ),
-  "Immune / endothelial" = c(
+  "Immune / vascular" = c(
     "P2RY12", "AIF1", "TYROBP", "C1QB", "CLDN5", "PECAM1", "KDR", "EPAS1"
   )
 )
@@ -93,7 +93,7 @@ vz_focused_review_markers <- list(
   "Microglia" = c(
     "P2RY12", "AIF1", "TYROBP", "C1QB", "SLCO2B1", "OLFML3", "ITM2A"
   ),
-  "Endothelial contrast" = c(
+  "Vascular contrast" = c(
     "CLDN5", "PECAM1", "KDR", "EPAS1"
   ),
   "Granule contrast" = c("ATOH1", "SFRP1", "CXCR4", "MYCN", "NHLH1", "SLC17A7")

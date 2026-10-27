@@ -287,13 +287,19 @@ SeuratObj_FC_filtered$clusters_refined <- dplyr::recode(
   "immune" = "Immune",
   "interneuron" = "GABA",
   "meningeal" = "Meninges",
-  "mural/endoth" = "Endothelial",
+  "mural/endoth" = "Vascular",
+  "Endothelial" = "Vascular",
+  "Pericytes" = "Vascular",
   "oligo" = "OPC",
   "Purkinje" = "Purkinje",
   "UBC" = "UBC",
   "VZ_neuroblast" = "VZ",
   "GC/UBC" = "RL"
 )
+
+if (any(SeuratObj_FC_filtered$clusters_refined %in% c("Endothelial", "Pericytes"))) {
+  stop("Legacy Sepp vascular labels remain after refinement.")
+}
 
 # remove cells in "NA" cluster
 SeuratObj_FC_filtered_noNA <- subset(SeuratObj_FC_filtered, subset = !is.na(clusters_refined))
@@ -303,6 +309,9 @@ SeuratObj_FC_filtered_noNA$clusters_refined <- factor(
   SeuratObj_FC_filtered_noNA$clusters_refined, 
   levels = intersect(celltype_order, unique(SeuratObj_FC_filtered_noNA$clusters_refined))
 )
+if (anyNA(SeuratObj_FC_filtered_noNA$clusters_refined)) {
+  stop("Sepp factor ordering lost one or more refined labels.")
+}
 
 # plot UMAP again with new cluster labels and color_palette.R colors ----
 p4 <- DimPlot(SeuratObj_FC_filtered_noNA, reduction = "umap2d", group.by = "clusters_refined") +

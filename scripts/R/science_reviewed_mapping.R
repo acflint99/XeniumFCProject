@@ -56,3 +56,13 @@ check_science_reviewed_markers <- function(markers, review) {
   }
   invisible(TRUE)
 }
+
+
+# Harmonize labels when ingesting an older published/reviewed source. Preserve
+# original metadata separately; only the standardized reference identity changes.
+harmonize_vascular_reference_labels <- function(labels) {
+  labels <- as.character(labels)
+  if (anyNA(labels) || any(!nzchar(trimws(labels)))) stop("Reference labels contain missing/blank values.")
+  labels[labels %in% c("Endothelial", "Pericytes")] <- "Vascular"
+  labels
+}

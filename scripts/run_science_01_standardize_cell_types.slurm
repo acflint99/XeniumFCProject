@@ -1,10 +1,13 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 #SBATCH --job-name=Science_standardize
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Science_standardize_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Science_standardize_%j.err
 #SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=64G
+# 128G is required through scaling for the current reviewed Science reference.
+#SBATCH --mem=128G
 #SBATCH --partition=express
 #SBATCH --constraint=intel
 #SBATCH --export=ALL
