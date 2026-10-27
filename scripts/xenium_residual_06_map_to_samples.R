@@ -33,7 +33,7 @@ if (any(!args %in% valid_options)) {
 dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
-qc_state <- load_residual_qc_state(config)
+qc_state <- load_residual_analysis_state(config)
 
 output_root <- here(config$project$outputs_dir)
 residual_root <- file.path(output_root, "xenium", "residual")
@@ -321,6 +321,7 @@ mapping_rows <- future_lapply(seq_along(sample_ids), function(i) {
   object <- AddMetaData(object, metadata = mapped_metadata)
   object$residual_qc_status <- ifelse(qc_removed, "removed", ifelse(mapped, "retained", "not_residual"))
   object@misc$residual_qc_decision_md5 <- qc_state$decision_md5
+  object@misc$residual_post_qc_manifest_md5 <- unname(tools::md5sum(qc_state$post_qc_paths$provenance))
   if (sum(!is.na(object$residual_subcluster)) != expected_cells_by_sample[[i]]) {
     stop(sample_id, ": residual metadata failed post-injection validation.")
   }

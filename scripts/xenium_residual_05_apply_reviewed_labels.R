@@ -15,7 +15,7 @@ if (any(!args %in% valid)) stop("Usage: Rscript scripts/xenium_residual_05_apply
 dry_run <- "--dry-run" %in% args; overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 root <- here(config$project$outputs_dir, "xenium", "residual")
-qc_state <- load_residual_qc_state(config)
+qc_state <- load_residual_analysis_state(config)
 input <- qc_state$input
 evidence <- file.path(qc_state$markers, "Xenium_Residual_ReplicateAware_Marker_Evidence.csv")
 positive <- file.path(qc_state$markers, "Xenium_Residual_Positive_Marker_Candidates.csv")
@@ -40,12 +40,18 @@ if (nrow(marker_source) != 1L ||
     !residual_qc_file_matches(input, marker_source$input_size, marker_source$input_mtime)) {
   stop("Residual marker evidence does not match the current analysis input.")
 }
-cluster_column <- "Xenium_snn_res.0.8"
+cluster_column <- "residual_postQC_Xenium_snn_res.0.8"
 if (!cluster_column %in% names(object[[]])) stop("Residual object lacks ", cluster_column, ".")
 clusters <- unique(trimws(as.character(object[[cluster_column, drop=TRUE]])))
 review <- load_reviewed_residual_subcluster_labels(config)
 required <- c("cluster", "final_label", "annotation_confidence", "positive_marker_support", "anti_marker_support", "cross_sample_support", "review_notes", "approved")
 if (!all(required %in% names(review))) stop("Reviewed residual-label manifest is incomplete.")
+if (!nrow(review) || !all(c("source_input_md5", "source_cluster_column") %in% names(review)) ||
+    anyNA(review$source_input_md5) || anyNA(review$source_cluster_column) ||
+    any(review$source_input_md5 != unname(tools::md5sum(input))) ||
+    any(review$source_cluster_column != cluster_column)) {
+  stop("Generate and approve a fresh residual label template bound to the current post-QC input; old cluster IDs cannot be reused.")
+}
 review$cluster <- trimws(as.character(review$cluster)); review$final_label <- trimws(as.character(review$final_label))
 review$approved <- suppressWarnings(as.logical(review$approved))
 if (!nrow(review) || anyNA(review$approved) || any(!review$approved)) stop("Every residual cluster requires an explicitly approved review row.")

@@ -16,10 +16,10 @@ if (any(!args %in% valid)) stop("Usage: Rscript scripts/xenium_residual_04_revie
 dry_run <- "--dry-run" %in% args; overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
 root <- here(config$project$outputs_dir, "xenium", "residual")
-qc_state <- load_residual_qc_state(config)
+qc_state <- load_residual_analysis_state(config)
 input <- qc_state$input
 out <- qc_state$markers
-cluster_column <- "Xenium_snn_res.0.8"
+cluster_column <- "residual_postQC_Xenium_snn_res.0.8"
 outputs <- c(
   file.path(out, "Xenium_Residual_ReplicateAware_Marker_Evidence.csv"),
   file.path(out, "Xenium_Residual_Positive_Marker_Candidates.csv"),
@@ -40,7 +40,8 @@ clusters <- unique(trimws(as.character(object[[cluster_column, drop=TRUE]])))
 numeric_clusters <- suppressWarnings(as.numeric(clusters))
 clusters <- clusters[order(is.na(numeric_clusters), numeric_clusters, clusters)]
 template <- data.frame(
-  cluster=clusters, final_label="", annotation_confidence="",
+  cluster=clusters, source_input_md5=unname(tools::md5sum(input)),
+  source_cluster_column=cluster_column, final_label="", annotation_confidence="",
   positive_marker_support="", anti_marker_support="",
   cross_sample_support="", review_notes="", approved=FALSE,
   stringsAsFactors=FALSE

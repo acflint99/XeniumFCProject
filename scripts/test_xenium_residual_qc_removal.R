@@ -6,6 +6,7 @@ original <- here("scripts")
 source(file.path(original, "R", "config.R"))
 source(file.path(original, "R", "consensus_labels.R"))
 source(file.path(original, "R", "xenium_residual_qc_removal.R"))
+source(file.path(original, "R", "regional_resolution_inputs.R"))
 expect_error <- function(expression) {
   if (!inherits(tryCatch(force(expression), error = identity), "error")) stop("Expected error.")
 }
@@ -51,6 +52,33 @@ write.csv(data.frame(input_path = normalizePath(p$source), input_size = info$siz
                      input_mtime = as.numeric(info$mtime), cluster_column = "Xenium_snn_res.0.8"),
            p$qc_provenance, row.names = FALSE)
 stopifnot(!load_residual_qc_state(config)$active)
+# Stage-5 provenance must exist and match the exact QC source, even when
+# no removals were reviewed. Empty samples stay explicit in coverage.
+post <- residual_post_qc_paths(config)
+write_stage5_fixture <- function(object, input, state) {
+  for (path in unlist(post[c("input", "provenance", "coverage")])) dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  object$residual_postQC_Xenium_snn_res.0.8 <- object$Xenium_snn_res.0.8
+  saveRDS(object, post$input)
+  counts <- as.integer(table(factor(object$orig.ident, levels = c("S1", "S2", "EMPTY"))))
+  write.csv(data.frame(sample_id = c("S1", "S2", "EMPTY"), remaining_cells = counts), post$coverage, row.names = FALSE)
+  before <- file.info(input); after <- file.info(post$input)
+  write.csv(data.frame(input_rds = normalizePath(input), input_size = before$size, input_mtime = as.numeric(before$mtime),
+    output_rds = normalizePath(post$input), output_size = after$size, output_mtime = as.numeric(after$mtime),
+    decision_md5 = state$decision_md5, cells_after_qc = ncol(object), resolutions = "0.5|0.8|1",
+    random_seed = config$runtime$random_seed,
+    sample_manifest_md5 = unname(tools::md5sum(resolve_config_path(config$manifests$samples, config))),
+    coverage_md5 = unname(tools::md5sum(post$coverage))), post$provenance, row.names = FALSE)
+}
+expect_error(load_residual_analysis_state(config))
+write_stage5_fixture(object, p$source, load_residual_qc_state(config))
+rpaths <- regional_resolution_paths(config, "Residual")
+rstate <- regional_resolution_manifest(rpaths, config, "Residual")
+stopifnot(!rstate$state$active, rstate$manifest$cells_after_qc == 60L)
+regional_resolution_check_coverage(as.character(object$orig.ident), c("S1", "S2", "EMPTY"), rstate$expected_counts)
+expect_error(regional_resolution_check_coverage(rep("S1", 60), c("S1", "S2", "EMPTY"), rstate$expected_counts))
+expect_error(regional_resolution_check_coverage(c(rep("S1", 30), rep("UNEXPECTED", 30)),
+  c("S1", "S2", "EMPTY"), rstate$expected_counts))
+
 d <- data.frame(cluster = "5", cluster_column = "Xenium_snn_res.0.8", expected_input_cells = 60,
                  expected_removed_cells = 20, source_size = info$size, source_mtime = as.numeric(info$mtime),
                  review_notes = "Synthetic approved test only", approved = TRUE)
@@ -75,6 +103,15 @@ stopifnot(identical(unname(tools::md5sum(p$source)), hash),
           identical(as.character(filtered$Xenium_snn_res.0.8), cluster[keep]),
           identical(as.integer(state$manifest$removed_cells), c(10L, 10L, 0L)))
 validate_residual_qc_object(filtered, state)
+expect_error(load_residual_analysis_state(config)) # Pre-removal Stage 5 is stale.
+write_stage5_fixture(filtered, p$filtered, state)
+a <- load_residual_analysis_state(config)
+rpaths <- regional_resolution_paths(config, "Residual")
+rstate <- regional_resolution_manifest(rpaths, config, "Residual")
+stopifnot(rstate$state$active, rstate$manifest$cells_after_qc == 40L,
+          identical(rpaths$input, post$input))
+regional_resolution_check_coverage(as.character(filtered$orig.ident), c("S1", "S2", "EMPTY"), rstate$expected_counts)
+
 expect_error(validate_residual_qc_object(object, state)) # Cannot reintroduce removed cells.
 exclusions <- residual_qc_exclusions_for_sample(raw, rep("Unknown-01", 30), "S1", state)
 stopifnot(identical(exclusions, cluster[1:30] == "5"),
@@ -85,7 +122,7 @@ run(drivers[[1]], success = FALSE) # Protected outputs.
 run(drivers[[2]], "--dry-run")
 run(drivers[[2]])
 review_path <- resolve_config_path(config$manifests$reviewed_residual_subcluster_labels, config)
-review <- read.csv(file.path(p$markers, "Xenium_Residual_Subcluster_Label_Review_Template.csv"),
+review <- read.csv(file.path(a$markers, "Xenium_Residual_Subcluster_Label_Review_Template.csv"),
                     stringsAsFactors = FALSE)
 stopifnot(setequal(review$cluster, c("0", "9")))
 review$final_label <- paste0("synthetic_", review$cluster)
@@ -94,6 +131,12 @@ for (name in c("annotation_confidence", "positive_marker_support", "anti_marker_
 review$approved <- TRUE
 write.csv(review, review_path, row.names = FALSE)
 run(drivers[[3]], "--dry-run")
+# Reject an old review even when integer cluster IDs happen to match.
+review$source_input_md5 <- "old_input"
+write.csv(review, review_path, row.names = FALSE)
+run(drivers[[3]], success = FALSE)
+review$source_input_md5 <- unname(tools::md5sum(post$input))
+write.csv(review, review_path, row.names = FALSE)
 run(drivers[[3]])
 master <- readRDS(file.path(here(config$project$outputs_dir), "xenium", "residual", "05_subclusters", "rds", "Xenium_Residual_Subclusters.rds"))
 validate_residual_qc_object(master, state)
@@ -137,7 +180,8 @@ for (id in c("S1", "S2", "EMPTY")) {
   excluded <- residual_qc_exclusions_for_sample(colnames(mapped), mapped$consensus_label, id, state)
   stopifnot(identical(unname(mapped$residual_qc_status == "removed"), excluded),
             all(is.na(mapped$residual_subcluster[excluded])),
-            identical(mapped@misc$residual_qc_decision_md5, state$decision_md5))
+            identical(mapped@misc$residual_qc_decision_md5, state$decision_md5),
+            identical(mapped@misc$residual_post_qc_manifest_md5, unname(tools::md5sum(post$provenance))))
 }
 d$expected_removed_cells <- 19; write.csv(d, p$decision, row.names = FALSE)
 expect_error(load_residual_qc_state(config)) # Changed decision cannot silently reuse outputs.

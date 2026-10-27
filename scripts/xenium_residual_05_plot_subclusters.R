@@ -34,10 +34,10 @@ if (!file.exists(input)) stop("Missing labeled residual object: ", input)
 if (any(file.exists(paths)) && !"--overwrite" %in% args) stop("DotPlot outputs exist; review before using --overwrite.")
 object <- readRDS(input)
 metadata <- object[[]]
-required <- c("residual_subcluster", "Xenium_snn_res.0.8")
+required <- c("residual_subcluster", "residual_postQC_Xenium_snn_res.0.8")
 if (!nrow(metadata) || anyDuplicated(rownames(metadata)) || !all(required %in% names(metadata))) stop("Invalid labeled residual metadata.")
-index <- match(as.character(metadata$Xenium_snn_res.0.8), as.character(review$cluster))
-if (anyNA(index) || !setequal(as.character(metadata$Xenium_snn_res.0.8), as.character(review$cluster)) ||
+index <- match(as.character(metadata$residual_postQC_Xenium_snn_res.0.8), as.character(review$cluster))
+if (anyNA(index) || !setequal(as.character(metadata$residual_postQC_Xenium_snn_res.0.8), as.character(review$cluster)) ||
     !identical(as.character(metadata$residual_subcluster), as.character(review$final_label[index]))) stop("Residual labels do not match the current approved review.")
 if (!"Xenium" %in% names(object@assays)) stop("Labeled residual object lacks Xenium assay.")
 Seurat::DefaultAssay(object) <- "Xenium"

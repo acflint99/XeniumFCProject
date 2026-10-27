@@ -135,41 +135,52 @@ residual_qc_exclusions_for_sample <- function(cell_ids, consensus, sample_id, st
   qualified %in% rows$cell_id
 }
 
-# Stage 5 is a distinct analysis source. Never silently fall back to pre-QC
-# partitions once downstream label review/mapping requests post-QC analysis.
+# A separate Stage-5 source prevents old filtered partitions from being reused
+# as though they had been refitted after exclusions.
 residual_post_qc_paths <- function(config) {
   root <- here::here(config$project$outputs_dir, "xenium", "residual", "05_post_qc")
   list(input = file.path(root, "rds", "Xenium_Residual_postQC.rds"),
        provenance = file.path(root, "tables", "Xenium_Residual_postQC_manifest.csv"),
+       coverage = file.path(root, "tables", "Xenium_Residual_postQC_sample_counts.csv"),
        markers = file.path(root, "marker_review", "tables"))
 }
 
 load_residual_analysis_state <- function(config) {
   state <- load_residual_qc_state(config)
   p <- residual_post_qc_paths(config)
-  required <- c(p$input, p$provenance)
-  if (any(!file.exists(required))) {
-    stop("Residual post-QC processing is required before marker review/labels/mapping. Missing: ",
-         paste(required[!file.exists(required)], collapse = ", "))
-  }
-  m <- read.csv(p$provenance, stringsAsFactors = FALSE, na.strings = character())
-  fields <- c("input_rds", "input_size", "input_mtime", "output_rds", "output_size",
-              "output_mtime", "decision_md5", "cells_after_qc", "resolutions", "random_seed")
+  required <- unlist(p[c("input", "provenance", "coverage")])
+  if (any(!file.exists(required))) stop("Run residual post-QC processing before review/labels/mapping. Missing: ",
+                                        paste(required[!file.exists(required)], collapse = ", "))
+  m <- read.csv(p$provenance, stringsAsFactors = FALSE, na.strings = character(),
+                colClasses = c(decision_md5 = "character", sample_manifest_md5 = "character", coverage_md5 = "character"))
+  fields <- c("input_rds", "input_size", "input_mtime", "output_rds", "output_size", "output_mtime",
+              "decision_md5", "cells_after_qc", "resolutions", "random_seed", "sample_manifest_md5", "coverage_md5")
   if (nrow(m) != 1L || !all(fields %in% names(m)) ||
       !identical(as.character(m$decision_md5), state$decision_md5) ||
       !identical(normalizePath(m$input_rds, mustWork = TRUE), normalizePath(state$input, mustWork = TRUE)) ||
       !identical(normalizePath(m$output_rds, mustWork = TRUE), normalizePath(p$input, mustWork = TRUE)) ||
       !residual_qc_file_matches(state$input, m$input_size, m$input_mtime) ||
       !residual_qc_file_matches(p$input, m$output_size, m$output_mtime) ||
-      !identical(as.integer(m$random_seed), as.integer(config$runtime$random_seed))) {
-    stop("Residual post-QC input/provenance is stale; regenerate Stage 5 before review.")
+      !identical(as.integer(m$random_seed), as.integer(config$runtime$random_seed)) ||
+      !identical(as.character(m$sample_manifest_md5), unname(tools::md5sum(resolve_config_path(config$manifests$samples, config)))) ||
+      !identical(as.character(m$coverage_md5), unname(tools::md5sum(p$coverage)))) {
+    stop("Residual post-QC provenance is stale; regenerate Stage 5 before review.")
   }
-  if (state$active && m$cells_after_qc != sum(state$manifest$remaining_cells)) {
-    stop("Residual post-QC counts differ from the approved QC manifest.")
+  ids <- as.character(load_sample_manifest(config)$sample_id)
+  coverage <- read.csv(p$coverage, stringsAsFactors = FALSE)
+  if (!all(c("sample_id", "remaining_cells") %in% names(coverage)) ||
+      !identical(as.character(coverage$sample_id), ids) || anyDuplicated(coverage$sample_id)) stop("Invalid post-QC sample map.")
+  counts <- suppressWarnings(as.numeric(coverage$remaining_cells))
+  if (any(!is.finite(counts)) || any(counts < 0 | counts != floor(counts)) ||
+      !isTRUE(sum(counts) == as.numeric(m$cells_after_qc)) ||
+      (state$active && !identical(as.integer(counts), as.integer(state$manifest$remaining_cells)))) {
+    stop("Post-QC counts differ from the reviewed manifest.")
   }
   state$qc_input <- state$input
   state$input <- p$input
   state$markers <- p$markers
-  state$post_qc_manifest <- p$provenance
+  state$post_qc_paths <- p
+  state$post_qc_manifest <- m
+  state$expected_counts <- setNames(as.integer(counts), ids)
   state
 }

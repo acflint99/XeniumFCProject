@@ -36,7 +36,7 @@ if (any(!args %in% valid_options)) {
 dry_run <- "--dry-run" %in% args
 overwrite <- "--overwrite" %in% args
 if (dry_run && overwrite) stop("--dry-run and --overwrite cannot be combined.")
-residual_qc_state <- load_residual_qc_state(config)
+residual_qc_state <- load_residual_analysis_state(config)
 
 output_root <- here(config$project$outputs_dir)
 vz_input_dir <- file.path(output_root, "xenium", "vz", "07_mapped", "rds")
@@ -247,6 +247,10 @@ for (i in seq_along(sample_ids)) {
   base_cells <- colnames(base_obj)
   removed_residual <- residual_qc_exclusions_for_sample(
     base_cells, base_obj$consensus_label, sample_id, residual_qc_state)
+  if (!identical(residual_obj@misc$residual_post_qc_manifest_md5,
+                 unname(tools::md5sum(residual_qc_state$post_qc_paths$provenance)))) {
+    stop(sample_id, ": residual mapping predates current post-QC processing; regenerate labels/mapping.")
+  }
   if (residual_qc_state$active && (
       !"residual_qc_status" %in% names(residual_obj[[]]) ||
       !identical(residual_obj@misc$residual_qc_decision_md5, residual_qc_state$decision_md5) ||
