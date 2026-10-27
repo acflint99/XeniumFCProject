@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 #SBATCH --job-name=Aldinger_standardize
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Aldinger_standardize_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Aldinger_standardize_%j.err

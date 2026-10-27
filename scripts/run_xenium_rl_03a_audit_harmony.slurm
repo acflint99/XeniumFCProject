@@ -20,6 +20,8 @@ export RENV_CONFIG_SANDBOX_ENABLED=FALSE
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
+# Keep the script argument in the array: Bash 4.3 and earlier treat an empty
+# array expansion as unset under `set -u`, even after array initialization.
 driver_options=(scripts/xenium_rl_03a_audit_harmony.R)
 if [[ "${RL_HARMONY_AUDIT_OVERWRITE:-false}" == "true" ]]; then driver_options+=(--overwrite); fi
 Rscript --max-ppsize=500000 scripts/xenium_rl_03a_audit_harmony.R --dry-run || exit 2

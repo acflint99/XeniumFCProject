@@ -15,8 +15,7 @@
 #SBATCH --constraint=intel
 #SBATCH --export=ALL
 #SBATCH --mail-user=acflint@uab.edu
-#SBATCH --mail-type=FAIL
-
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
 module purge
 module load rc-base
 module load GCC/13.2.0

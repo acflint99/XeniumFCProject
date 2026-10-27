@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Resource/array overrides are supplied by submit_xenium_original_plots.sh.
 #SBATCH --job-name=Xen_OriginalPlots
 #SBATCH --array=1-41%3

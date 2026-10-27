@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Build weighted 2-of-3 consensus tables for only the comma-separated
 # resolution-5 production samples in SELECTED_SAMPLE_IDS.
 

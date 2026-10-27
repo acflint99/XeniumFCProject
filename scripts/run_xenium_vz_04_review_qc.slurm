@@ -28,17 +28,27 @@ case "${VZ_QC_MODE:-review}" in
   review)
     driver_options+=(--qc-only)
     ;;
-  apply)
+  apply|crosswalk)
     if [[ -z "${VZ_QC_REMOVE_CLUSTERS:-}" ]]; then
       echo "VZ_QC_REMOVE_CLUSTERS must explicitly name the newly reviewed clusters or 'none' (current reviewed decision: 23,24,25,27,28)." >&2
       exit 2
     fi
+    if [[ "${VZ_QC_MODE}" == "crosswalk" ]]; then
+      driver_options+=(--crosswalk-only)
+      if [[ -z "${VZ_QC_ADDITIONAL_POSTQC_CLUSTERS:-}" ]]; then
+        echo "Crosswalk mode requires VZ_QC_ADDITIONAL_POSTQC_CLUSTERS." >&2
+        exit 2
+      fi
+    fi
     remove_clusters="${VZ_QC_REMOVE_CLUSTERS}"
     echo "Applying reviewed VZ QC decision: remove cluster(s) ${remove_clusters}."
     driver_options+=("--remove-clusters=${remove_clusters}")
+    if [[ -n "${VZ_QC_ADDITIONAL_POSTQC_CLUSTERS:-}" ]]; then
+      driver_options+=("--additional-postqc-clusters=${VZ_QC_ADDITIONAL_POSTQC_CLUSTERS}")
+    fi
     ;;
   *)
-    echo "VZ_QC_MODE must be 'review' or 'apply'." >&2
+    echo "VZ_QC_MODE must be 'review', 'apply', or 'crosswalk'." >&2
     exit 2
     ;;
 esac

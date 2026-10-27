@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Apply the weighted-reference, 2-of-3 consensus method to the three
 # resolution-4.0 pilot samples. Existing legacy consensus outputs are untouched.
 

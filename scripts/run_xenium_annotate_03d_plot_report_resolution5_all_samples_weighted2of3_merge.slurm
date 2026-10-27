@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Merge both manifest-ordered resolution-5 weighted 2-of-3 report variants.
 
 #SBATCH --job-name=Xen_res5_w2of3_merge

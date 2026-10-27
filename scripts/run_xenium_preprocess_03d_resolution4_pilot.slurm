@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Resolution-4.0 whole-tissue pilot for the same three manifest samples.
 # Reclusters the saved resolution-1.5 SNN graph and writes only beneath
 # outputs/xenium/preprocess/03d_resolution4_pilot/.

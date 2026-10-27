@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Resolution-5 full-reference label transfer for all manifest samples. The
 # weighted reference vote abstains unless score >= 0.4 and top-two margin >=
 # 0.05. Submit once for each REFERENCE: Aldinger, Sepp, and Science.

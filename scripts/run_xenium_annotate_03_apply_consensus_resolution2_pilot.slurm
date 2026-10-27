@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 #SBATCH --job-name=Xen_res2_consensus
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_res2_consensus_%A_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_res2_consensus_%A_%a.err

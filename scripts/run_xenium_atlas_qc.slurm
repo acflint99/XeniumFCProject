@@ -6,7 +6,7 @@
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_atlas_qc_%A_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_atlas_qc_%A_%a.err
 #SBATCH --mail-user=acflint@uab.edu
-#SBATCH --mail-type=FAIL
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
 #SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=64G

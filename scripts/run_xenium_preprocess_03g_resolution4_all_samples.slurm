@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Resolution-4 whole-tissue clustering for every sample in the configured manifest.
 # Reuses the saved resolution-1.5 SNN graph and writes only beneath
 # outputs/xenium/preprocess/03g_resolution4_all_samples/.

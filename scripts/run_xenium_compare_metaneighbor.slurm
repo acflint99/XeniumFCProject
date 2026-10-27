@@ -2,7 +2,7 @@
 #SBATCH --job-name=Xen_MetaNeighbor
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_MetaNeighbor_%A_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/Xen_MetaNeighbor_%A_%a.err
-#SBATCH --array=1-3%1
+#SBATCH --array=1-3%2
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=256G
@@ -11,14 +11,16 @@
 #SBATCH --mail-user=acflint@uab.edu
 #SBATCH --mail-type=END,FAIL,INVALID_DEPEND
 
-# Expected 0.5-4 h/task, 1.5-12 h for all three at concurrency 1; low confidence.
+# Expected 4-12 h/task, roughly 8-24 h for all three at concurrency 2; low confidence.
 # Queue wait excluded. Requested limit is 12 h PER TASK, not expected runtime.
 # No prior MetaNeighbor sacct evidence. Original merged read/aggregation reached
 # ~35.3 GiB in partial reference-similarity job 41010260; nearby VZ work reached
 # 152.09 GiB (history job 40966278). Dense rank allocations add substantial memory.
 # Keep a provisional 256-GiB first-run envelope and measure with time/sacct.
 # CPU short partition limit verified at https://docs.rc.uab.edu/cheaha/hardware/
-# on 2026-10-22. Fixed array maps references, never samples; driver validates
+# on 2026-10-26. Two simultaneous 256-GiB tasks remain within the documented
+# per-person short-partition 3072-GiB memory limit; scheduling still depends on
+# node availability and fair share. Fixed array maps references, never samples; driver validates
 # the complete query sample set against the active authoritative manifest.
 set -eo pipefail
 module purge
@@ -36,7 +38,13 @@ case "${SLURM_ARRAY_TASK_ID:?Submit this launcher as its configured array}" in
 esac
 out_root="${METANEIGHBOR_OUT:-outputs/xenium/metaneighbor_original}"
 panel="${REFERENCE_PANEL_JSON:-data/FCXeniumProject/FB124_X_G/gene_panel.json}"
-options=("--reference=${reference}" "--out=${out_root}" "--panel-json=${panel}")
+science_block_rows="${METANEIGHBOR_SCIENCE_BLOCK_ROWS:-512}"
+options=("--reference=${reference}" "--out=${out_root}" "--panel-json=${panel}" "--science-block-rows=${science_block_rows}")
+case "${METANEIGHBOR_LEGACY_QUERY_LABELS:-}" in
+  "") ;;
+  1|true|TRUE) options+=("--legacy-query-labels") ;;
+  *) echo "METANEIGHBOR_LEGACY_QUERY_LABELS must be empty, 1, true, or TRUE." >&2; exit 2 ;;
+esac
 echo "MetaNeighborUS: job=${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}; reference=${reference}; start=$(date -Is)"
 Rscript --max-ppsize=500000 scripts/xenium_compare_metaneighbor.R --list
 Rscript --max-ppsize=500000 scripts/xenium_compare_metaneighbor.R "${options[@]}" --dry-run

@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Combine the 18 completed k.anchor sensitivity cluster-score tables.
 
 #SBATCH --job-name=Xen_res5_kanchor_combine

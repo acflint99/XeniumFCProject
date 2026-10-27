@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Defaults match the existing pooled VZ/RL plotting resource envelope.
 # submit_refresh_current_plots.sh sets group-specific array/resource overrides.
 #SBATCH --job-name=Xen_PaletteRefresh

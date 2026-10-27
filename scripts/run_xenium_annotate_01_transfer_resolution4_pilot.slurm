@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Label-transfer pilot for the three resolution-4.0 whole-tissue samples.
 # Submit once for each REFERENCE: Aldinger, Sepp, and Science.
 

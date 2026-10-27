@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Compare weighted-2-of-3 consensus labels across completed resolution-3,
 # resolution-4, and resolution-5 pilot objects for the three manifest samples.
 # This audit does not modify any Seurat object.

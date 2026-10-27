@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Production resolution-5 whole-tissue clustering for every manifest sample.
 
 #SBATCH --job-name=Xen_res5_all

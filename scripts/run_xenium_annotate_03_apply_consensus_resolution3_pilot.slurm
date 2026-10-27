@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Apply resolution-3.0 consensus labels to the three pilot samples.
 
 #SBATCH --job-name=Xen_res3_consensus

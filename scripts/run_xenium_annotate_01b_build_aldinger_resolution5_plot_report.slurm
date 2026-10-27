@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Assemble the existing Aldinger resolution-5 label-transfer TIFFs into one
 # manifest-defined PDF without recomputing the label-transfer analysis.
 

@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Label transfer for all resolution-4 all-sample objects. Submit once for each
 # REFERENCE: Aldinger, Sepp, and Science.
 
@@ -6,7 +8,7 @@
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/%x_%A_%a.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/%x_%A_%a.err
 #SBATCH --array=1-34%3
-#SBATCH --time=04:00:00
+#SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=64G
 #SBATCH --partition=short

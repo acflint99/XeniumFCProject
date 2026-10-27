@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Apply weighted 2-of-3 consensus labels and generate final plots for all
 # resolution-5 samples.
 

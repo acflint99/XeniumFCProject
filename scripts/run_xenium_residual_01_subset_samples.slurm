@@ -11,7 +11,7 @@
 #SBATCH --qos=normal
 #SBATCH --constraint=intel
 #SBATCH --mail-user=acflint@uab.edu
-#SBATCH --mail-type=FAIL
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
 module purge
 module load rc-base
 module load R/4.4.1-foss-2023b

@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Build 34 weighted 2-of-3 consensus tables after all resolution-5 transfers.
 
 #SBATCH --job-name=Xen_res5_build_w2of3

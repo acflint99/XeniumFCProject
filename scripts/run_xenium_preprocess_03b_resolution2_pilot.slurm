@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Resolution-2.0 whole-tissue pilot: FB328_1_X_G, GZFB_9_X_G_2, and
 # GZFB_22_X_G_4 (PCW12, PCW11, and PCW19, respectively).
 # Each task reclusters an existing resolution-1.5 SNN graph and writes only to

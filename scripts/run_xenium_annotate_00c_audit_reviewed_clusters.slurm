@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Audit five user-reviewed resolution-5 clusters across the three existing
 # reference-specific transfer objects. No RDS or label is modified.
 

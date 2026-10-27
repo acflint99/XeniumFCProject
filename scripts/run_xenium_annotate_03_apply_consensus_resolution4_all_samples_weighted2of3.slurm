@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Apply weighted-reference 2-of-3 consensus labels to all 34 resolution-4
 # all-sample objects and generate standardized DotPlots and spatial plots.
 

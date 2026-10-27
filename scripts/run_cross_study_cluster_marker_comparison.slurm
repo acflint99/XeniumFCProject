@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 #SBATCH --job-name=MarkerComp_R_job
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/MarkerComp_R_job_%j.out
 #SBATCH --error=/home/acflint/R/Projects/XeniumFCProject/logs/MarkerComp_R_job_%j.err

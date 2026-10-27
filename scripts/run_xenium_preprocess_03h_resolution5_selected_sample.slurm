@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Resolution-5 reclustering for one manifest-validated selected sample.
 
 #SBATCH --job-name=Xen_res5_selected

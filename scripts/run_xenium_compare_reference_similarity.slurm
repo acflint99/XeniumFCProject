@@ -29,7 +29,13 @@ export OPENBLAS_NUM_THREADS=1
 
 # Optional environment overrides select inputs/output paths, never overwrite.
 panel_json="${REFERENCE_PANEL_JSON:-data/FCXeniumProject/FB124_X_G/gene_panel.json}"
-driver_options=(--references=aldinger,sepp,science --bootstrap=100 "--panel-json=${panel_json}")
+science_block_rows="${REFERENCE_SIMILARITY_SCIENCE_BLOCK_ROWS:-512}"
+driver_options=(--references=aldinger,sepp,science --bootstrap=100 "--panel-json=${panel_json}" "--science-block-rows=${science_block_rows}")
+case "${REFERENCE_SIMILARITY_LEGACY_QUERY_LABELS:-}" in
+  "") ;;
+  1|true|TRUE) driver_options+=("--legacy-query-labels") ;;
+  *) echo "REFERENCE_SIMILARITY_LEGACY_QUERY_LABELS must be empty, 1, true, or TRUE." >&2; exit 2 ;;
+esac
 if [[ -n "${REFERENCE_SIMILARITY_OUT:-}" ]]; then
   driver_options+=("--out=${REFERENCE_SIMILARITY_OUT}")
 fi

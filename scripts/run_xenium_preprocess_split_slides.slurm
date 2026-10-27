@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Submit all 16 manually separated biological samples. At most three heavy
 # Xenium jobs run concurrently to limit memory and shared-filesystem pressure.
 
@@ -31,5 +33,6 @@ if [[ "${SPLIT_PREPROCESS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
+# Shared-slide imports use the same loader and need the same stack safeguard.
 Rscript --max-ppsize=500000 scripts/xenium_preprocess_split_slides.R \
   "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"

@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Eighteen isolated RPCA tasks: three requested resolution-5 samples, three
 # references, and k.anchor values 5 and 10. No production output is replaced.
 

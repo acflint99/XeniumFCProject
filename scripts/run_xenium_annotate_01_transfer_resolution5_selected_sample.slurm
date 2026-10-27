@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # One reference transfer for a selected resolution-5 sample. Submit once per
 # REFERENCE: Aldinger, Sepp, and Science.
 

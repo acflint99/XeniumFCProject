@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Audit relative QC of Unknown consensus clusters in the three resolution-4
 # weighted-2-of-3 pilot objects. No Seurat objects are modified.
 

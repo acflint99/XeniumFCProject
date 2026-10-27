@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Submit all 25 biological samples from slides containing one sample. At most
 # three heavy Xenium jobs run concurrently to limit memory and filesystem load.
 
@@ -31,5 +33,7 @@ if [[ "${SINGLE_PREPROCESS_OVERWRITE:-false}" == "true" ]]; then
   driver_options+=(--overwrite)
 fi
 
+# Large Xenium segmentation imports can exhaust R's default protection stack.
+# Match the startup safeguard used by production annotation launchers.
 Rscript --max-ppsize=500000 scripts/xenium_preprocess_single_slides.R \
   "${driver_options[@]}" "${SLURM_ARRAY_TASK_ID}"

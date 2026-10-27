@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Render PCW-ordered resolution-4 weighted 2-of-3 report pages in parallel.
 
 #SBATCH --job-name=Xen_res4_w2of3_pages

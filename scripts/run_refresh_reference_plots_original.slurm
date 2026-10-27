@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 #SBATCH --job-name=Ref_OriginalPlots
 #SBATCH --array=1-3%1
 #SBATCH --output=/home/acflint/R/Projects/XeniumFCProject/logs/Ref_OriginalPlots_%A_%a.out

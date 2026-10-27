@@ -1,4 +1,6 @@
 #!/bin/bash
+#SBATCH --mail-type=FAIL,INVALID_DEPEND
+#SBATCH --mail-user=acflint@uab.edu
 # Regenerate all final consensus plots from existing resolution-4 weighted
 # 2-of-3 consensus RDS objects. No RDS or consensus table is rewritten.
 
