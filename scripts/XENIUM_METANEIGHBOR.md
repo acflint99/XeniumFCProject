@@ -29,6 +29,15 @@ columns are not flattened into CSV; any such fields are listed explicitly and
 remain unchanged in the source. The age-cohort audit distinguishes age eligibility
 from original annotation availability. Missing Aldinger published labels are errors.
 
+By default, the driver verifies that saved Xenium fine labels reproduce the
+current approved broad-label mapping. `--legacy-query-labels` is an explicit
+exception for the older saved merged object containing standalone `Endothelial`
+and `Pericytes`. It preserves both saved query columns as-is, places those
+legacy labels immediately before `Vascular` in heatmaps, and writes
+`comparison_mode.csv` plus a LEGACY title/provenance note. It does not edit the
+object, harmonize either label to Vascular, or make the results equivalent to
+the current convention.
+
 `--panel-json` defaults to the discovered original
 `data/FCXeniumProject/FB124_X_G/gene_panel.json`. Panel Ensembl IDs align Sepp rows
 and Science accessions one to one, removing terminal numeric accession versions
@@ -64,9 +73,12 @@ A guard estimates the size of one dense selected-gene-by-cell matrix (default
 32 GiB maximum); several such allocations may coexist, so this is not a job
 memory guarantee. No cells or genes are silently discarded to satisfy the guard.
 There must be at least five recurrent matched variable genes. Cells whose
-selected-gene expression is constant cause an informative stop, because the
-package would otherwise silently exclude them. Any such case requires reviewing
-coverage and an explicit scientific decision; the script does not invent scores.
+selected-gene expression is constant cannot be ranked. They are excluded only
+from MetaNeighbor scoring, never from a source object or annotation. Every
+eligible cell remains in source-cell audits with an `included_in_scoring` flag,
+and `rank_constant_cell_audit.csv` records its ID, selected-HVG count and reason.
+The driver stops if the exclusion would remove every cell from any Xenium or
+reference label.
 
 References:
 [Crow et al., Nature Communications 2018](https://www.nature.com/articles/s41467-018-03282-0),
@@ -140,21 +152,32 @@ After preflights and the engine smoke test pass, submit from scripts/:
 sbatch run_xenium_compare_metaneighbor.slurm
 ```
 
-This array has three tasks, one per reference, at concurrency one. Each task
+This array has three tasks, one per reference, at concurrency two. Each task
 loads the query once and runs both query label levels. The launcher prints the
 reference/task map and runs a supported preflight before expression loading.
 It also runs the tiny synthetic engine test before loading the query.
 It preserves project working directory, module setup, renv startup and job/task
 log identifiers. Optional METANEIGHBOR_OUT selects a fresh output root; existing
 per-reference directories (including partial runs) are protected.
+For the explicit legacy query comparison, set
+`METANEIGHBOR_LEGACY_QUERY_LABELS=1` at submission; the launcher passes the
+corresponding driver flag to every array task.
 
-Expected runtime is **30 minutes–4 hours per task**, and **1.5–12 hours total** at
-concurrency one, excluding queue wait. This is a low-confidence static estimate
+Science reads the same selected cells and genes in bounded HDF5 blocks of 512
+cells by default (`METANEIGHBOR_SCIENCE_BLOCK_ROWS`, permitted range 1–1024).
+This is an I/O-only setting: it reduces `h5dump` process launches compared with
+the former 128-cell blocks and does not change counts, selected cells, HVGs or
+AUROCs. The larger maximum raw block is about 58 MiB before R-object overhead.
+
+Expected runtime is **4–12 hours per task**, and **8–24 hours total** at
+concurrency two, excluding queue wait. This is a low-confidence static estimate
 from ~2.36 million query cells, original reference loads, feature selection,
 Science bounded HDF5 reads and two low-memory scoring passes per reference.
 The requested limit is **12 hours per task**, with **one CPU and 256 GiB** on
 short. The [current Cheaha table](https://docs.rc.uab.edu/cheaha/hardware/) confirms
-short's 12-hour limit. Resources are provisional: related VZ history reached
+short's 12-hour limit and 3,072-GiB per-person memory QoS; two 256-GiB tasks fit
+within that published ceiling, although fair share and node availability govern
+when they start. Resources are provisional: related VZ history reached
 152.09 GiB, and the earlier partial reference-similarity run reached ~35.3 GiB
 before any complete MetaNeighbor computation. No completed MetaNeighbor sacct
 history exists. Rank matrices add allocations; measure the first complete run.
@@ -167,11 +190,13 @@ own directory and COMPLETED.txt marker. Each of the two query levels produces:
 - *_all_AUROCs.csv: both directional AUROCs, their mean, best-hit and reciprocal flags.
 - *_best_matches.csv: best/runner-up original names, margins, ties and reciprocity.
 - *_AUROC_heatmaps.pdf: three pages (query recovery, reference recovery, mean),
-  fixed 0–1 numeric legends, white at 0.5 and shared Xenium top-to-bottom order.
+  fixed 0–1 numeric legends, white at 0.5, shared Xenium top-to-bottom order,
+  and an asterisk for the highest score in each Xenium row (all tied maxima marked).
 - Query and reference cell-count tables.
 
 Audits include source and comparison CellIDs, original metadata, cohort/name
-selection, gene alignment, feature-selection cell IDs, selected HVGs, panel IDs
+selection, gene alignment, feature-selection cell IDs, rank-constant cell
+exclusions, selected HVGs, panel IDs
 and MD5, input paths/size/mtime, source/config/manifest snapshots, session/package
 versions and an output manifest. A completion marker is written only after the
 required output set exists and files are nonempty. Source RDS/HDF5 files and

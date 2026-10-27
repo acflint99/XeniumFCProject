@@ -60,6 +60,16 @@ The [paper](https://pubmed.ncbi.nlm.nih.gov/37824650/) describes ages 5–14 PCW
 Using the authors' reference preserves their processing/annotations; it avoids
 the project's subsequent filtering, Harmony, reclustering, and broad relabeling.
 
+The default driver verifies that saved Xenium fine labels reproduce the current
+approved broad-label mapping. `--legacy-query-labels` is an explicit mode for
+the older merged object with standalone `Endothelial` and `Pericytes`. It
+preserves both saved query columns as-is, derives broad pseudobulks from that
+object's own saved fine-to-broad relationship, places those labels immediately
+before Vascular in heatmaps, and writes `comparison_mode.csv` plus LEGACY
+titles/provenance. It does not edit the object or treat those results as current
+Vascular-convention validation. The Slurm launcher enables it only when
+`REFERENCE_SIMILARITY_LEGACY_QUERY_LABELS=1` is supplied.
+
 ## How Science counts are read
 
 `R/science_original_reference.R` uses existing system `h5dump` and `jsonlite`.
@@ -218,6 +228,11 @@ the same transcript belongs to the VZ resolution-stability job, not this script.
 `--references=science` runs only the approved Science comparison; full default
 references are aldinger,sepp,science. `--science-block-rows=N` (1–1024) controls
 I/O memory and call count, not the selected cells or scientific parameters.
+The default is 512 cells per block (formerly 128); the Slurm launcher exposes
+the same I/O-only setting as `REFERENCE_SIMILARITY_SCIENCE_BLOCK_ROWS`. This
+reduces Science `h5dump` process launches while preserving the exact selected
+counts, genes and scores. Its maximum raw block is about 58 MiB before R-object
+overhead.
 `--bootstrap=0` disables resampling (rough full-run estimate 30 minutes–4 hours,
 low confidence; source reading may dominate). Existing output directories are
 always protected, including partial runs. Choose a new `--out=PATH` for each run.
@@ -453,6 +468,9 @@ bootstrap random draws, sample-match filenames and the 100-bootstrap default
 are unchanged. Each PDF has an accompanying *_heatmap_row_order.csv giving its
 top-to-bottom order; the palette source is snapshotted alongside the plots.
 The full driver validates query order coverage before count aggregation.
+Each raw and specificity heatmap marks the highest score in each Xenium row
+with an asterisk; tied maxima each receive an asterisk. This is a display aid
+only: the unmodified score values and complete ranking remain in the CSV files.
 
 After copying the update to HPC scripts/, redraw completed revised results:
 

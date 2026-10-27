@@ -1,6 +1,6 @@
 # Read the shared literal order vectors without sourcing unrelated plot helpers.
 # This keeps color_palette.R authoritative and adds no plotting dependencies.
-reference_similarity_order <- function(labels, level, palette_file = here::here("scripts", "color_palette.R")) {
+reference_similarity_order <- function(labels, level, palette_file = here::here("scripts", "color_palette.R"), legacy_query_labels = FALSE) {
   labels <- as.character(labels)
   if (!length(labels) || anyNA(labels) || any(!nzchar(trimws(labels))) || anyDuplicated(labels)) stop("Invalid/duplicate heatmap query labels.")
   vector_name <- switch(level, comb_subcluster = "master_subcluster_order",
@@ -18,16 +18,24 @@ reference_similarity_order <- function(labels, level, palette_file = here::here(
   extras <- setdiff(labels, preferred)
   # Numbered Unknown groups are established dynamic identities; keep them last.
   unknown <- extras[grepl("^Unknown-[0-9]{2,}$", extras)]
-  unexpected <- setdiff(extras, unknown)
+  legacy <- if (isTRUE(legacy_query_labels)) intersect(extras, c("Endothelial", "Pericytes")) else character()
+  unexpected <- setdiff(extras, c(unknown, legacy))
   if (length(unexpected)) stop("Query labels absent from ", vector_name, ": ", paste(unexpected, collapse = ", "), ". Update the shared order explicitly; no label is omitted.")
-  c(preferred[preferred %in% labels], sort(unknown))
+  ordered <- preferred[preferred %in% labels]
+  if (length(legacy)) {
+    # Legacy-only display placement: immediately before the harmonized Vascular identity.
+    legacy <- c("Endothelial", "Pericytes")[c("Endothelial", "Pericytes") %in% legacy]
+    vascular <- match("Vascular", ordered)
+    if (is.na(vascular)) ordered <- c(ordered, legacy) else ordered <- append(ordered, legacy, after = vascular - 1L)
+  }
+  c(ordered, sort(unknown))
 }
 
 # Plotting only: no change to correlation values. Typical redraw: <1-2 minutes.
-write_reference_heatmaps <- function(raw, specific, file, title, reference_display = colnames(raw), query_level = NULL) {
+write_reference_heatmaps <- function(raw, specific, file, title, reference_display = colnames(raw), query_level = NULL, legacy_query_labels = FALSE) {
   if (!identical(dim(raw), dim(specific)) || any(!is.finite(raw)) || any(!is.finite(specific)) ||
       is.null(rownames(raw)) || length(reference_display) != ncol(raw)) stop("Invalid heatmap matrix/labels.")
-  top_order <- if (is.null(query_level)) rownames(raw) else reference_similarity_order(rownames(raw), query_level)
+  top_order <- if (is.null(query_level)) rownames(raw) else reference_similarity_order(rownames(raw), query_level, legacy_query_labels = legacy_query_labels)
   if (!identical(dimnames(raw), dimnames(specific))) stop("Heatmap matrix labels differ.")
   # Base image() draws the first row at the bottom; reverse to put shared first at top.
   raw <- raw[rev(top_order), , drop = FALSE]
@@ -43,13 +51,17 @@ write_reference_heatmaps <- function(raw, specific, file, title, reference_displ
     limits <- if (method == "raw") range(m) else c(-1, 1) * max(abs(m))
     if (diff(limits) <= .Machine$double.eps) limits <- limits + c(-.01, .01)
     graphics::layout(matrix(c(1, 2), nrow = 1), widths = c(1, .13))
-    graphics::par(mai = c(bottom, left, .95, .15))
+    graphics::par(mai = c(bottom, left, 1.25, .15))
     graphics::image(seq_len(ncol(m)), seq_len(nrow(m)), t(m), zlim = limits,
       col = palette, axes = FALSE, xlab = "", ylab = "")
+    best <- m >= apply(m, 1L, max) - 1e-12
+    mark <- which(best, arr.ind = TRUE)
+    graphics::text(mark[, "col"], mark[, "row"], "*", cex = .9, font = 2, col = "#FFFFFF")
     graphics::axis(1, seq_len(ncol(m)), reference_display, las = 2, cex.axis = .8, tick = FALSE)
     graphics::axis(2, seq_len(nrow(m)), rownames(m), las = 2, cex.axis = .8, tick = FALSE)
     graphics::box(col = "#AAAAAA")
     graphics::title(main = paste(title, if (method == "raw") "Raw expression similarity" else "Population specificity", sep = " | "), cex.main = 1)
+    graphics::mtext("* = row maximum (ties retained)", side = 3, line = 1.35, adj = 0, cex = .62)
     graphics::mtext(if (method == "raw") "Blue = lower correlation; red = higher. Colors span the observed range; blue may be positive."
                     else "Gene-centered expression: blue = negative; white = zero; red = positive correlation.", side = 3, line = .4, cex = .68)
     graphics::par(mai = c(bottom, .12, .95, .62))

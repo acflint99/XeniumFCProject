@@ -3,7 +3,7 @@
 # Expected HPC runtime: 1–6 h, low confidence (original full-reference sizes unknown).
 # --dry-run checks paths only (<1 min); --inspect loads one object at a time.
 args <- commandArgs(trailingOnly = TRUE)
-flags <- c("--dry-run", "--list", "--inspect", "--science-plan", "--panel-inspect", "--help")
+flags <- c("--dry-run", "--list", "--inspect", "--science-plan", "--panel-inspect", "--legacy-query-labels", "--help")
 keys <- c("query", "out", "query-assay", "sample-column", "bootstrap", "seed",
           "aldinger", "sepp", "science", "aldinger-label", "sepp-label", "science-label",
           "aldinger-assay", "sepp-assay", "science-assay", "references",
@@ -32,6 +32,7 @@ if ("--help" %in% args) {
       "Science duplicate symbols: default error; explicit --science-duplicate-policy=omit audits and omits shared ambiguous genes.\n",
       "Sepp missing named annotations are excluded and audited; source files remain unchanged.\n",
       "Default bootstrap=100; uncertainty conditions on fixed reference profiles.\n",
+      "--legacy-query-labels preserves saved standalone Endothelial/Pericytes query labels and marks outputs as legacy; it does not modify the object.\n",
       "Use a NEW --out directory for each run; existing directories are protected.\n", sep = "")
   quit(save = "no")
 }
@@ -116,7 +117,7 @@ if (science_h5 && (!labels[["science"]] %in% c("Clusters", "CellClass") || assay
                    nzchar(feature_columns[["science"]]))) {
   stop("Audited Science HDF5 uses original CellClass (or Clusters)/Expression; use --science-feature-map for explicit accession alignment, not --science-feature-column.")
 }
-science_block_rows <- suppressWarnings(as.numeric(value("science-block-rows", "128")))
+science_block_rows <- suppressWarnings(as.numeric(value("science-block-rows", "512")))
 science_duplicate_policy <- value("science-duplicate-policy", "error")
 if (!science_duplicate_policy %in% c("error", "omit")) stop("Invalid --science-duplicate-policy (error or omit).")
 if (science_h5 && nzchar(feature_maps[["science"]]) && science_duplicate_policy != "error") stop("Choose a Science feature map OR duplicate omission, not both.")
@@ -150,6 +151,7 @@ qassay <- value("query-assay", "Xenium")
 sample_col <- value("sample-column", "orig.ident")
 B <- suppressWarnings(as.numeric(value("bootstrap", "100")))
 seed <- suppressWarnings(as.numeric(value("seed", "42")))
+legacy_query_labels <- "--legacy-query-labels" %in% args
 if (length(B) != 1L || !is.finite(B) || B < 0 || B != floor(B) || B > 100000) stop("Invalid bootstrap count.")
 if (!is.finite(seed) || seed < 0 || seed > .Machine$integer.max || seed != floor(seed)) stop("Invalid seed.")
 map_inputs <- if (any(nzchar(feature_maps))) {
@@ -158,7 +160,8 @@ map_inputs <- if (any(nzchar(feature_maps))) {
 inputs <- c(query = query, paths, map_inputs, if (nzchar(panel_file)) c(original_panel_json = panel_file))
 print(data.frame(dataset = names(inputs), path = unname(inputs), exists = file.exists(inputs)), row.names = FALSE)
 print(data.frame(reference = refs, assay = assays, original_label_column = labels), row.names = FALSE)
-cat("Manifest samples:", length(samples), "\nOutput:", out, "\nBootstrap:", B, "seed:", seed, "\n")
+cat("Manifest samples:", length(samples), "\nOutput:", out, "\nBootstrap:", B, "seed:", seed,
+    "\nQuery-label mode:", if (legacy_query_labels) "legacy saved Endothelial/Pericytes" else "current approved", "\n")
 if ("--science-plan" %in% args) {
   if (!science_h5) stop("--science-plan requires the original Science /shoji HDF5 source.")
   if (any(c("--dry-run", "--list", "--inspect") %in% args)) stop("Run --science-plan separately from other modes.")
@@ -454,12 +457,28 @@ obj <- readRDS(query)
 levels_q <- c("corrected_broad_label", "comb_subcluster")
 md <- metadata(obj, c(sample_col, levels_q), "Xenium")
 if (!setequal(as.character(md[[sample_col]]), samples)) stop("Xenium sample set differs from active manifest.")
-# Enforce the existing approved map without changing labels or object.
+# Enforce the approved map by default. Legacy mode compares saved labels as-is.
 source(here::here("scripts", "R", "corrected_broad_labels.R"))
-if (!identical(as.character(md$corrected_broad_label), map_corrected_broad_labels(md$comb_subcluster))) {
-  stop("Query corrected broad labels do not match the approved fine-to-broad map.")
+if (!legacy_query_labels && !identical(as.character(md$corrected_broad_label), map_corrected_broad_labels(md$comb_subcluster))) {
+  stop("Query corrected broad labels do not match the approved fine-to-broad map. Use --legacy-query-labels only for the saved legacy Endothelial object.")
 }
-for (level in levels_q) reference_similarity_order(unique(as.character(md[[level]])), level)
+if (legacy_query_labels && !"Endothelial" %in% as.character(md$comb_subcluster)) stop("--legacy-query-labels requires the saved legacy Endothelial fine label; refusing an unnecessary legacy mode.")
+for (level in levels_q) reference_similarity_order(unique(as.character(md[[level]])), level, legacy_query_labels = legacy_query_labels)
+# In legacy mode, retain the saved broad label at the same sample/fine-label
+# resolution used for pseudobulks. A fine label can legitimately be present in
+# many samples, so it must never be paired with the full cell-level metadata.
+legacy_fine_broad <- NULL
+if (legacy_query_labels) {
+  legacy_fine_broad <- unique(data.frame(
+    sample = as.character(md[[sample_col]]),
+    fine_label = as.character(md$comb_subcluster),
+    saved_broad_label = as.character(md$corrected_broad_label),
+    stringsAsFactors = FALSE
+  ))
+  if (anyDuplicated(legacy_fine_broad[c("sample", "fine_label")])) {
+    stop("A legacy sample/fine-label pair maps to more than one saved broad label; no mapping is inferred.")
+  }
+}
 query_data <- list()
 for (level in rev(levels_q)) {
   pairs <- unique(data.frame(sample = as.character(md[[sample_col]]), label = as.character(md[[level]])))
@@ -475,7 +494,13 @@ for (level in rev(levels_q)) {
     counts <- aggregate_counts(obj, qassay, grouping)
   } else {
     fine <- query_data[["comb_subcluster"]]
-    fine_broad <- map_corrected_broad_labels(fine$pairs$label)
+    fine_broad <- if (legacy_query_labels) {
+      fine_keys <- paste(fine$pairs$sample, fine$pairs$label, sep = "\r")
+      legacy_keys <- paste(legacy_fine_broad$sample, legacy_fine_broad$fine_label, sep = "\r")
+      saved_broad <- legacy_fine_broad$saved_broad_label[match(fine_keys, legacy_keys)]
+      if (anyNA(saved_broad)) stop("Legacy sample/fine-label pairs could not be mapped to saved broad labels.")
+      saved_broad
+    } else map_corrected_broad_labels(fine$pairs$label)
     mapping <- integer(nrow(fine$pairs))
     for (sample_id in unique(pairs$sample)) {
       ii <- which(fine$pairs$sample == sample_id); jj <- which(pairs$sample == sample_id)
@@ -497,7 +522,13 @@ if (science_h5) {
   rm(science_alignment)
 }
 if (!dir.create(out, recursive = TRUE)) stop("Cannot create output directory.")
+heatmap_dir <- file.path(out, "heatmaps")
+if (!dir.create(heatmap_dir, recursive = TRUE)) stop("Cannot create heatmap output directory.")
 writeLines("INCOMPLETE: successful runs contain COMPLETED.txt", file.path(out, "RUN_STATUS.txt"))
+write_table(data.frame(comparison_mode = if (legacy_query_labels) "legacy_saved_Endothelial_Pericytes_query_labels" else "current_approved_query_labels",
+                       legacy_query_labels = legacy_query_labels,
+                       note = if (legacy_query_labels) "Saved query labels are compared as-is; standalone Endothelial and Pericytes are legacy and not harmonized to Vascular." else "Saved query labels match the approved fine-to-broad mapping."), "comparison_mode.csv")
+if (legacy_query_labels) write_table(legacy_fine_broad, "legacy_saved_fine_to_broad_mapping.csv")
 for (level in levels_q) write_table(query_data[[level]]$pairs, paste0(level, "_sample_counts.csv"))
 
 for (ref in refs) {
@@ -625,8 +656,9 @@ for (ref in refs) {
     if (ref == "science" && labels[["science"]] == "Clusters") {
       display <- paste0(science_plan$lookup$Class[match(rl, as.character(science_plan$lookup$ClusterID))], " [", rl, "]")
     }
-    plot_order <- write_reference_heatmaps(raw, specific, file.path(out, paste0(stem, "_heatmaps.pdf")),
-                             paste(ref, level), display, query_level = level)
+    plot_order <- write_reference_heatmaps(raw, specific, file.path(heatmap_dir, paste0(stem, "_heatmaps.pdf")),
+                             paste(ref, level, if (legacy_query_labels) "[LEGACY QUERY LABELS]" else ""), display,
+                             query_level = level, legacy_query_labels = legacy_query_labels)
     write_table(data.frame(top_to_bottom = seq_along(plot_order), query_label = plot_order), paste0(stem, "_heatmap_row_order.csv"))
   }
   rm(rc); gc()
@@ -640,7 +672,8 @@ if (!is.null(panel_map)) {
   file.copy(panel_file, file.path(out, "original_panel_snapshot.json"))
 }
 write_table(data.frame(reference = refs, assay = assays, label_column = labels,
-                       feature_column = feature_columns, feature_map = feature_maps), "reference_settings.csv")
+                       feature_column = feature_columns, feature_map = feature_maps,
+                       legacy_query_labels = legacy_query_labels), "reference_settings.csv")
 writeLines(c(paste("Started:", started), paste("Finished:", Sys.time()),
              paste("Seed:", seed, "Bootstrap:", B, "Manifest samples:", length(samples)),
              paste("Query assay:", qassay, "sample column:", sample_col),
@@ -652,6 +685,7 @@ writeLines(c(paste("Started:", started), paste("Finished:", Sys.time()),
              "Specificity: Spearman after subtracting per-gene mean across labels within each dataset.",
              "Bootstrap: query samples within label; fixed reference and fixed background; 95% percentile intervals.",
              "Heatmaps: raw correlations use observed-range colors (blue may be positive); specificity uses symmetric zero-centered colors; legends show actual Spearman rho.",
+             if (legacy_query_labels) "LEGACY QUERY LABEL MODE: saved standalone Endothelial and Pericytes labels are preserved as-is for this comparison; results are not under the current Vascular = Endothelial + Pericytes convention." else "CURRENT QUERY LABEL MODE: saved labels were validated against the approved fine-to-broad map.",
              "No p-values, automatic found threshold, label changes, object writes, or inferred ontology mappings.",
              "Correlations use only variable shared genes. Missing sample-label combinations are absent, not zero.",
              "References used in annotation: agreement is not independent validation.",

@@ -118,16 +118,16 @@ mn_science_counts <- function(plan, panel, output_dir) {
   write.csv(plan$blocks, file.path(output_dir, "science_read_plan.csv"), row.names = FALSE)
   result
 }
-mn_check_rankable <- function(m, dataset) {
+mn_rankable_cells <- function(m, dataset) {
   m <- Matrix::drop0(methods::as(m, "dgCMatrix"))
   nnz <- diff(m@p)
-  bad <- which(nnz == 0L)
+  reason <- rep(NA_character_, ncol(m))
+  reason[nnz == 0L] <- "all_zero_across_selected_HVGs"
   full <- which(nnz == nrow(m))
   for (j in full) {
     values <- m@x[seq.int(m@p[j] + 1L, m@p[j + 1L])]
-    if (length(unique(values)) == 1L) bad <- c(bad, j)
+    if (length(unique(values)) == 1L) reason[j] <- "constant_nonzero_across_selected_HVGs"
   }
-  if (length(bad)) stop(dataset, ": ", length(bad), " cells have constant expression across selected genes (e.g. ",
-                         paste(head(colnames(m)[bad], 5), collapse = ", "), "). MetaNeighbor would omit them; stopping for review instead.")
-  invisible(TRUE)
+  data.frame(study = dataset, source_cell_id = colnames(m), rankable = is.na(reason),
+             exclusion_reason = reason, stringsAsFactors = FALSE, check.names = FALSE)
 }

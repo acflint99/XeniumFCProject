@@ -3,8 +3,8 @@
 # Expected HPC runtime: 0.5-4 h/reference, low confidence; no local full analysis.
 # --dry-run / --list: <1 minute, paths/dependencies only; no large RDS/HDF5 reads.
 args <- commandArgs(trailingOnly = TRUE)
-flags <- c("--dry-run", "--list", "--help")
-keys <- c("reference", "query", "aldinger", "sepp", "science", "panel-json", "out", "seed", "feature-cells", "max-dense-gib")
+flags <- c("--dry-run", "--list", "--legacy-query-labels", "--help")
+keys <- c("reference", "query", "aldinger", "sepp", "science", "panel-json", "out", "seed", "feature-cells", "max-dense-gib", "science-block-rows")
 opt <- list()
 for (a in args) {
   if (a %in% flags) next
@@ -19,8 +19,10 @@ if ("--help" %in% args) {
       "--list gives the three reference-array tasks; --dry-run checks paths/packages only.\n",
       "--panel-json=PATH --out=NEW_DIRECTORY; other keys: ", paste(keys, collapse=", "), "\n",
       "Original labels: figure_clusters, cell_type, CellClass. Original approved age/tissue cohorts.\n",
-      "All eligible named cells retained; feature-cells=10000 caps feature-selection sampling only.\n",
+      "All eligible named cells are considered; rank-constant cells are excluded only from MetaNeighbor scoring and audited. feature-cells=10000 caps feature-selection sampling only.\n",
+      "--legacy-query-labels preserves saved legacy Endothelial/Pericytes query labels and marks every output as legacy; it does not modify the object.\n",
       "seed=42; max-dense-gib=32 bounds a single dense rank matrix, not total job memory.\n",
+      "science-block-rows=512 controls Science HDF5 I/O block size only (1–1024); it does not change selected cells or scores.\n",
       "Uses official fast_version=TRUE, one_vs_best=FALSE, symmetric_output=FALSE.\n",
       "No bootstrapping, automatic found threshold, label changes or package installation.\n", sep="")
   quit(save="no")
@@ -70,6 +72,8 @@ integer_option <- function(k,d) {
   as.integer(x)
 }
 seed <- integer_option("seed","42"); feature_cells <- integer_option("feature-cells","10000")
+science_block_rows <- integer_option("science-block-rows","512")
+if (science_block_rows > 1024L) stop("Invalid --science-block-rows (1–1024).")
 max_dense <- suppressWarnings(as.numeric(value("max-dense-gib","32")))
 if (!is.finite(max_dense) || max_dense <= 0) stop("Invalid dense-matrix memory guard.")
 source(here::here("scripts","R","science_original_reference.R"))
@@ -78,6 +82,7 @@ source(here::here("scripts","R","metaneighbor_results.R"))
 source(here::here("scripts","R","reference_similarity_plots.R"))
 source(here::here("scripts","R","corrected_broad_labels.R"))
 set.seed(seed); started <- Sys.time()
+legacy_query_labels <- "--legacy-query-labels" %in% args
 input_info <- file.info(inputs)
 expected_path <- resolve_config_path(config$inputs$xenium_panel_genes,config)
 panel <- mn_panel(panel_file,if(file.exists(expected_path)) readRDS(expected_path) else NULL)
@@ -86,18 +91,23 @@ obj <- readRDS(query); qmd <- mn_metadata(obj)
 levels_q <- c("corrected_broad_label","comb_subcluster")
 if (!all(c("orig.ident",levels_q) %in% names(qmd)) || any(!vapply(qmd[,c("orig.ident",levels_q)],mn_text,TRUE))) stop("Required Xenium metadata is missing/blank.")
 if (anyDuplicated(manifest$sample_id) || !mn_text(manifest$sample_id) || !setequal(qmd$orig.ident,manifest$sample_id)) stop("Query samples differ from authoritative manifest.")
-if (!identical(as.character(qmd$corrected_broad_label),map_corrected_broad_labels(qmd$comb_subcluster))) stop("Query labels differ from approved fine-to-broad map.")
-for(level in levels_q) reference_similarity_order(unique(qmd[[level]]),level)
+if (!legacy_query_labels && !identical(as.character(qmd$corrected_broad_label),map_corrected_broad_labels(qmd$comb_subcluster))) stop("Query labels differ from approved fine-to-broad map. Use --legacy-query-labels only for the saved legacy Endothelial object.")
+if (legacy_query_labels && !"Endothelial" %in% as.character(qmd$comb_subcluster)) stop("--legacy-query-labels requires the saved legacy Endothelial fine label; refusing an unnecessary legacy mode.")
+for(level in levels_q) reference_similarity_order(unique(qmd[[level]]),level,legacy_query_labels=legacy_query_labels)
 qx <- mn_extract_counts(obj,"Xenium",rownames(qmd),panel); qc <- qx$counts
 rm(obj); gc()
 if (!dir.create(out,recursive=TRUE)) stop("Cannot create protected output.")
+heatmap_dir <- file.path(out,"heatmaps")
+if (!dir.create(heatmap_dir,recursive=TRUE)) stop("Cannot create heatmap output directory.")
 write <- function(x,name) write.csv(x,file.path(out,name),row.names=FALSE)
 writeLines("INCOMPLETE; successful results contain COMPLETED.txt",file.path(out,"RUN_STATUS.txt"))
+write(data.frame(comparison_mode=if (legacy_query_labels) "legacy_saved_Endothelial_Pericytes_query_labels" else "current_approved_query_labels",
+                 legacy_query_labels=legacy_query_labels,
+                 note=if (legacy_query_labels) "Saved query labels are compared as-is; standalone Endothelial and Pericytes are legacy and not harmonized to Vascular." else "Saved query labels match the approved fine-to-broad mapping."),"comparison_mode.csv")
 write(qx$alignment,"xenium_feature_alignment.csv"); rm(qx)
-write(data.frame(CellID=rownames(qmd),comparison_cell_id=paste0("xenium_cell_",seq_len(nrow(qmd))),qmd[,c("orig.ident",levels_q),drop=FALSE]),"xenium_cell_labels.csv")
 message("Loading original reference: ",ref)
 if (ref == "science") {
-  plan <- plan_science_original(paths[[ref]])
+  plan <- plan_science_original(paths[[ref]],science_block_rows)
   rmd <- plan$cells; rownames(rmd) <- rmd$CellID
   rc <- mn_science_counts(plan,panel,out); original_label <- "CellClass"
   write(plan$summary,"science_cohort_summary.csv")
@@ -117,7 +127,6 @@ if (ref == "science") {
 if (!identical(colnames(qc),rownames(qmd)) || !identical(colnames(rc),rownames(rmd))) stop("Expression/metadata IDs differ.")
 if (!mn_text(rmd[[original_label]]) || any(grepl("|",rmd[[original_label]],fixed=TRUE)) || any(vapply(qmd[,levels_q],function(x) any(grepl("|",x,fixed=TRUE)),TRUE))) stop("Invalid published labels or reserved '|' delimiter in labels.")
 flat_columns <- vapply(rmd,function(x) is.atomic(x) && is.null(dim(x)),TRUE)
-write(data.frame(source_cell_id=rownames(rmd),comparison_cell_id=paste0(ref,"_cell_",seq_len(nrow(rmd))),rmd[,flat_columns,drop=FALSE],check.names=FALSE),"reference_original_metadata.csv")
 if(any(!flat_columns)) write(data.frame(field=names(rmd)[!flat_columns],reason="Non-scalar metadata; original object unchanged"),"reference_metadata_fields_not_exported.csv")
 shared <- intersect(rownames(qc),rownames(rc))
 if(length(shared)<5L) stop("Fewer than five matched panel genes.")
@@ -129,21 +138,43 @@ feature_study <- c(rep("xenium",length(qsample)),rep(ref,length(rsample)))
 se <- SummarizedExperiment::SummarizedExperiment(assays=list(counts=features))
 genes <- MetaNeighbor::variableGenes(dat=se,exp_labels=feature_study,min_recurrence=2,downsampling_size=0)
 if(length(genes)<5L || anyDuplicated(genes) || any(!genes %in% shared)) stop("Fewer than five valid recurrent MetaNeighbor variable genes; review panel coverage. No gene-set fallback is applied.")
-write(data.frame(study=c(rep("xenium",length(qsample)),rep(ref,length(rsample))),CellID=c(rownames(qmd)[qsample],rownames(rmd)[rsample])),"feature_selection_cells.csv")
 write(data.frame(gene=shared,selected_HVG=shared %in% genes),"comparison_genes.csv")
 rm(se,features); gc()
 dense_gib <- as.double(length(genes))*(ncol(qc)+ncol(rc))*8/1024^3
 cat("Shared genes:",length(shared),"HVGs:",length(genes),"cells:",ncol(qc),"+",ncol(rc),"single dense matrix GiB:",round(dense_gib,2),"\n")
 if(dense_gib > max_dense) stop("Estimated dense rank matrix exceeds --max-dense-gib. Review resources or a streaming design; no cells/genes were silently discarded.")
 qc <- qc[genes,,drop=FALSE]; rc <- rc[genes,,drop=FALSE]
-mn_check_rankable(qc,"Xenium"); mn_check_rankable(rc,ref)
+q_rank <- mn_rankable_cells(qc,"Xenium")
+r_rank <- mn_rankable_cells(rc,ref)
+rank_audit <- rbind(q_rank,r_rank)
+rank_audit$selected_HVGs <- length(genes)
+rank_audit$included_in_scoring <- rank_audit$rankable
+write(rank_audit,"rank_constant_cell_audit.csv")
+q_keep <- q_rank$rankable; r_keep <- r_rank$rankable
+if (!any(q_keep) || !any(r_keep)) stop("No rankable cells remain in one study after selecting MetaNeighbor genes.")
+if (any(!q_keep) || any(!r_keep)) message("Excluding ",sum(!q_keep)," Xenium and ",sum(!r_keep)," ",ref," rank-constant cells from MetaNeighbor scoring; see rank_constant_cell_audit.csv.")
+qmd_full <- qmd; rmd_full <- rmd
+qc <- qc[,q_keep,drop=FALSE]; qmd <- qmd[q_keep,,drop=FALSE]
+rc <- rc[,r_keep,drop=FALSE]; rmd <- rmd[r_keep,,drop=FALSE]
+if (!setequal(unique(qmd_full$corrected_broad_label),unique(qmd$corrected_broad_label)) ||
+    !setequal(unique(qmd_full$comb_subcluster),unique(qmd$comb_subcluster)) ||
+    !setequal(unique(rmd_full[[original_label]]),unique(rmd[[original_label]]))) stop("A MetaNeighbor label lost every cell after rank-constant exclusion; inspect rank_constant_cell_audit.csv.")
+q_rank$comparison_cell_id <- NA_character_; q_rank$comparison_cell_id[q_keep] <- paste0("xenium_cell_",seq_len(sum(q_keep)))
+r_rank$comparison_cell_id <- NA_character_; r_rank$comparison_cell_id[r_keep] <- paste0(ref,"_cell_",seq_len(sum(r_keep)))
+write(data.frame(CellID=q_rank$source_cell_id,comparison_cell_id=q_rank$comparison_cell_id,
+                 included_in_scoring=q_rank$rankable,qmd_full[q_rank$source_cell_id,c("orig.ident",levels_q),drop=FALSE],check.names=FALSE),"xenium_cell_labels.csv")
+write(data.frame(source_cell_id=r_rank$source_cell_id,comparison_cell_id=r_rank$comparison_cell_id,
+                 included_in_scoring=r_rank$rankable,rmd_full[r_rank$source_cell_id,flat_columns,drop=FALSE],check.names=FALSE),"reference_original_metadata.csv")
+write(data.frame(study=c(rep("xenium",length(qsample)),rep(ref,length(rsample))),
+                 CellID=c(q_rank$source_cell_id[qsample],r_rank$source_cell_id[rsample]),
+                 included_in_scoring=c(q_rank$rankable[qsample],r_rank$rankable[rsample])),"feature_selection_cells.csv")
 colnames(qc) <- paste0("xenium_cell_",seq_len(ncol(qc))); colnames(rc) <- paste0(ref,"_cell_",seq_len(ncol(rc)))
 dat <- SummarizedExperiment::SummarizedExperiment(assays=list(counts=cbind(qc,rc)))
 study <- c(rep("xenium",ncol(qc)),rep(ref,ncol(rc)))
 rl <- sort(unique(as.character(rmd[[original_label]])))
 if(length(rl)<2L) stop("Reference has fewer than two original named populations.")
 for(level in levels_q) {
-  ql <- reference_similarity_order(unique(qmd[[level]]),level)
+  ql <- reference_similarity_order(unique(qmd[[level]]),level,legacy_query_labels=legacy_query_labels)
   if(length(ql)<2L) stop("Fewer than two query populations.")
   message("MetaNeighborUS fast cell-level comparison: ",ref," / ",level)
   result <- MetaNeighbor::MetaNeighborUS(var_genes=genes,dat=dat,study_id=study,
@@ -154,7 +185,7 @@ for(level in levels_q) {
   write(scores$full,paste0(stem,"_all_AUROCs.csv")); write(scores$best,paste0(stem,"_best_matches.csv"))
   write(data.frame(query_label=ql,cells=as.integer(table(factor(qmd[[level]],levels=ql)))),paste0(stem,"_query_cell_counts.csv"))
   write(data.frame(reference_label=rl,cells=as.integer(table(factor(rmd[[original_label]],levels=rl)))),paste0(stem,"_reference_cell_counts.csv"))
-  mn_heatmaps(scores,file.path(out,paste0(stem,"_AUROC_heatmaps.pdf")),paste("MetaNeighborUS",ref,level))
+  mn_heatmaps(scores,file.path(heatmap_dir,paste0(stem,"_AUROC_heatmaps.pdf")),paste("MetaNeighborUS",ref,level,if (legacy_query_labels) "[LEGACY QUERY LABELS]" else ""))
   rm(result,scores); gc()
 }
 current_info <- file.info(inputs)
@@ -163,9 +194,10 @@ write(data.frame(input=names(inputs),path=unname(inputs),size_bytes=input_info$s
 write(panel,"original_panel_ids.csv")
 write(data.frame(path=panel_file,md5=unname(tools::md5sum(panel_file))),"panel_provenance.csv")
 writeLines(c(paste("Reference:",ref,"original label:",original_label),paste("Seed:",seed,"feature selection cap per study:",feature_cells),
-  paste("Started:",started,"Finished:",Sys.time()),paste("Shared panel genes:",length(shared),"recurrent HVGs:",length(genes)),
+  paste("Started:",started,"Finished:",Sys.time()),paste("Shared panel genes:",length(shared),"recurrent HVGs:",length(genes),"Science HDF5 block rows:",science_block_rows),
   "Official MetaNeighborUS fast_version=TRUE (published low-memory approximation), node_degree_normalization=TRUE, one_vs_best=FALSE, symmetric_output=FALSE.",
-  "Raw-count within-cell ranks. Feature selection uses random cells only; all eligible named cells are used for AUROC scoring.",
+  "Raw-count within-cell ranks. Feature selection uses random cells only. Cells with constant values across selected HVGs cannot be ranked; they alone are excluded from AUROC scoring and recorded in rank_constant_cell_audit.csv.",
+  if (legacy_query_labels) "LEGACY QUERY LABEL MODE: saved standalone Endothelial and Pericytes labels are preserved as-is for this comparison; results are not under the current Vascular = Endothelial + Pericytes convention." else "CURRENT QUERY LABEL MODE: the saved labels were validated against the approved fine-to-broad map.",
   "Cross-dataset directional AUROCs and their arithmetic mean; chance discrimination=0.5. Ties in best matches are retained and counted.",
   "No resampling confidence intervals, accuracy claims, found threshold, cell relabeling, integration or source writes.",
   "No donor-held-out validation: same references contributed to annotation, so this is transcriptional consistency evidence.",
@@ -177,12 +209,12 @@ file.copy(attr(config,"config_path"),file.path(out,"config_snapshot.yml"))
 file.copy(inputs[["manifest"]],file.path(out,"sample_manifest_snapshot.csv"))
 stems <- paste(ref,levels_q,sep="_")
 expected_outputs <- c("xenium_cell_labels.csv","reference_original_metadata.csv","comparison_genes.csv",
-                      "feature_selection_cells.csv","input_provenance.csv","methods_and_session.txt",
+                      "feature_selection_cells.csv","rank_constant_cell_audit.csv","comparison_mode.csv","input_provenance.csv","methods_and_session.txt",
                       "config_snapshot.yml","sample_manifest_snapshot.csv",
                       paste0(gsub("/","_",snapshot_sources),".snapshot"),
-                      unlist(lapply(stems,function(stem) paste0(stem,c("_all_AUROCs.csv","_best_matches.csv","_query_cell_counts.csv","_reference_cell_counts.csv","_AUROC_heatmaps.pdf")))))
+                      unlist(lapply(stems,function(stem) c(paste0(stem,c("_all_AUROCs.csv","_best_matches.csv","_query_cell_counts.csv","_reference_cell_counts.csv")), file.path("heatmaps",paste0(stem,"_AUROC_heatmaps.pdf"))))))
 if(any(!file.exists(file.path(out,expected_outputs)))) stop("Required output set is incomplete.")
-output_files <- list.files(out,full.names=TRUE)
+output_files <- list.files(out,full.names=TRUE,recursive=TRUE)
 if(any(!is.finite(file.info(output_files)$size)) || any(file.info(output_files)$size <= 0)) stop("Missing or empty analysis outputs.")
 write(data.frame(file=basename(output_files),size_bytes=file.info(output_files)$size),"output_manifest.csv")
 writeLines("Complete: two query levels against one original reference; inspect both AUROC directions and metadata audits.",file.path(out,"COMPLETED.txt"))

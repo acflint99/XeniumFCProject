@@ -43,12 +43,16 @@ mn_heatmaps <- function(scores, file, title) {
   for (metric in c("forward", "reverse", "mean")) {
     m <- scores[[metric]][rev(ql), , drop = FALSE]
     graphics::layout(matrix(1:2, nrow = 1), widths = c(1, .13))
-    graphics::par(mai = c(bottom, left, .95, .15))
+    graphics::par(mai = c(bottom, left, 1.25, .15))
     graphics::image(seq_along(rl), seq_along(ql), t(m), col = colors, zlim = c(0,1), axes = FALSE, xlab = "", ylab = "")
+    best <- m >= apply(m, 1L, max) - 1e-12
+    mark <- which(best, arr.ind = TRUE)
+    graphics::text(mark[, "col"], mark[, "row"], "*", cex = .9, font = 2, col = "#FFFFFF")
     graphics::axis(1, seq_along(rl), rl, las = 2, cex.axis = .8, tick = FALSE)
     graphics::axis(2, seq_along(ql), rev(ql), las = 2, cex.axis = .8, tick = FALSE)
     page_title <- c(forward = "Recovery of Xenium populations from reference", reverse = "Recovery of reference populations from Xenium", mean = "Mean of both directional AUROCs")[[metric]]
     graphics::title(main = title, cex.main = 1)
+    graphics::mtext("* = row maximum (ties retained)", side = 3, line = 1.35, adj = 0, cex = .62)
     graphics::mtext(page_title, side = 3, line = .5, cex = .75)
     graphics::box(col = "#AAAAAA")
     graphics::par(mai = c(bottom, .12, .95, .62))
