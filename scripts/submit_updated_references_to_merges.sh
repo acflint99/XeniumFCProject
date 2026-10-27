@@ -122,6 +122,9 @@ case "$phase" in
     check_r scripts/xenium_unknown_03_apply_qc_review.R --dry-run 1
     ;;
   postqc)
+    for required in xenium_residual_05_reintegrate_post_qc.R run_xenium_residual_05_reintegrate_post_qc.slurm R/residual_post_qc_processing.R xenium_regional_05c_resolution_stability.R xenium_residual_05c_resolution_stability.R R/regional_resolution_inputs.R R/regional_cluster_stability.R run_xenium_vz_05c_resolution_stability.slurm run_xenium_rl_05c_resolution_stability.slurm run_xenium_residual_05c_resolution_stability.slurm; do
+      [[ -s scripts/$required ]] || { echo "Missing resolution-review script: scripts/$required" >&2; exit 2; }
+    done
     require_previous_phase regions
     : "${VZ_QC_REMOVE_CLUSTERS:?Set freshly reviewed VZ cluster IDs or none; never reuse old IDs automatically}"
     : "${RL_QC_REMOVE_CLUSTERS:?Set freshly reviewed RL cluster IDs or none; never reuse launcher defaults}"
@@ -137,6 +140,9 @@ case "$phase" in
     esac
     ;;
   merges)
+    for required in xenium_compare_reference_similarity.R xenium_compare_metaneighbor.R run_xenium_compare_reference_similarity.slurm run_xenium_compare_metaneighbor.slurm; do
+      [[ -s scripts/$required ]] || { echo "Missing cluster-validation script: scripts/$required" >&2; exit 2; }
+    done
     require_previous_phase postqc
     check_r scripts/xenium_vz_06_annotate_subclusters.R --resolution=0.8 --apply-reviewed-labels --dry-run
     check_r scripts/xenium_rl_06_annotate_subclusters.R --resolution=0.8 --apply-reviewed-labels --dry-run
@@ -149,7 +155,7 @@ if [[ -f $ledger ]] && awk -F '\t' -v phase="$phase" '$1==phase {found=1} END {e
 fi
 if [[ $mode == --submit ]]; then
   active_names=$(squeue -h -u acflint -o '%j')
-  conflicts=$(printf '%s\n' "$active_names" | awk '/^(Aldinger_|Sepp_|Science_|Xen_(res5_|broad_|unknown_|VZ_|RL_|residual_|Combine|CorrectBroad|CleanMerge|SpatialMerge))/')
+  conflicts=$(printf '%s\n' "$active_names" | awk '/^(Aldinger_|Sepp_|Science_|VZ_|RL_|Residual_|Xenium_(VZ|RL)|Xen_(res5_|broad_|unknown_|VZ_|RL_|residual_|Residual_|Combine|CorrectBroad|CleanMerge|SpatialMerge|RefSimilarity|MetaNeighbor))/')
   if [[ -n $conflicts ]]; then
     printf 'Wait for these potentially conflicting jobs before submitting a new phase:\n%s\n' "$conflicts" >&2
     exit 2
@@ -210,8 +216,9 @@ case "$phase" in
       upper=$(printf '%s' "$region" | tr '[:lower:]' '[:upper:]')
       qc=$(queue_stage "${region}_qc_apply" "run_xenium_${region}_04_review_qc.slurm" '' '' "${upper}_QC_MODE=apply,${upper}_QC_OVERWRITE=true")
       integrated=$(queue_stage "${region}_postqc" "run_xenium_${region}_05_reintegrate_post_qc.slurm" "$qc" '' "${upper}_POST_QC_OVERWRITE=true")
+      stability=$(queue_stage "${region}_resolution_review" "run_xenium_${region}_05c_resolution_stability.slurm" "$integrated" '' "STABILITY_RUN_ID=${run_id}_postqc,STABILITY_OVERWRITE=false")
       # Current review mode builds/reuses provenance-matched replicate evidence itself.
-      queue_stage "${region}_marker_review" "run_xenium_${region}_06_annotate_subclusters.slurm" "$integrated" '' "${upper}_SUBCLUSTER_MODE=review,${upper}_SUBCLUSTER_RESOLUTION=0.8,${upper}_SUBCLUSTER_OVERWRITE=true" >/dev/null
+      queue_stage "${region}_marker_review" "run_xenium_${region}_06_annotate_subclusters.slurm" "$stability" '' "${upper}_SUBCLUSTER_MODE=review,${upper}_SUBCLUSTER_RESOLUTION=0.8,${upper}_SUBCLUSTER_OVERWRITE=true" >/dev/null
     done
     residual_dependency=''
     if [[ $RESIDUAL_QC_ACTION == remove ]]; then
@@ -228,8 +235,10 @@ case "$phase" in
       done
       printf 'Reviewed no-removal decision for refreshed residual object.\n' > "$archive/no_removal.txt"
     fi
-    queue_stage residual_marker_review run_xenium_residual_04_review_subclusters.slurm "$residual_dependency" '' 'RESIDUAL_REVIEW_OVERWRITE=true' >/dev/null
-    echo "STOP: approve NEW VZ/RL maps, input-count guards/validator, residual labels and any new fine-to-broad identities."
+    residual_postqc=$(queue_stage residual_postqc run_xenium_residual_05_reintegrate_post_qc.slurm "$residual_dependency" '' "RESIDUAL_QC_ACTION=$RESIDUAL_QC_ACTION,RESIDUAL_POST_QC_OVERWRITE=true")
+    residual_stability=$(queue_stage residual_resolution_review run_xenium_residual_05c_resolution_stability.slurm "$residual_postqc" '' "STABILITY_RUN_ID=${run_id}_postqc,STABILITY_OVERWRITE=false")
+    queue_stage residual_marker_review run_xenium_residual_04_review_subclusters.slurm "$residual_stability" '' 'RESIDUAL_REVIEW_OVERWRITE=true' >/dev/null
+    echo "STOP: review all three clustree/stability results; approve NEW VZ/RL maps, input-count guards/validator, residual labels and any new fine-to-broad identities."
     ;;
   merges)
     maps=()
@@ -245,9 +254,12 @@ case "$phase" in
     dependencies=$(IFS=:; printf '%s' "${maps[*]}")
     combined=$(queue_stage combined_labels run_xenium_vz_rl_01_combine_labels.slurm "$dependencies" '' 'COMBINE_OVERWRITE=true')
     broad=$(queue_stage corrected_broad run_xenium_vz_rl_02_correct_broad_labels.slurm "$combined" '' 'CORRECTED_BROAD_OVERWRITE=true')
-    queue_stage nonspatial_merge run_xenium_vz_rl_03_nonspatial_merge.slurm "$broad" '' 'CLEAN_MERGE_OVERWRITE=true' >/dev/null
+    nonspatial=$(queue_stage nonspatial_merge run_xenium_vz_rl_03_nonspatial_merge.slurm "$broad" '' 'CLEAN_MERGE_OVERWRITE=true')
+    validation_root="outputs/reference_label_refresh_runs/$run_id/cluster_validation"
+    queue_stage spearman_validation run_xenium_compare_reference_similarity.slurm "$nonspatial" '' "REFERENCE_SIMILARITY_OUT=$validation_root/spearman" >/dev/null
+    queue_stage metaneighbor_validation run_xenium_compare_metaneighbor.slurm "$nonspatial" '1-3%1' "METANEIGHBOR_OUT=$validation_root/metaneighbor" >/dev/null
     queue_stage spatial_merge run_xenium_vz_rl_03_spatial_merge.slurm "$broad" '' 'SPATIAL_MERGE_OVERWRITE=true' >/dev/null
-    echo "Endpoint: refreshed nonspatial and spatial merged objects; merge processing/integration is separate."
+    echo "Endpoint: both merges and Spearman/MetaNeighbor validation after the nonspatial merge; processing/integration is separate."
     ;;
 esac
 [[ $mode != --dry-run ]] || echo "DRY-RUN: no Slurm jobs submitted and no outputs changed."

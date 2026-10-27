@@ -34,42 +34,54 @@ array estimates are documented in that guide.
 
 ## Workflow overview
 
+Current broad-label convention: **Vascular = Endothelial + Pericytes**.
+Current reference preparation and downstream broad annotation use Vascular;
+Pericytes remains available as a fine subcluster label. See
+[VASCULAR_LABEL_UPDATE_20261022.md](VASCULAR_LABEL_UPDATE_20261022.md) for the
+source-label exceptions, required regeneration, validation and runtime estimates.
+
 For the 2026-10-22 Science/Sepp/Aldinger label refresh, use
 [`UPDATED_REFERENCES_TO_MERGES.md`](UPDATED_REFERENCES_TO_MERGES.md) and
 `submit_updated_references_to_merges.sh`. It rebuilds reference preparations,
 all manifest-defined transfers/consensus and regional branches through both
-merges, stopping for fresh threshold/QC/subcluster-label decisions. eCN enters
+merges plus post-merge reference validation, stopping for fresh threshold/QC/subcluster-label decisions. eCN enters
 RL and Vascular remains nonregional, as explicitly approved on 2026-10-22.
 It derives 41-sample/123-task bounds; older 34-sample submitters are not used.
 
 ```text
-Raw Xenium output + cerebellum cell list
+Xenium import -> cerebellum crop -> cell QC -> PCA/UMAP/neighbors
                  |
                  v
-Crop cerebellum -> cell QC -> normalization/PCA/UMAP -> clustering (resolution 1.5)
+Production resolution-5 clusters + panel-matched Aldinger / Sepp / Science references
                  |
                  v
-Prepare Aldinger / Sepp / Science reference objects and subset to Xenium panel genes
+RPCA transfer -> weighted 2-of-3 consensus -> reviewed Unknown QC / broad routing
                  |
-                 v
-RPCA label transfer -> compare references -> consensus-labelled samples
+        +--------+---------+
+        |        |         |
+       VZ       RL      Residual
+        |        |         |
+  merge / integration -> QC review and approved application
+        |        |         |
+  clustree + subsampling stability -> marker review -> approved fine labels
+        |        |         |
+        +--------+---------+
                  |
-                 v
-Unknown QC audit/review -> apply approved removals -> broad 2-of-3 reference routing
+      map labels to samples -> combine / corrected broad labels
                  |
-          +------+------+
-          |             |
-          v             v
-      VZ subset      RL subset
-          |             |
-          v             v
- merge/integrate/QC/recluster/annotate/map labels back to individual samples
-          |             |
-          +------+------+
-                 |
-                 v
-combined spatial objects, plots, proportions, Giotto, gradients, SpaTrack/CellRank
+        +--------+---------+
+        |                  |
+  nonspatial merge    spatial merge
+        |
+  Spearman + MetaNeighborUS validation against original references
 ```
+
+See [WORKFLOW_ALIGNMENT_20261022.md](WORKFLOW_ALIGNMENT_20261022.md) for the
+current script/diagram alignment, residual clustree entry point, protected
+outputs, runtime estimates and validation limits. All three branches use the
+same review sequence. Established numerical settings remain branch-specific;
+VZ/RL post-QC processing and residual's retained embedding are preserved.
+
 
 ## Expected project layout
 
@@ -3306,8 +3318,19 @@ palette-only additions receive a separate facet, preventing duplicate dots.
 Marker testing retains the same scientific thresholds, and the
 UMAP plot reuses `umap_clean` coordinates. Earlier resolution-specific evidence
 from a previous Stage-5 object is stale and must be explicitly overwritten.
-The old identity map is deliberately not reused. The user-approved 2026-10-17
-resolution-0.8 map covers the current 827,183-cell object's clusters 0-19:
+Label approval is separate from evidence generation. Review now writes a blank
+`Xenium_RL_Subcluster_Label_Approval_Template_Res0.8.csv` under the Stage-6 tables
+directory. After reviewing the current fit, fill its labels, notes and approval
+flags and save a copy as `scripts/reviews/RL_subcluster_labels_Res0.8.csv`.
+Do not edit its source/review/partition fingerprints. Apply requires this
+explicit decision and checks it against both the fitted cell-to-cluster
+assignments and the configured `reviewed_label_maps`; matching integer cluster
+IDs alone cannot authorize reuse. The small-table preflight stays under one
+minute and loads no RDS. Full apply fingerprints the already loaded assignments
+(estimated under 10 seconds extra at ~827k cells, low confidence); plot-only
+refresh is unaffected. Synthetic approval checks take under 10 seconds.
+The existing user-approved 2026-10-17 resolution-0.8 map remains in the script
+for the historical 827,183-cell object's clusters 0-19:
 `0/2/10/19` Differentiating GCs; `1/18` Mature UBCs; `3/5` Immature UBCs;
 `4/13` Migrating GCs; `6` BG Progenitors; `7/9/14/15` Prolif GCPs;
 `8/17` RL SVZ; `11` Mature GCs; `12` Maturing PCs; `16` Maturing GCPs.
@@ -3517,6 +3540,14 @@ with `Rscript scripts/xenium_rl_09_plot_counts.R --dry-run` and submit it with
 
 ### 7a. Residual Other/unresolved branch
 
+Residual post-QC processing now matches VZ/RL: refit after approved removals,
+or reuse the original analysis after an explicit no-removal decision. See
+[RESIDUAL_POST_QC_PROCESSING.md](RESIDUAL_POST_QC_PROCESSING.md) for the new stage,
+fresh label-review requirement, protected outputs and validation. Expected
+runtime is 15–120 minutes after removals or 1–10 minutes for reuse (low confidence,
+~10,000 cells; no array), versus the inherited 12-hour requested limit.
+
+
 Retained high-quality Unknown populations assigned `route_other` or
 `route_unresolved` enter an independent residual branch instead of being
 forced into VZ or RL. This branch is deliberately non-spatial through label
@@ -3601,7 +3632,10 @@ After reviewing Stage 4a and recording approval, run:
 ```bash
 Rscript --max-ppsize=500000 scripts/xenium_residual_04b_apply_qc.R --dry-run
 sbatch scripts/run_xenium_residual_04b_apply_qc.slurm
-# Once removal completes successfully, regenerate the marker review:
+# Once removal completes, run post-QC processing before marker review:
+Rscript --max-ppsize=500000 scripts/xenium_residual_05_reintegrate_post_qc.R --dry-run
+sbatch --export=ALL,RESIDUAL_QC_ACTION=remove scripts/run_xenium_residual_05_reintegrate_post_qc.slurm
+# Wait for successful completion, then regenerate marker review:
 Rscript --max-ppsize=500000 scripts/xenium_residual_04_review_subclusters.R --dry-run
 sbatch scripts/run_xenium_residual_04_review_subclusters.slurm
 ```
@@ -3614,11 +3648,12 @@ embedding coordinates are retained; Harmony, neighbors, UMAP and clustering are
 not recomputed. These coordinates describe the pre-QC embedding, not a new
 post-removal integration. Existing QC-removal files require protected `--overwrite`.
 
-With an approved decision present, marker review and label application require
-the complete, current QC-removal outputs and use the filtered RDS. Post-QC marker
-tables and a new blank approval template go to `04_post_qc_subcluster_review/tables/`,
-preserving the original evidence. Marker backgrounds change after exclusion,
-so review these tables before approving the surviving cluster labels. Stages 5–6
+Stage 5 now reads that filtered snapshot and refits on retained cells; an
+explicit no-removal decision reuses the integrated source. Marker review and
+label application require `05_post_qc/rds/Xenium_Residual_postQC.rds` and its
+current provenance. Fresh evidence and a source-bound blank approval template
+go to `05_post_qc/marker_review/tables/`, preserving the original evidence. Marker backgrounds change after exclusion,
+so review these tables and the new cluster partitions before approving fresh labels. Stages 5–6
 and combined outputs from before the removal become stale and must be archived
 or replaced explicitly before regeneration. Label application checks marker-input
 provenance; mapping refuses a master object without the current QC decision.

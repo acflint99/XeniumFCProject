@@ -24,6 +24,7 @@ Sync the updated scripts, the new submitter/launcher, and the modified configura
 - `reviews/Science_res2_reviewed_labels_20261022.csv`
 - `run_science_map_reviewed_res2.slurm`
 - `R/corrected_broad_labels.R`
+- `R/rl_label_approval.R` and `test_rl_label_approval.R`
 - `config/config.yml` and `config/reference_broad_taxonomy.csv`
 
 `color_palette.R` must include the already reviewed eCN and Vascular colors/order.
@@ -62,6 +63,12 @@ output paths. Review or snapshot existing derived outputs before `--submit`:
 submission explicitly enables their protected overwrite switches. Sepp and
 Aldinger reference scripts have legacy direct writes; those reference RDS/plots
 will also be replaced. No analysis outputs are modified by `--dry-run`.
+Before each submission, the helper checks acflint's running/pending Slurm jobs
+for reference, annotation and regional/merge names, including `VZ_`, `RL_`,
+`Xenium_VZ`, `Xenium_RL` and `Xen_Residual_` variants. This is a submission-time
+name check, not a shared file lock: renamed jobs, manual R sessions and jobs
+submitted afterward are not covered. Do not launch competing work during this
+refresh.
 Dry-runs inspect paths, dependencies, small CSVs and task maps, not large RDS files.
 Allow roughly **1–3 minutes per phase preflight**, low confidence from repeated R
 startup and filesystem latency. Missing files, printed `DRY-RUN FAIL`, or failed
@@ -158,16 +165,19 @@ For `none`, submission preserves any previous residual decision and
 and records the explicit no-removal decision. Both possible decision locations
 are archived so the loader cannot fall back to a stale scripts/config copy.
 Paths and destinations are recorded in `moves.tsv`; no files are deleted.
-Marker review then reads the new unfiltered integrated residual object.
+Residual Stage 5 then explicitly reuses the integrated input for a no-removal decision; marker review reads its new post-QC output.
 
-VZ/RL apply QC -> post-QC processing -> resolution-0.8 marker review. The review
+VZ/RL apply QC -> post-QC processing -> clustree/subsampling stability -> resolution-0.8 marker review. The review
 drivers build fresh replicate-aware evidence when needed. A zero-removal decision
 uses the driver's supported reuse path instead of forcing reintegration.
-Residual applies approved removals when requested, then regenerates marker
-evidence and a blank label-review template. Its filtered embedding retains
-pre-removal coordinates, as defined by the existing residual workflow.
+Residual now applies approved removals -> post-QC processing -> the same
+clustree/subsampling stability review -> marker evidence and a fresh source-bound
+label template. It refits after removals and explicitly reuses representations
+when none are removed, matching the VZ/RL workflow. Existing residual numeric
+cluster IDs and label approvals cannot be reused on the new fit. See
+[RESIDUAL_POST_QC_PROCESSING.md](RESIDUAL_POST_QC_PROCESSING.md).
 
-**Manual gate 3:** Review new marker evidence and approve fresh cluster labels.
+**Manual gate 3:** Review all three clustree/stability results alongside new marker evidence and approve fresh cluster labels. No diagnostic automatically changes resolution 0.8.
 
 - Update `reviewed_label_maps` in `xenium_vz_06_annotate_subclusters.R` and
   `xenium_rl_06_annotate_subclusters.R` for the new resolution-0.8 cluster sets.
@@ -175,6 +185,14 @@ pre-removal coordinates, as defined by the existing residual workflow.
   it with a guard for the newly reviewed input, rather than deleting validation.
 - Update the corresponding VZ expected map/cell total in
   `validate_xenium_regional_mapping.R`. Do not bypass the validator.
+- RL review also writes
+  `outputs/xenium/rl/06_subclusters/tables/Xenium_RL_Subcluster_Label_Approval_Template_Res0.8.csv`.
+  After scientific review, fill `subcluster_label`, `review_notes` and
+  `approved` for every cluster. Save the reviewed copy as
+  `scripts/reviews/RL_subcluster_labels_Res0.8.csv`, preserving its source,
+  partition and review fingerprints. Update the configured RL map to match
+  these approved labels. Generating evidence alone does not approve the old
+  map for a new fit. No approval table is required for plot-only refresh.
 - Populate and approve `config/reviewed_residual_subcluster_labels.csv` from the
   newly generated residual template, including marker/sample evidence.
 - If review introduces new fine labels, explicitly approve their broad map in
@@ -184,6 +202,13 @@ pre-removal coordinates, as defined by the existing residual workflow.
   `Rscript --max-ppsize=500000 scripts/validate_config.R` (under one minute), then
   run the next path/CSV preflight. Full file checking on HPC uses `--check-files`;
   typically 1–5 minutes, filesystem-dependent.
+
+RL apply preflight reads paths and small approval/provenance CSVs only (normally
+under one minute). Full apply also checks ordered cell-to-cluster assignments
+after loading its existing source object; it adds no RDS read and does not refit
+the analysis. Fingerprinting the assignments should add under 10 seconds for
+the prior ~827k-cell cohort, low confidence from static inspection. Synthetic
+`test_rl_label_approval.R` takes under 10 seconds with temporary fixtures only.
 
 ## Phase 4: apply approved labels and produce nonspatial and spatial merges
 
@@ -198,13 +223,23 @@ label application and mapping. After all three maps complete: combine labels
 validates all three mapping manifests; corrected-broad validation also runs
 before merge jobs begin.
 
+The nonspatial merge also releases two independent downstream validation jobs:
+Spearman correlation against all three original references, and a MetaNeighborUS
+reference array (Aldinger/Sepp/Science; tasks 1–3, concurrency one). Both assess
+corrected broad and combined fine labels. They write only to fresh per-run
+`outputs/reference_label_refresh_runs/$REFERENCE_REFRESH_RUN_ID/cluster_validation/`
+subdirectories (`spearman/` and `metaneighbor/<reference>/`). Existing validation
+outputs are protected; choose a fresh refresh run ID rather than replacing them.
+These are reference-consistency checks, not independent accuracy measurements.
+
 Final merged objects:
 
 - `outputs/xenium/vz_rl/nonspatial/03_merged/rds/Xenium_VZRL_merged.rds`
 - `outputs/xenium/vz_rl/spatial/03_merged/rds/Xenium_VZRL_spatial_merged.rds`
 
-This is the requested merge endpoint. Subsequent nonspatial processing and
-spatial integration are separate stages and are not silently included.
+The phase endpoint now includes the merges and their reference-validation jobs.
+Subsequent nonspatial processing and spatial integration remain separate stages.
+See [WORKFLOW_ALIGNMENT_20261022.md](WORKFLOW_ALIGNMENT_20261022.md) for completion checks and validation dependencies.
 
 ## Job records and completion checks
 
@@ -259,7 +294,12 @@ not Slurm limits. Arrays below use the explicit helper concurrency.
 | Residual merge/integration/QC | 5–30 min / 15–120 min / 2–20 min | Single jobs | Prior ~10k-cell branch; new size unknown, low |
 | VZ/RL QC application | 5–30 min each | Single jobs | Prior 13–25 min, moderate |
 | VZ / RL post-QC processing after removals | 6–16 h / 3–8 h | Single jobs may overlap | VZ 373.5 min; RL 211.9 min; new cells, low |
+| Residual post-QC processing after removals | 15–120 min | Single pooled job | ~10k-cell prior cohort/static inspection, low; requested 12 h |
+| Residual no-removal post-QC reuse | 1–10 min | Single pooled job | RDS I/O and plotting, low; requested 12 h |
 | No-removal post-QC reuse | 5–30 min/branch | Single jobs | Supported reuse path, low |
+| Clustree/stability (five 80% repeats) | VZ 4–20 h; RL 2–12 h; residual 5–60 min | Independent pooled jobs, may overlap | Related integration history/static inspection, low |
+| Spearman reference validation | 1–6 h | Single job after nonspatial merge | Existing launcher estimate, low |
+| MetaNeighborUS | 0.5–4 h/reference task | Three tasks at concurrency one: 1.5–12 h | Existing launcher estimate, low |
 | VZ/RL marker review including replicate evidence | 0.5–3 h/branch | Single jobs | Prior combined reviews 12–46 min; new sets, low |
 | Residual QC apply / marker review | 1–10 min / 5–60 min | Single jobs | Smaller branch; new size unknown, low |
 | VZ/RL label application / mapping | 10–60 min per job | Single jobs | Prior 11–19 min application, 13.5 min VZ mapping |
